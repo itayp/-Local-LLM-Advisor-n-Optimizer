@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -56,7 +57,7 @@ func run() int {
 	// Data directory and database.
 	dbPath := ""
 	if *flagDataDir != "" {
-		dbPath = *flagDataDir + string(os.PathSeparator) + "advisor.db"
+		dbPath = filepath.Join(*flagDataDir, "advisor.db")
 	} else {
 		p, err := store.DefaultPath()
 		if err != nil {
