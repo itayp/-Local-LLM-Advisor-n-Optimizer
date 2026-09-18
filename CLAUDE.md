@@ -86,6 +86,11 @@ make check      # gofmt, go vet, tsc
 make build      # dist/advisor-{linux-amd64,darwin-arm64,darwin-amd64,windows-amd64[.exe]}
 ```
 
+On a Mac, `scripts/verify.command` (double-clickable) runs `go mod tidy`,
+`make test`, `make build` and a smoke test of the built binary, and writes
+the output to `verify.log` — the same sequence as CI, for a machine where
+a session cannot run Go itself.
+
 - A fresh clone needs `make ui` once before a plain `go build ./...` works,
   because `go:embed` needs the built UI to exist. Until then use `-tags noui`.
 - `make dev` keeps its data in `./.dev-data` (`ADVISOR_DATA_DIR`), never in
