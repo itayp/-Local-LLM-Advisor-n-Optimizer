@@ -626,6 +626,143 @@ all three OSes; `x/sys` was already in the module graph through
 **Consequences.** No cgo, still; `go.sum` gains one module. A future data
 file uses the same parser and strict decoding (`DisallowUnknownField`).
 
+## D-27. The Backend interface is frozen against three runtimes, not one
+
+**Decision.** `internal/backend.Backend` (`Name`, `Detect`, `Models`, `Show`,
+`Running`, `Pull`, `Generate`, `Unload`, `Install`, `Start`) was checked
+against Ollama's HTTP API, LM Studio's local REST API (`/api/v1/models`,
+`/models/load`, `/models/unload`, `/models/download`) and its `lms` CLI, and
+llama-server's API (`/props`, `/v1/models`, `/slots`, and its newer
+`--models-dir` router mode) before the Ollama adapter was written, not after
+— D-3 asked for the interface to be defined once, for every runtime the PRD
+names, and getting that wrong is a rewrite, not an edit, once a second
+backend exists. The seam D-3 called out as most likely to leak an Ollama
+assumption — what a model *is* to fetch — is `Pull`'s `ModelSource`: a
+`SourceKind` (`ollama_tag` or `huggingface_gguf`) with only the fields for
+that kind set, and `ErrUnsupportedSource` when a backend cannot fetch from a
+kind, never a best-effort translation between an Ollama tag and a Hugging
+Face repo. `Generate` stays deliberately thin (no chat history, tools,
+images — D-4) because its only caller is the benchmark harness (step 6).
+`ModelInfo.Details` carries a model's GGUF metadata with the architecture-
+prefixed keys the file format itself uses (`<arch>.block_count`,
+`<arch>.attention.key_length`, …), not Ollama's shape — Ollama's `/api/show`
+already re-exposes those keys close to verbatim, so this is reading the
+file format, not the runtime.
+
+**Consequences.** `internal/backend/ollama` is the only implementation; nothing
+in the interface references Ollama's Modelfile concept except the two fields
+(`Modelfile`, `Template`) that only Ollama populates, left empty by any
+backend without the concept. A llama.cpp or LM Studio adapter (step 4/18)
+implements the same ten methods against its own API with no interface
+change expected — the open item this closes.
+
+## D-28. The Ollama adapter: HTTP first, filesystem as fallback only
+
+**Decision.** `internal/backend/ollama` talks to Ollama over its HTTP API on
+`OLLAMA_HOST` (default `http://127.0.0.1:11434`). `Detect` tries
+`/api/version` first — the only way to learn the running version — and only
+falls back to looking for the binary on `$PATH` or this app's managed
+install location when that fails; the filesystem check never starts
+anything, matching the interface's "Detect must be cheap and must never
+start anything." `Pull` streams `/api/pull` and reports progress in bytes
+(`completed`/`total` from Ollama's own NDJSON), so the UI can say "2.1 of
+4.7 GB" per the task, not a percentage with no denominator until Ollama has
+sized the download. `Unload` is a `/api/generate` call with `keep_alive: 0`
+and no prompt — Ollama has no dedicated unload endpoint; that is the
+documented way to free a model's memory now. The HTTP client, the wire
+shapes, and the `model_info` parsing helpers (`miValue`/`toNum`, D-20's
+"prefer `attention.key_length`, max over a per-layer array") are ported from
+`scripts/probe0/main.go`, which validated them against real machines across
+three runtime backends in step 0 — not re-derived from the docs alone.
+
+**Consequences.** A `TestShowPrefersKeyLengthOverSpec` regression test keeps
+D-20's finding enforced at the adapter boundary, not only in the estimator
+that will consume it (step 5). `Detect`'s 2-second timeout means a stalled
+Ollama process reads as unreachable quickly rather than hanging a page load.
+
+## D-29. Install and Start: a button, per OS, no sudo, no system service
+
+**Decision.** Per product rule 5, `Install` and `Start` only ever run from a
+UI action that already said what it would do; the methods themselves change
+nothing until called. macOS and Windows: download the official installer
+over HTTPS to a temp folder with progress, verify what can be verified (the
+host, TLS, a published checksum where Ollama publishes one — it does not,
+today, and the code says so rather than pretending to check one), then
+launch it and wait for `Detect` to change; the user still clicks through the
+installer, because this app cannot and should not silently accept another
+program's EULA for them. Linux: a genuine user-space install — the official
+`ollama-linux-<arch>.tar.zst` extracted under this app's own data folder,
+run later as a child process this daemon supervises (`ollama serve`,
+output to a log file `runtimepath.go` also reads) — no `sudo`, no
+`curl | sh`, no system service, matching the Linux convention CLAUDE.md
+already sets. Both the version this app installed and the version `Detect`
+subsequently reports are kept (`backends.installed_version` vs. the row's
+`version`), so "what we put there" and "what is actually running" can
+disagree visibly if the user upgrades or replaces it themselves.
+
+**Consequences.** The user-space Linux install cannot start at boot or run
+as a background service outside this app — a system service would need a
+password prompt, and product rule 1 ("the user never needs a terminal") and
+this product's customer (CLAUDE.md: someone who "has no idea what a GGUF
+is") make never asking for a password the higher priority. `Install`'s
+progress callback and `Pull`'s share the same shape (`Status`, `Completed`,
+`Total` bytes) so the UI can reuse one progress-bar component for both.
+
+## D-30. The inventory: four states, refreshed on every check, never deleted
+
+**Decision.** `backend.State` has four values — `not_installed`,
+`installed_not_running`, `running`, `unsupported` — so "installed but not
+running" and "not installed" are different values the API returns, not a
+boolean the UI has to combine with a guess (the task's own requirement).
+`GET /api/backends` calls `Detect` (and, when a backend is running,
+`Models`) fresh on every request rather than serving a cached value: `Detect`
+is documented to be cheap and to never start anything, so re-checking on
+every page load is the point. Each check is stored as a new `backends` row
+(insert-only, mirroring `hardware_profiles` — D-23's history-not-update
+shape), so a benchmark can still answer "what version of Ollama was this
+run against" after an upgrade. `installed_models` is upserted the same way
+on every successful `Models()` call: existing rows for that backend are
+marked `present = 0`, then every model the runtime reports is inserted or
+updated back to `present = 1` — a model the user removed from Ollama drops
+out of `GET /api/models/installed` but its row, and its name, stay
+referenceable by history (a past benchmark, a past estimate), never deleted.
+
+**Consequences.** `GET /api/backends` on a `Detect` failure (a real error,
+not "not installed") falls back to the last stored row rather than
+reporting a guessed state — D-21 applies to a runtime's state exactly as it
+does to a hardware value. `GET /api/models/installed?backend=<name>` filters
+to one runtime; without the parameter it spans all of them, backend then
+name ordered.
+
+## D-31. The runtime path is a fact established after a load, never assumed
+
+**Decision.** `hardware.RuntimePath` per GPU index on a backend's `Status`
+(`cuda`/`metal`/`rocm`/`vulkan`/`cpu`) is empty until a model has actually
+loaded — it is what happened, not `hardware.GPU.ExpectedBackend` (D-24's
+rule-derived expectation) repeated in a new place. After a load, it is read
+two ways and only trusted when they agree with what evidence exists:
+`/api/ps`'s `size_vram` says whether anything is on a GPU at all (0 means
+CPU, unambiguously), and the server's own log — read from the file this
+daemon wrote when it started Ollama itself, or Ollama's documented default
+location otherwise — is parsed for its device-discovery lines
+(`library=cuda`, `ggml_vulkan: Found …`, `no compatible GPUs were
+discovered`, …; the last matching line wins, since a failed probe of one
+backend followed by a successful one is a real sequence Ollama's own log
+produces). When VRAM is used but the log cannot confirm which named backend
+did it, the path is left out of the map entirely — D-21 again: an omitted
+entry, never a guessed one. The environment variables that steer which path
+a runtime takes (`OLLAMA_VULKAN`, `GGML_VK_VISIBLE_DEVICES`,
+`HSA_OVERRIDE_GFX_VERSION`) are captured on every `Detect` — read, never
+set; this app has no UI to set them yet, and D-21 forbids guessing a good
+value even if it did — and only variables actually present in the
+environment are included.
+
+**Consequences.** `GET /api/backends` returns `runtime_paths` beside
+`expected_backend` (on the hardware profile), so the UI can show "expected
+CUDA, actually ran on CUDA" or flag a mismatch, once step 11 builds that
+screen. The log-parsing logic (`pathFromLog`, `runtimePathsFromPS`) is
+ported from `scripts/probe0/main.go`'s validated detector, not re-derived.
+
 ---
 
 ## Open items, for the steps that own them
@@ -634,7 +771,10 @@ file uses the same parser and strict decoding (`DisallowUnknownField`).
   Step 11 decides whether the port is persisted so "open the app" always
   lands on the same URL.
 - **Logging to a file** in the data folder: step 11, with the tray.
-- **The backend interface's full method set**: step 3, reviewed against
-  LM Studio and llama-server before it is frozen.
 - **Notarisation and code signing**: Itay's decision in step 11; changes
   install-page copy, not code.
+- **llama.cpp and LM Studio adapters** (step 4/18): D-27 expects no
+  interface change; `ModelSource{Kind: huggingface_gguf}` is exercised for
+  the first time by whichever comes first.
+- **A UI for Install/Pull progress and the backends/models inventory**: step
+  11; step 3 only adds a temporary shell status line.

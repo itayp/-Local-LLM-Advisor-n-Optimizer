@@ -20,10 +20,13 @@ import (
 	"syscall"
 	"time"
 
+	"advisor/internal/backend"
 	"advisor/internal/hardware"
 	"advisor/internal/server"
 	"advisor/internal/store"
 	"advisor/internal/version"
+
+	_ "advisor/internal/backend/ollama" // registers itself with internal/backend on import
 )
 
 func main() {
@@ -107,6 +110,29 @@ func run() int {
 		log.Info("machine", "tier", p.Tier, "summary", p.Summary, "profile_id", resp.ProfileID, "changed", resp.Changed)
 		for _, problem := range p.Problems {
 			log.Debug("hardware detection", "problem", problem)
+		}
+	}()
+
+	// The runtime inventory: detected in the background on the same
+	// schedule as hardware (every backend registered with internal/backend
+	// — "ollama" for now), stored, and served at GET /api/backends and
+	// GET /api/models/installed (step 3, item 4). This log line is
+	// temporary — a UI screen for it is a later step's job, not this one's.
+	go func() {
+		resp := srv.RecordBackends(ctx)
+		for _, b := range resp.Backends {
+			switch b.State {
+			case backend.StateRunning:
+				fmt.Fprintf(os.Stderr, "advisor: backend %s: running %s at %s\n", b.Name, b.Version, b.Host)
+			case backend.StateInstalledNotRunning:
+				fmt.Fprintf(os.Stderr, "advisor: backend %s: installed but not running (%s)\n", b.Name, b.Detail)
+			case backend.StateNotInstalled:
+				fmt.Fprintf(os.Stderr, "advisor: backend %s: not installed\n", b.Name)
+			default:
+				fmt.Fprintf(os.Stderr, "advisor: backend %s: %s (%s)\n", b.Name, b.State, b.Detail)
+			}
+			log.Info("backend", "name", b.Name, "state", b.State, "version", b.Version,
+				"installed_version", b.InstalledVersion, "runtime_paths", b.RuntimePaths)
 		}
 	}()
 

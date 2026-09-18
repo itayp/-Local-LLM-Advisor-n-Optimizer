@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"advisor/internal/backend"
 	"advisor/internal/store"
 	"advisor/internal/version"
 )
@@ -75,6 +76,12 @@ type Server struct {
 	started  time.Time
 	store    *store.Store // nil in tests that need no persistence
 	hw       hardwareState
+
+	// backendList is where RecordBackends gets the runtimes to check.
+	// Defaults to the package-level registry (backend.All — whatever
+	// imported itself in with an init(), "ollama" today); tests set it
+	// directly to a fake, the same seam hardwareWait gives RecordHardware.
+	backendList func() []backend.Backend
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -84,7 +91,7 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st}
+	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All}
 	s.hw.ready = make(chan struct{})
 	s.routes()
 	return s
@@ -97,6 +104,8 @@ func (s *Server) routes() {
 	s.api("GET /api/hardware", s.handleHardware)
 	s.api("GET /api/hardware/history", s.handleHardwareHistory)
 	s.api("GET /api/hardware/profiles/{id}", s.handleHardwareProfile)
+	s.api("GET /api/backends", s.handleBackends)
+	s.api("GET /api/models/installed", s.handleModelsInstalled)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

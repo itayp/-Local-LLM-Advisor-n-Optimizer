@@ -24,6 +24,8 @@ func APITypes() []any {
 		HardwareHistory{},
 		hardware.Profile{},
 		backend.Status{},
+		BackendsResponse{},
+		InstalledModelsResponse{},
 		catalog.Family{},
 		catalog.Model{},
 		catalog.File{},
