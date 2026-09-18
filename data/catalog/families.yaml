@@ -1,0 +1,33 @@
+# The curated catalogue — the only models the advisor will recommend.
+#
+# This file is DATA. Step 4 seeds it; the docs never count it ("the curated
+# families", never "the 12 families" — product rule 8). It is read by
+# internal/catalog (step 4), which resolves every size to per-quant GGUF
+# metadata from Hugging Face without downloading weights.
+#
+# Schema (mirrors catalog.Family in internal/catalog/catalog.go):
+#
+#   families:
+#     - id: llama3.1                 # stable key, lowercase, no spaces
+#       display_name: Llama 3.1      # what the UI shows
+#       maintainer: Meta
+#       license:
+#         spdx: ""                   # SPDX id where one exists (e.g. Apache-2.0, MIT)
+#         name: Llama 3.1 Community License   # otherwise the name...
+#         url: https://...           # ...and where to read it
+#       purposes: [coding, chat]     # what it is credible for; the enum is
+#                                    # catalog.Purpose: coding, chat, reasoning,
+#                                    # long_context, vision, agentic, writing
+#       reviewed_at: 2026-09-18      # when a person last checked this entry
+#       notes: ""                    # optional, for the curator
+#       sizes:
+#         - parameters: 8000000000   # parameter count, from the model card
+#           context_length: 131072   # trained context, from the model card
+#           ollama_tag: llama3.1:8b  # what a beginner would pull
+#           hf_repo: owner/repo-GGUF # the GGUF repo used for metadata
+#
+# Every entry is dense and text-only unless its purposes say otherwise:
+# mixture-of-experts and vision models are their own problem for the
+# estimator (step 0's finding) and are excluded until step 5 handles them.
+
+families: []

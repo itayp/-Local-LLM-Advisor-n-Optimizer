@@ -1,0 +1,230 @@
+/* The shell's look: plain, readable, system fonts, light and dark.
+   Step 7 owns the real visual design; this is enough to see the structure
+   and the two figure treatments. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5f6368;
+  --line: #e3e3e3;
+  --accent: #1a5fb4;
+  --accent-bg: #eef4fc;
+  --warn-bg: #fff4e5;
+  --warn-fg: #7a4b00;
+  --measured: #0b6b3a;
+  --estimated: #6b4e00;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131416;
+    --fg: #ececec;
+    --muted: #a0a4ab;
+    --line: #2c2f33;
+    --accent: #7fb2f0;
+    --accent-bg: #1b2735;
+    --warn-bg: #3a2a10;
+    --warn-fg: #ffd58a;
+    --measured: #5fd39a;
+    --estimated: #e6c26b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    'header header'
+    'nav main'
+    'footer footer';
+  min-height: 100vh;
+}
+
+.shell__header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shell__brand {
+  display: flex;
+  flex-direction: column;
+}
+
+.shell__title {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.shell__tagline {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.shell__nav {
+  grid-area: nav;
+  border-right: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.shell__nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shell__nav a {
+  display: block;
+  padding: 8px 24px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell__nav a:hover {
+  background: var(--accent-bg);
+}
+
+.shell__nav a.active {
+  color: var(--accent);
+  font-weight: 600;
+  border-left: 3px solid var(--accent);
+  padding-left: 21px;
+}
+
+.shell__main {
+  grid-area: main;
+  padding: 24px 32px;
+  max-width: 900px;
+}
+
+.shell__footer {
+  grid-area: footer;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  min-height: 40px;
+}
+
+.screen h1 {
+  margin-top: 0;
+  font-size: 24px;
+}
+
+.screen__lead {
+  font-size: 17px;
+}
+
+.screen__note,
+.setting__help {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.screen__advanced {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.setting {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.setting__label {
+  font-weight: 500;
+}
+
+.notice {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 0 0 16px;
+}
+
+.notice--warning {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+
+/* Product rule 4: the two treatments. Never the same look. */
+.figure {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.figure--estimated {
+  color: var(--estimated);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.figure--measured {
+  color: var(--measured);
+  font-weight: 600;
+}
+
+.figure__prefix {
+  opacity: 0.8;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'header'
+      'nav'
+      'main'
+      'footer';
+  }
+
+  .shell__nav {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 0;
+  }
+
+  .shell__nav ul {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .shell__nav a.active {
+    border-left: none;
+    padding-left: 24px;
+    border-bottom: 3px solid var(--accent);
+  }
+
+  .shell__main {
+    padding: 16px;
+  }
+}

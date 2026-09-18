@@ -1,0 +1,22 @@
+# Build outputs
+/dist/
+/internal/server/ui/dist/
+
+# UI
+/ui/node_modules/
+/ui/dist/
+/ui/*.local
+
+# Local daemon data when running from the repo (make dev)
+/.dev-data/
+*.db
+*.db-wal
+*.db-shm
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

@@ -1,0 +1,74 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
+import { describe, expect, it, vi } from 'vitest'
+import { App } from './App'
+import { en } from './copy/en'
+import { screens } from './screens'
+
+function renderAt(path: string, opts?: { advanced?: boolean }) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <App initialSettings={opts?.advanced === undefined ? undefined : { advanced: opts.advanced }} />
+    </MemoryRouter>,
+  )
+}
+
+describe('the shell', () => {
+  it('lists every screen of the PRD §17 workflow in the navigation', () => {
+    renderAt('/')
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((l) => l.textContent)).toEqual(screens.map((s) => s.label))
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(screens.map((s) => s.path))
+  })
+
+  it.each(screens.map((s) => [s.label, s.path]))('shows the %s screen at %s', (label, path) => {
+    renderAt(path)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(label)
+  })
+
+  it('shows the daemon version from /api/health', async () => {
+    renderAt('/')
+    expect(await screen.findByTestId('daemon-version')).toHaveTextContent('version test')
+    expect(fetch).toHaveBeenCalledWith('/api/health', expect.anything())
+  })
+
+  it('says so, in words, when the daemon cannot be reached', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    renderAt('/')
+    expect(await screen.findByRole('status')).toHaveTextContent(en.app.daemonUnreachable)
+  })
+})
+
+describe('the Advanced toggle', () => {
+  it('is off by default (product rule 2)', () => {
+    renderAt('/settings')
+    expect(screen.getByRole('checkbox', { name: en.screens.settings.advancedLabel })).not.toBeChecked()
+    expect(screen.queryByTestId('advanced-badge')).not.toBeInTheDocument()
+  })
+
+  it('flips the settings state for every screen and persists it', async () => {
+    const user = userEvent.setup()
+    renderAt('/settings')
+    await user.click(screen.getByRole('checkbox', { name: en.screens.settings.advancedLabel }))
+    expect(screen.getByTestId('advanced-badge')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: en.nav.models }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(en.nav.models)
+    expect(screen.getByTestId('advanced-note')).toBeInTheDocument()
+
+    expect(JSON.parse(localStorage.getItem('advisor.settings.v1') ?? '{}')).toEqual({ advanced: true })
+  })
+
+  it('reads a saved choice on start', () => {
+    localStorage.setItem('advisor.settings.v1', JSON.stringify({ advanced: true }))
+    renderAt('/models')
+    expect(screen.getByTestId('advanced-badge')).toBeInTheDocument()
+  })
+})

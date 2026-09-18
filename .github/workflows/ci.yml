@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each runner runs the full test suite natively and builds the
+          # binaries for its own OS. The ubuntu runner additionally
+          # cross-compiles all four targets with `make build`, which is the
+          # release path. darwin/amd64 is built on the arm64 macOS runner
+          # (Go cross-compiles; there is no Intel runner to rely on) and
+          # smoke-tested under Rosetta when that is available.
+          - os: ubuntu-latest
+            targets: 'linux/amd64'
+          - os: macos-latest
+            targets: 'darwin/arm64 darwin/amd64'
+          - os: windows-latest
+            targets: 'windows/amd64'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe needs the tags for the version stamp
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
+      - name: UI — install
+        working-directory: ui
+        run: npm ci
+
+      - name: UI — type-check and build (produces internal/server/ui/dist)
+        working-directory: ui
+        run: npm run build
+
+      - name: UI — tests
+        working-directory: ui
+        run: npm test
+
+      - name: Go — gofmt
+        if: runner.os != 'Windows' # the Windows checkout may rewrite line endings
+        shell: bash
+        run: |
+          out=$(gofmt -l cmd internal scripts)
+          if [ -n "$out" ]; then echo "gofmt needed on:"; echo "$out"; exit 1; fi
+
+      - name: Go — vet
+        run: go vet ./...
+
+      - name: Go — tests (UI embedded)
+        run: go test ./...
+
+      - name: Go — tests (no UI, the make dev configuration)
+        run: go test -tags noui ./...
+
+      - name: Build ${{ matrix.targets }}
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          for t in ${{ matrix.targets }}; do
+            os=${t%/*}; arch=${t#*/}; ext=""
+            [ "$os" = windows ] && ext=.exe
+            echo "building dist/advisor-$os-$arch$ext"
+            GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X advisor/internal/version.Version=${{ steps.version.outputs.version }}" \
+              -o "dist/advisor-$os-$arch$ext" ./cmd/advisor
+          done
+          ls -la dist
+
+      - name: Smoke test — each binary starts, answers /api/health and serves the UI
+        shell: bash
+        env:
+          ADVISOR_DATA_DIR: ${{ runner.temp }}/advisor-smoke
+        run: |
+          for t in ${{ matrix.targets }}; do
+            os=${t%/*}; arch=${t#*/}; ext=""
+            [ "$os" = windows ] && ext=.exe
+            bin="dist/advisor-$os-$arch$ext"
+            if [ "$os" = darwin ] && [ "$arch" = amd64 ] && ! arch -x86_64 true 2>/dev/null; then
+              echo "no Rosetta on this runner; skipping the darwin/amd64 smoke test"; continue
+            fi
+            echo "== $bin"
+            "$bin" -version
+            "$bin" -port 27182 -no-browser &
+            pid=$!
+            for i in $(seq 1 30); do
+              curl -sf http://127.0.0.1:27182/api/health >/dev/null && break
+              sleep 1
+            done
+            curl -sf http://127.0.0.1:27182/api/health; echo
+            curl -sf http://127.0.0.1:27182/ | grep -qi '<!doctype html>'
+            curl -sf http://127.0.0.1:27182/settings | grep -qi '<!doctype html>'
+            # A foreign Host header must be refused (product rule 7's second line of defence).
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example.com' http://127.0.0.1:27182/api/health)
+            [ "$code" = 421 ] || { echo "expected 421 for a foreign Host, got $code"; kill $pid; exit 1; }
+            kill $pid || true
+            wait $pid 2>/dev/null || true
+          done
+
+      - name: Cross-compile every target (the release path)
+        if: runner.os == 'Linux'
+        run: make build VERSION=${{ steps.version.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: advisor-${{ matrix.os }}
+          path: dist/advisor-*
+          if-no-files-found: error
