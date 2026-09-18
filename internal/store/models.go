@@ -28,6 +28,14 @@ type InstalledModelRow struct {
 	ModifiedAt    string // as the runtime reports it; "" if it does not say
 	LastSeenAt    string // updated every time the runtime lists it
 	Present       bool
+
+	// How the model maps onto the catalogue (step 4): CatalogMatch is ""
+	// until mapped, then "file", "model" or "unknown" (catalog.MatchKind);
+	// the ids are 0 when there is nothing to point at.
+	CatalogModelID int64
+	CatalogFileID  int64
+	CatalogMatch   string
+	CatalogNote    string
 }
 
 // UpsertInstalledModels replaces backendName's inventory with models: every
@@ -74,14 +82,16 @@ func (s *Store) UpsertInstalledModels(ctx context.Context, backendName string, m
 	return nil
 }
 
-const installedModelColumns = `id, created_at, backend_name, name, digest, size_bytes, quantization, family, parameter_size, modified_at, last_seen_at, present`
+const installedModelColumns = `id, created_at, backend_name, name, digest, size_bytes, quantization, family, parameter_size, modified_at, last_seen_at, present, catalog_model_id, catalog_file_id, catalog_match, catalog_note`
 
 func scanInstalledModel(sc interface{ Scan(...any) error }) (InstalledModelRow, error) {
 	var r InstalledModelRow
 	var size int64
 	var present int
+	var modelID, fileID sql.NullInt64
 	if err := sc.Scan(&r.ID, &r.CreatedAt, &r.BackendName, &r.Name, &r.Digest, &size,
-		&r.Quantization, &r.Family, &r.ParameterSize, &r.ModifiedAt, &r.LastSeenAt, &present); err != nil {
+		&r.Quantization, &r.Family, &r.ParameterSize, &r.ModifiedAt, &r.LastSeenAt, &present,
+		&modelID, &fileID, &r.CatalogMatch, &r.CatalogNote); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return r, ErrNotFound
 		}
@@ -89,6 +99,7 @@ func scanInstalledModel(sc interface{ Scan(...any) error }) (InstalledModelRow, 
 	}
 	r.SizeBytes = uint64(size)
 	r.Present = present != 0
+	r.CatalogModelID, r.CatalogFileID = modelID.Int64, fileID.Int64
 	return r, nil
 }
 

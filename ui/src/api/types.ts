@@ -162,3 +162,158 @@ export interface HardwareConfiguration {
 export interface HardwareHistory {
   configurations: HardwareConfiguration[]
 }
+
+// --- Catalogue (Go: internal/catalog, internal/server/catalog.go) ---------
+//
+// The curated families and what the last refresh resolved from Hugging
+// Face. Every number here is a fact about a file or a model card (a byte
+// count, a parameter count, a header field), not an estimate: Go tags them
+// `source:"n/a"` and the UI shows them as plain text. Never count the
+// catalogue in copy (product rule 8).
+
+/** SPDX where possible, otherwise the licence's name and where to read it (Go: catalog.License). */
+export interface License {
+  spdx?: string
+  name?: string
+  url?: string
+}
+
+/** One size of a family, as families.yaml states it (Go: catalog.Size). */
+export interface CatalogSize {
+  parameters: number
+  /** Parameters used per token when fewer than all (mixture-of-experts); absent = dense. */
+  active_parameters?: number
+  context_length: number
+  ollama_tag: string
+  hf_repo: string
+}
+
+/** The header fields step 5's estimator reads (Go: catalog.GGUFHeader). */
+export interface GGUFHeader {
+  architecture: string
+  gguf_version: number
+  tensor_count: number
+  block_count: number
+  head_count: number
+  head_count_kv: number
+  head_count_kv_stated: boolean
+  /** 0 when the model does not state one. */
+  key_length: number
+  value_length: number
+  embedding_length: number
+  context_length: number
+  sliding_window: number
+  full_attention_interval: number
+  /** -1 when the file does not state it. */
+  file_type: number
+  file_type_name: string
+  expert_count: number
+  expert_used_count: number
+  has_vision: boolean
+  complete: boolean
+}
+
+export type FileRole = 'model' | 'projector'
+
+/** One quant variant (or the vision encoder) of a size (Go: catalog.File). */
+export interface CatalogFile {
+  id: number
+  model_id: number
+  filename: string
+  role: FileRole
+  quant: string
+  sha?: string
+  parts: number
+  /** The download size, summed across parts — a fact from the Hub listing. */
+  bytes: number
+  bits_per_weight: number
+  present: boolean
+  header: GGUFHeader
+  fetched_at: string
+}
+
+/** One catalogue size with what the last refresh learned (Go: catalog.Model). */
+export interface CatalogModel {
+  /** 0 until the daemon has stored the size. */
+  id: number
+  family_id: string
+  size: CatalogSize
+  present: boolean
+  hf_sha?: string
+  parameters_counted: number
+  /** Absent: never resolved. */
+  refreshed_at?: string
+  refresh_error?: string
+  files: CatalogFile[]
+}
+
+/** Go: server.CatalogFamily. */
+export interface CatalogFamily {
+  id: string
+  display_name: string
+  maintainer: string
+  license: License
+  purposes: Purpose[]
+  reviewed_at: string
+  source: string
+  notes?: string
+  sizes: CatalogModel[]
+}
+
+/** Go: server.CatalogRefreshInfo. */
+export interface CatalogRefreshInfo {
+  started_at: string
+  finished_at: string
+  trigger: 'cli' | 'api' | 'watch' | string
+  sizes: number
+  resolved: number
+}
+
+/** GET /api/catalog (Go: server.CatalogResponse). */
+export interface CatalogResponse {
+  quants: string[]
+  families: CatalogFamily[]
+  last_refresh?: CatalogRefreshInfo
+}
+
+/** Go: refresh.SizeFailure. */
+export interface CatalogSizeFailure {
+  family_id: string
+  ollama_tag: string
+  hf_repo: string
+  error: string
+}
+
+/** POST /api/catalog/refresh (Go: refresh.Report). */
+export interface CatalogRefreshReport {
+  started_at: string
+  finished_at: string
+  trigger: string
+  sizes: number
+  resolved: number
+  files: number
+  header_reads: number
+  cache_hits: number
+  requests: number
+  not_modified: number
+  bytes_read: number
+  failures: CatalogSizeFailure[]
+  stopped?: string
+  warnings: string[]
+  unknown_installed: { backend: string; name: string; note: string }[]
+}
+
+/** An installed model the catalogue does not know (Go: server.UnknownInstalledModel). */
+export interface UnknownInstalledModel {
+  backend_name: string
+  name: string
+  family?: string
+  parameter_size?: string
+  quantization?: string
+  note: string
+}
+
+/** GET /api/catalog/unknown (Go: server.UnknownInstalledResponse). */
+export interface UnknownInstalledResponse {
+  models: UnknownInstalledModel[]
+}

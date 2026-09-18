@@ -4,6 +4,7 @@ import (
 	"advisor/internal/backend"
 	"advisor/internal/bench"
 	"advisor/internal/catalog"
+	"advisor/internal/catalog/refresh"
 	"advisor/internal/estimate"
 	"advisor/internal/hardware"
 	"advisor/internal/recommend"
@@ -26,6 +27,9 @@ func APITypes() []any {
 		backend.Status{},
 		BackendsResponse{},
 		InstalledModelsResponse{},
+		CatalogResponse{},
+		UnknownInstalledResponse{},
+		refresh.Report{},
 		catalog.Family{},
 		catalog.Model{},
 		catalog.File{},

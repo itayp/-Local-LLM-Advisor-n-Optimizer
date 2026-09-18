@@ -1,6 +1,7 @@
 # Architecture decision record — Local LLM Advisor & Optimizer
 
-**Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2.
+**Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2,
+D-27 to D-31 in step 3, D-32 to D-36 in step 4.
 Every later step inherits this shape. A change to a decision here is a new
 numbered entry that supersedes the old one — the old entry stays, marked
 superseded, so the reasoning survives.
@@ -765,6 +766,158 @@ ported from `scripts/probe0/main.go`'s validated detector, not re-derived.
 
 ---
 
+---
+
+Step 4 (the model catalogue, 2026-09-19) adds D-32 to D-36.
+
+## D-32. The catalogue's schema: sizes carry what the estimator cannot guess
+
+**Decision.** `families.yaml` keeps the shape step 1 sketched (family: id,
+display name, maintainer, licence, purposes, reviewed date; size: parameters,
+context length, Ollama tag, Hugging Face repo) and adds four things:
+
+- a top-level `quants` list — the quant variants the advisor tracks
+  (`Q3_K_M`, `IQ4_XS`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`, and `MXFP4` for
+  models released in it). A repo publishes twenty-odd quants; a beginner is
+  choosing between a handful, and every tracked quant is a header read;
+- `source` per family — the model card the entry was checked against,
+  beside `reviewed_at` (CLAUDE.md: data carries its date and its source);
+- `active_parameters` per size — set for mixture-of-experts sizes and for
+  Gemma's per-layer-embedding "E" sizes, omitted for dense ones;
+- `notes` per family for the curator and for step 5 (hybrid attention,
+  multi-head latent attention, sliding windows).
+
+Mixture-of-experts and multimodal families are **in** the catalogue. The
+step 1 header comment excluded them "until step 5 handles them"; that is
+superseded here, because a careful person recommending local models in
+September 2026 recommends several of them first, and the estimator cannot
+learn to handle models the catalogue does not carry. They are marked
+(`active_parameters`, purpose `vision`, the header's `expert_count`,
+`full_attention_interval`, projector files), so step 5 can decide per
+model, and D-20 finding 5 still keeps them out of its gate until it does.
+The Llama 3 sizes stay although they are older than the rest: they are the
+most-installed family and the models step 0 calibrated on.
+
+`hf_repo` is an ungated repo publishing the tracked quants under llama.cpp's
+standard names — bartowski's where one exists, else ggml-org or the
+maintainer's own — with the vision encoder as an `mmproj` file. `load.go`
+validates everything it can offline (`advisor catalog check`); whether each
+repo resolves is the refresh's report.
+
+**Consequences.** Adding a model is a YAML edit plus `advisor catalog
+refresh`. The purpose enum is checked against `ui/src/api/types.ts` by a
+test, and a test fails if any of the docs counts the catalogue (rule 8).
+
+## D-33. A header read stops at the tokenizer
+
+**Decision.** `internal/catalog/gguf` parses a GGUF header from any
+`io.Reader`: magic, version (2 and 3; version 1 and big-endian files are
+refused with a sentence), tensor count, then the key/value metadata in
+order. `tokenizer.*` values are skipped, never stored. With
+`StopAtTokenizer` the parse ends at the first `tokenizer.` key once every
+required field (architecture, file type, block count, context length,
+embedding length, head count, KV head count) has been read — llama.cpp's
+writer puts all of them first, so a header read is one 64 KiB range of a
+multi-gigabyte file. When a writer put a required key after the tokenizer
+(Ollama's own files put `general.file_type` last), the parse reads on to
+the end rather than stop without it: same answer, more bytes.
+
+The tokenizer is most of a header — 6 to 11 MB of vocabulary and merges —
+and none of the estimator's inputs. Reading every tracked quant's full
+header would cost well over a gigabyte per first refresh on the customer's
+connection; stopping costs about ten megabytes for the whole catalogue.
+
+A header that is not GGUF fails loudly (`*gguf.FormatError`, wrapping
+`ErrMalformed`, with the byte offset and key); one that is merely cut short
+fails with `ErrTruncated`. Limits no real file reaches (64 Ki metadata
+pairs, 64 MiB strings, 64 Mi-element arrays, 4 Mi tensors) keep a hostile
+header from asking for gigabytes. The typed view (`Metadata`) takes the
+largest value of a per-layer array (probe0's convention) and keeps the
+list, uses `head_count` when `head_count_kv` is absent — llama.cpp's rule,
+flagged `head_count_kv_stated: false` — and keeps `key_length` (D-20).
+
+**Consequences.** Tests parse real headers captured from the fleet (the
+first megabytes of Ollama blobs, `gguf/testdata/`), including one whose
+file type comes after the tokenizer and one hybrid architecture, plus
+synthetic malformed ones. `catalog_files.header_complete` says which kind
+of read each row came from; `header_json` holds every pair that was kept.
+
+## D-34. The Hugging Face client is polite, header-only and cached
+
+**Decision.** `internal/catalog/hf` makes two kinds of request. The
+model-info listing (`/api/models/{repo}?blobs=true`: files, sizes, LFS
+hashes, the Hub's own parameter count) is sent with `If-None-Match` and its
+body cached per repo (`hf_listing_cache`), so an unchanged repo is a 304.
+Header reads go to `/{repo}/resolve/{commit}/{file}` — pinned to the
+listing's commit — as range requests from byte 0 in doubling chunks
+(64 KiB up to 8 MiB) that the parser consumes as they arrive. A server that
+answers a range with the whole file is refused unread (unless the file is
+smaller than the range asked for). Parsed headers are cached by (repo,
+file, LFS sha256) in `hf_header_cache`: a file's content hash, not the
+repo commit, so a README edit costs nothing.
+
+Requests are sequential with a minimum gap; 429 and 5xx honour
+`Retry-After` or the Hub's `RateLimit` header (`t=`), up to a bounded wait
+and a bounded number of attempts; a longer requested wait fails with
+`ErrRateLimited` rather than stall. Redirects are followed only to
+`huggingface.co`, `hf.co` and their subdomains (the LFS and Xet CDNs), over
+https. When every attempt fails below HTTP, the error is `ErrUnreachable`
+and the refresh stops instead of failing every size slowly. No token is
+ever sent: a gated repo is a curator error ("pick an ungated repo"). The
+User-Agent is `local-llm-advisor/<version>`.
+
+**Consequences.** A second refresh of an unchanged catalogue makes one
+request per repo and reads nothing. The host list lives in
+`hf.allowedHost`, which step 12's allow-list audit reads.
+
+## D-35. Refresh: one row per tracked quant, never deleted, one at a time
+
+**Decision.** `internal/catalog/refresh.Run` syncs the YAML into
+`catalog_models` (one row per family size; sizes that left the YAML are
+marked `present = 0`), then per size: listing → files grouped (split
+`-0000N-of-0000M` parts summed, part 1's header read; imatrix, multi-token
+prediction and draft files ignored) → one weights file per tracked quant and
+one vision encoder (F16 preferred) → headers → `catalog_files`. Migration
+0003 adds the columns step 5 needs beyond schema v0 (`value_length`,
+`full_attention_interval`, `expert_used_count`, `head_count_kv_stated`),
+the file's `role` (`model` | `projector`) and `parts`, `present` flags on
+both tables, and the size's refresh state (`hf_sha`, `parameters_counted`,
+`refreshed_at`, `refresh_error`). `bits_per_weight` is bytes × 8 over the
+Hub's own parameter count when it gives one, else the model card's.
+`file_type` is −1 when a header does not state it (0 is F32). A size that
+fails keeps what an earlier refresh stored; its error is recorded in
+words. Disagreements that do not stop a size — the YAML's context length
+against the header's, a file named `Q8_0` whose header says `Q4_K_M` — are
+warnings in the report. Each refresh is a `catalog_refreshes` row.
+
+It runs from `advisor catalog refresh` (the curator's command; exits 1 if a
+size did not resolve) and `POST /api/catalog/refresh`, one at a time (a
+second gets 409), detached from the request so closing the tab does not
+abandon it. The daemon syncs the YAML at every start (no network), so a new
+build's catalogue exists before its first refresh. Step 10 calls the same
+`Run` nightly.
+
+**Dependency direction.** `store` imports `catalog` for its types (as it
+does `hardware` and `backend`); `catalog/refresh` imports `store`, `hf` and
+`gguf`; `catalog` itself imports neither `store` nor `hf`.
+
+## D-36. Installed models map by family, size and quant; unknown is a signal
+
+**Decision.** `catalog.MatchInstalled` maps an installed model onto the
+catalogue: a Hugging Face pull (`hf.co/owner/repo:quant`) by its repo; else
+the exact Ollama tag; else the library name before the colon as the family
+and the size whose parameter count is nearest the runtime's
+`parameter_size` (within 25%) — which is what makes `llama3.2:latest` and
+`qwen3.5:9b-q8_0` land on the right size — and then the quant picks the
+file. The result is `file` (known size and quant), `model` (known size, a
+quant the catalogue does not track or has not read yet) or `unknown`, with a
+sentence for the curator, stored on `installed_models` (`catalog_model_id`,
+`catalog_file_id`, `catalog_match`, `catalog_note`). It runs after every
+inventory refresh and every catalogue refresh, costs no network, and
+`GET /api/catalog/unknown` lists the unknown ones — the curator's signal,
+never an error (D-7).
+
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -778,3 +931,15 @@ ported from `scripts/probe0/main.go`'s validated detector, not re-derived.
   the first time by whichever comes first.
 - **A UI for Install/Pull progress and the backends/models inventory**: step
   11; step 3 only adds a temporary shell status line.
+- **What step 5 must read from the catalogue** (step 4 stores it, D-32/33):
+  hybrid attention (`full_attention_interval`, per-layer `head_count_kv`
+  with zeros) keeps a KV cache on only some layers; multi-head latent
+  attention (`deepseek2`, e.g. GLM-4.7-Flash) sizes it by
+  `attention.kv_lora_rank`, not `head_count_kv` (in `header_json`); sliding
+  windows (`attention.sliding_window`, and the pattern keys in
+  `header_json`); `active_parameters` for speed; a projector file's bytes
+  when an image is read.
+- **The live gate**: every size resolving against the real Hub is checked
+  by `advisor catalog refresh` on a machine that can reach Hugging Face
+  (`scripts/verify.command` runs it); the session that wrote step 4 could
+  not reach the Hub.

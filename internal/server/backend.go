@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"advisor/internal/backend"
+	"advisor/internal/catalog/refresh"
 	"advisor/internal/hardware"
 	"advisor/internal/store"
 )
@@ -46,6 +47,15 @@ type InstalledModelInfo struct {
 	ParameterSize string `json:"parameter_size,omitempty"`
 	ModifiedAt    string `json:"modified_at,omitempty"`
 	LastSeenAt    string `json:"last_seen_at"`
+
+	// How the model maps onto the curated catalogue (step 4). CatalogMatch
+	// is "file" (a known size and quant), "model" (a known size, a quant the
+	// catalogue does not track), "unknown" (not in the catalogue — a signal
+	// for the curator, not an error), or "" before the first mapping.
+	CatalogMatch   string `json:"catalog_match"`
+	CatalogModelID int64  `json:"catalog_model_id,omitempty" source:"n/a"` // catalog_models id
+	CatalogFileID  int64  `json:"catalog_file_id,omitempty" source:"n/a"`  // catalog_files id
+	CatalogNote    string `json:"catalog_note,omitempty"`
 }
 
 // InstalledModelsResponse is GET /api/models/installed.
@@ -102,6 +112,9 @@ func (s *Server) recordOneBackend(ctx context.Context, b backend.Backend) Backen
 		} else if s.store != nil {
 			if uerr := s.store.UpsertInstalledModels(ctx, name, models); uerr != nil {
 				s.log.Error("storing installed models", "backend", name, "err", uerr)
+			} else if _, merr := refresh.MapInstalled(ctx, s.store); merr != nil {
+				// The inventory is stored; only its catalogue mapping is stale.
+				s.log.Error("mapping installed models to the catalogue", "err", merr)
 			}
 		}
 	}
@@ -164,6 +177,8 @@ func (s *Server) handleModelsInstalled(w http.ResponseWriter, r *http.Request) {
 			BackendName: row.BackendName, Name: row.Name, Digest: row.Digest, SizeBytes: row.SizeBytes,
 			Quantization: row.Quantization, Family: row.Family, ParameterSize: row.ParameterSize,
 			ModifiedAt: row.ModifiedAt, LastSeenAt: row.LastSeenAt,
+			CatalogMatch: row.CatalogMatch, CatalogModelID: row.CatalogModelID,
+			CatalogFileID: row.CatalogFileID, CatalogNote: row.CatalogNote,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

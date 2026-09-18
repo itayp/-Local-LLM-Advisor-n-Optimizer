@@ -82,6 +82,9 @@ type Server struct {
 	// imported itself in with an init(), "ollama" today); tests set it
 	// directly to a fake, the same seam hardwareWait gives RecordHardware.
 	backendList func() []backend.Backend
+
+	// cat is the catalogue endpoints' state (catalog.go).
+	cat catalogState
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -93,6 +96,7 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	}
 	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All}
 	s.hw.ready = make(chan struct{})
+	s.cat.init()
 	s.routes()
 	return s
 }
@@ -106,6 +110,9 @@ func (s *Server) routes() {
 	s.api("GET /api/hardware/profiles/{id}", s.handleHardwareProfile)
 	s.api("GET /api/backends", s.handleBackends)
 	s.api("GET /api/models/installed", s.handleModelsInstalled)
+	s.api("GET /api/catalog", s.handleCatalog)
+	s.api("POST /api/catalog/refresh", s.handleCatalogRefresh)
+	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

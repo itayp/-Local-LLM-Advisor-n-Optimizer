@@ -57,7 +57,10 @@ internal/server/        HTTP API (/api/*), Host/Origin checks, embedded UI (go:e
 internal/store/         SQLite via modernc.org/sqlite; migrations/NNNN_*.sql; DefaultDataDir
 internal/hardware/      Profile + Detect: per-OS probes behind an env seam, runtime-support rules, tier, fingerprint
 internal/backend/       Backend interface + registry; internal/backend/ollama arrives in step 3
-internal/catalog/       curated families, GGUF header fields, external signals (step 4, 9b)
+internal/catalog/       curated families: YAML loader + validation, repo-file grouping, installed-model matching (step 4)
+internal/catalog/gguf/  the GGUF header parser (stops at the tokenizer; real header fixtures in testdata/)
+internal/catalog/hf/    the Hugging Face client: listings with ETags, header range reads, rate limits
+internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files) and MapInstalled
 internal/estimate/      fit + speed types; the step 0 formula (step 5)
 internal/recommend/     recommendations with reasons and confidence (step 5)
 internal/bench/         benchmark runs, results, samples (step 6)
@@ -99,6 +102,13 @@ a session cannot run Go itself.
   the real data folder.
 - The daemon: `advisor [-port N] [-data-dir DIR] [-no-browser] [-v] [-version]`.
   The port is the only network setting.
+- The curator's catalogue tools (never the customer's):
+  `advisor catalog check [FILE]` validates `families.yaml` offline;
+  `advisor catalog refresh [-data-dir DIR] [-family ID,...] [-json]`
+  resolves every size against Hugging Face (listings + header range reads,
+  no weights), stores it, and lists installed models the catalogue does not
+  know; it exits 1 if a size did not resolve. The daemon's
+  `POST /api/catalog/refresh` runs the same thing.
 - UI alone: `cd ui && npm run dev | build | test | check`.
 - This machine's hardware profile, as the daemon would read it:
   `ADVISOR_PRINT_PROFILE=1 go test ./internal/hardware -run TestDetectOnThisMachine -v`,
@@ -118,7 +128,10 @@ fixture says in its header whether values were captured or chosen. Each
 scenario has a golden profile in `testdata/golden/`; after an intended change
 run `go test ./internal/hardware -run Scenario -update` and review the diff
 like code. No symlinks and no colons in fixture file names (Windows checks
-them out).
+them out). GGUF fixtures are real headers — the first megabytes of a model
+file, gzipped, never a whole file — with their provenance in
+`internal/catalog/gguf/testdata/README.md`; the Hugging Face client and the
+refresh are tested against an `httptest` hub that serves them by range.
 
 **API.** JSON, snake_case keys, `GET /api/…`. Register endpoints through
 `Server.api("METHOD /api/path", handler)` so a wrong method is a 405. Errors
@@ -162,7 +175,11 @@ in the PR saying what it replaces. Nothing that needs cgo, ever.
 
 **Network.** Outbound requests go only to the model sources on an allow-list
 (Hugging Face until step 9a decides otherwise; the Ollama download host in
-step 3). Nothing the user typed is ever sent anywhere. No telemetry.
+step 3). Nothing the user typed is ever sent anywhere. No telemetry. The
+Hugging Face client (`internal/catalog/hf`) follows redirects only to
+Hugging Face's own hosts, reads GGUF headers with range requests and
+refuses a whole-file answer, never sends a token, and honours the Hub's
+rate limits (ARCHITECTURE.md D-34).
 
 **The advisor calls no LLM to do its own job.** Estimation is arithmetic,
 recommendation is rules over data. Wanting a model to decide means the

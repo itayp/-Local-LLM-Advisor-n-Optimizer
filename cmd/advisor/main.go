@@ -30,6 +30,9 @@ import (
 )
 
 func main() {
+	if isCatalogCommand(os.Args) {
+		os.Exit(runCatalog(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	os.Exit(run())
 }
 
@@ -92,6 +95,13 @@ func run() int {
 	log.Info("advisor is listening", "url", url, "version", version.Version)
 
 	srv := server.New(log, st)
+	// The curated catalogue (families.yaml, embedded) into catalog_models:
+	// no network, so a new build's catalogue and the installed-model
+	// mapping are current from its first start. Resolving it against
+	// Hugging Face is `advisor catalog refresh` / POST /api/catalog/refresh.
+	if err := srv.SyncCatalogue(ctx); err != nil {
+		log.Warn("syncing the curated catalogue", "err", err)
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ctx, l) }()
 

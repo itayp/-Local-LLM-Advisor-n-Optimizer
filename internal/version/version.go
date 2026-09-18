@@ -16,3 +16,8 @@ var Version = "dev"
 
 // GoVersion is the Go toolchain the binary was compiled with.
 func GoVersion() string { return runtime.Version() }
+
+// UserAgent is how the daemon names itself to the model sources it asks
+// for metadata (Hugging Face): the product and its version, nothing about
+// the user or the machine.
+func UserAgent() string { return "local-llm-advisor/" + Version }

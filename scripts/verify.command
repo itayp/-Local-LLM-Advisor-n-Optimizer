@@ -2,7 +2,9 @@
 # The CI sequence, run on the Mac: double-click this file in Finder, or run
 # `bash scripts/verify.command`. go mod tidy, make test, make build, then a
 # smoke test of the built binary, which also prints this Mac's hardware
-# profile (GET /api/hardware). Everything it prints also goes to
+# profile (GET /api/hardware), then resolves the curated model catalogue
+# against Hugging Face (`advisor catalog refresh`, into a throwaway
+# folder). Everything it prints also goes to
 # verify.log in the repo root so the result can be read back later.
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -37,9 +39,14 @@ LOG="verify.log"
   curl -sf --max-time 120 http://127.0.0.1:27183/api/hardware || echo "GET /api/hardware FAILED"
   echo
   kill $PID; wait $PID 2>/dev/null
+  echo; echo "== the curated catalogue against Hugging Face (build plan step 4's gate: does every size resolve, with no weights downloaded?)"
+  "$BIN" catalog check || exit 1
+  CATALOGUE=ok
+  "$BIN" catalog refresh -data-dir "$(mktemp -d)" || CATALOGUE=failed
   echo; echo "== git status"
   git status --short
-  echo; echo "ALL GREEN"
+  echo
+  if [ "$CATALOGUE" = ok ]; then echo "ALL GREEN"; else echo "ALL GREEN EXCEPT THE CATALOGUE REFRESH: not every size resolved (see FAIL / STOPPED above)"; exit 3; fi
 } 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 echo

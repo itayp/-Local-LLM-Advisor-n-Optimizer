@@ -1,33 +1,319 @@
 # The curated catalogue — the only models the advisor will recommend.
 #
-# This file is DATA. Step 4 seeds it; the docs never count it ("the curated
-# families", never "the 12 families" — product rule 8). It is read by
-# internal/catalog (step 4), which resolves every size to per-quant GGUF
-# metadata from Hugging Face without downloading weights.
+# This file is DATA. The docs never count it ("the curated families", never
+# "the 12 families" — product rule 8). internal/catalog loads it strictly
+# (unknown keys are errors) and validates it; `advisor catalog check` runs
+# the same checks offline. `advisor catalog refresh` resolves every size to
+# per-quant GGUF metadata from Hugging Face — file sizes from the Hub
+# listing, header fields from a range read of each file's first bytes — and
+# never downloads weights.
 #
-# Schema (mirrors catalog.Family in internal/catalog/catalog.go):
+# Schema (mirrors catalog.Catalogue / catalog.Family in
+# internal/catalog/catalog.go):
 #
+#   quants: [Q4_K_M, ...]          # the quant variants the advisor tracks, as the
+#                                  # file names spell them (upper case). Files
+#                                  # with other quants are listed by the Hub but
+#                                  # not header-read or stored.
 #   families:
-#     - id: llama3.1                 # stable key, lowercase, no spaces
-#       display_name: Llama 3.1      # what the UI shows
-#       maintainer: Meta
+#     - id: llama3.1               # stable key: lower case, digits, '.', '-'
+#       display_name: Llama 3.1    # what the UI shows
+#       maintainer: Meta           # who publishes the weights
 #       license:
-#         spdx: ""                   # SPDX id where one exists (e.g. Apache-2.0, MIT)
-#         name: Llama 3.1 Community License   # otherwise the name...
-#         url: https://...           # ...and where to read it
-#       purposes: [coding, chat]     # what it is credible for; the enum is
-#                                    # catalog.Purpose: coding, chat, reasoning,
-#                                    # long_context, vision, agentic, writing
-#       reviewed_at: 2026-09-18      # when a person last checked this entry
-#       notes: ""                    # optional, for the curator
+#         spdx: Apache-2.0         # the SPDX id where one exists...
+#         name: Llama 3.1 Community License Agreement  # ...otherwise the name
+#         url: https://...         # and where to read it (url is required with name)
+#       purposes: [chat, writing]  # what it is credible for. The enum is
+#                                  # catalog.Purpose, shared with the UI:
+#                                  # coding, chat, reasoning, long_context,
+#                                  # vision, agentic, writing
+#       reviewed_at: 2026-09-18    # when a person last checked this entry
+#       source: https://...        # where they checked it (the model card)
+#       notes: ""                  # optional, for the curator and step 5
 #       sizes:
-#         - parameters: 8000000000   # parameter count, from the model card
-#           context_length: 131072   # trained context, from the model card
-#           ollama_tag: llama3.1:8b  # what a beginner would pull
-#           hf_repo: owner/repo-GGUF # the GGUF repo used for metadata
+#         - parameters: 8030000000 # total parameter count, from the model card
+#           active_parameters: 0   # optional: parameters used per token when
+#                                  # fewer than all are (mixture-of-experts;
+#                                  # Gemma's per-layer-embedding "E" sizes).
+#                                  # Omitted = dense, all of them.
+#           context_length: 131072 # trained context, from the model card
+#           ollama_tag: llama3.1:8b          # what a beginner would pull
+#           hf_repo: owner/repo-GGUF         # the GGUF repo used for metadata
 #
-# Every entry is dense and text-only unless its purposes say otherwise:
-# mixture-of-experts and vision models are their own problem for the
-# estimator (step 0's finding) and are excluded until step 5 handles them.
+# Choosing hf_repo: an ungated repo that publishes the tracked quants under
+# llama.cpp's standard names (bartowski's where it exists, else ggml-org or
+# the maintainer's own), with the vision encoder as an mmproj file when the
+# model has one. The refresh reports a size that does not resolve; it never
+# guesses a substitute.
+#
+# Mixture-of-experts sizes (active_parameters set) and multimodal families
+# (purpose vision) are in the catalogue. How the estimator treats them is
+# step 5's decision (ARCHITECTURE.md D-20, finding 5; D-32 here).
 
-families: []
+quants: [Q3_K_M, IQ4_XS, Q4_K_M, Q5_K_M, Q6_K, Q8_0, MXFP4]
+
+families:
+  - id: qwen3.5
+    display_name: Qwen3.5
+    maintainer: Qwen (Alibaba Cloud)
+    license:
+      spdx: Apache-2.0
+    purposes: [chat, coding, reasoning, agentic, vision, long_context]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/Qwen/Qwen3.5-9B
+    notes: >-
+      The small sizes of the Qwen3.5 generation (the larger ones are
+      superseded by Qwen3.6 and Qwen3.8 below). Hybrid attention: Gated
+      DeltaNet layers with full attention every fourth layer
+      (full_attention_interval in the header), so only a quarter of the layers
+      keep a KV cache. Natively multimodal; the vision encoder is a separate
+      mmproj file.
+    sizes:
+      - parameters: 800000000
+        context_length: 262144
+        ollama_tag: qwen3.5:0.8b
+        hf_repo: bartowski/Qwen_Qwen3.5-0.8B-GGUF
+      - parameters: 2000000000
+        context_length: 262144
+        ollama_tag: qwen3.5:2b
+        hf_repo: bartowski/Qwen_Qwen3.5-2B-GGUF
+      - parameters: 4000000000
+        context_length: 262144
+        ollama_tag: qwen3.5:4b
+        hf_repo: bartowski/Qwen_Qwen3.5-4B-GGUF
+      - parameters: 9000000000
+        context_length: 262144
+        ollama_tag: qwen3.5:9b
+        hf_repo: bartowski/Qwen_Qwen3.5-9B-GGUF
+
+  - id: qwen3.6
+    display_name: Qwen3.6
+    maintainer: Qwen (Alibaba Cloud)
+    license:
+      spdx: Apache-2.0
+    purposes: [coding, agentic, reasoning, chat, vision, long_context]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/Qwen/Qwen3.6-35B-A3B
+    notes: >-
+      Only the mixture-of-experts size: 35B total, about 3B used per token, so
+      it runs quickly on a machine with plenty of memory but a modest graphics
+      card. Qwen3.6's 27B is superseded by Qwen3.8 27B.
+    sizes:
+      - parameters: 35000000000
+        active_parameters: 3000000000
+        context_length: 262144
+        ollama_tag: qwen3.6:35b
+        hf_repo: bartowski/Qwen_Qwen3.6-35B-A3B-GGUF
+
+  - id: qwen3.8
+    display_name: Qwen3.8
+    maintainer: Qwen (Alibaba Cloud)
+    license:
+      spdx: Apache-2.0
+    purposes: [coding, agentic, reasoning, chat, writing, vision, long_context]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/Qwen/Qwen3.8-27B
+    notes: >-
+      Dense 27B, hybrid attention (16 x (3 Gated DeltaNet + 1 attention)
+      layers), vision built in. The newest Qwen at a size one 24 GB card holds
+      at Q4_K_M (a 17.8 GB file).
+    sizes:
+      - parameters: 27000000000
+        context_length: 262144
+        ollama_tag: qwen3.8:27b
+        hf_repo: bartowski/Qwen3.8-27B-GGUF
+
+  - id: gemma4
+    display_name: Gemma 4
+    maintainer: Google DeepMind
+    license:
+      spdx: Apache-2.0
+    purposes: [chat, writing, vision, reasoning, long_context]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/google/gemma-4-31B-it
+    notes: >-
+      E2B and E4B use per-layer embeddings: parameters is the total with
+      embeddings, active_parameters the "effective" count the model card
+      gives. 26B is mixture-of-experts (3.8B active). Sliding-window attention
+      on most layers (attention.sliding_window). All sizes read images.
+    sizes:
+      - parameters: 5100000000
+        active_parameters: 2300000000
+        context_length: 131072
+        ollama_tag: gemma4:e2b
+        hf_repo: bartowski/google_gemma-4-E2B-it-GGUF
+      - parameters: 8000000000
+        active_parameters: 4500000000
+        context_length: 131072
+        ollama_tag: gemma4:e4b
+        hf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+      - parameters: 11950000000
+        context_length: 262144
+        ollama_tag: gemma4:12b
+        hf_repo: bartowski/gemma-4-12B-it-GGUF
+      - parameters: 25200000000
+        active_parameters: 3800000000
+        context_length: 262144
+        ollama_tag: gemma4:26b
+        hf_repo: bartowski/google_gemma-4-26B-A4B-it-GGUF
+      - parameters: 30700000000
+        context_length: 262144
+        ollama_tag: gemma4:31b
+        hf_repo: bartowski/google_gemma-4-31B-it-GGUF
+
+  - id: gpt-oss
+    display_name: gpt-oss
+    maintainer: OpenAI
+    license:
+      spdx: Apache-2.0
+    purposes: [reasoning, coding, agentic, chat]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/openai/gpt-oss-20b
+    notes: >-
+      Mixture-of-experts, released with its experts in MXFP4, which is what
+      Ollama runs; every other published quant of it is within a few percent of
+      the same size, so the catalogue tracks the MXFP4 file only. Alternating
+      sliding-window (128 tokens) and full attention.
+    sizes:
+      - parameters: 21000000000
+        active_parameters: 3600000000
+        context_length: 131072
+        ollama_tag: gpt-oss:20b
+        hf_repo: ggml-org/gpt-oss-20b-GGUF
+
+  - id: devstral-small-2
+    display_name: Devstral Small 2
+    maintainer: Mistral AI
+    license:
+      spdx: Apache-2.0
+    purposes: [coding, agentic]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512
+    notes: A coding agent's model — made to drive tools and edit repositories.
+    sizes:
+      - parameters: 24000000000
+        context_length: 393216
+        ollama_tag: devstral-small-2:24b
+        hf_repo: bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF
+
+  - id: ministral-3
+    display_name: Ministral 3
+    maintainer: Mistral AI
+    license:
+      spdx: Apache-2.0
+    purposes: [chat, writing, vision, agentic]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512
+    notes: >-
+      parameters is the language model; each size also has a 0.4B vision
+      encoder, shipped as an mmproj file.
+    sizes:
+      - parameters: 3400000000
+        context_length: 262144
+        ollama_tag: ministral-3:3b
+        hf_repo: bartowski/mistralai_Ministral-3-3B-Instruct-2512-GGUF
+      - parameters: 8400000000
+        context_length: 262144
+        ollama_tag: ministral-3:8b
+        hf_repo: bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF
+      - parameters: 13500000000
+        context_length: 262144
+        ollama_tag: ministral-3:14b
+        hf_repo: bartowski/mistralai_Ministral-3-14B-Instruct-2512-GGUF
+
+  - id: nemotron-3-nano
+    display_name: Nemotron 3 Nano
+    maintainer: NVIDIA
+    license:
+      name: NVIDIA Nemotron Open Model License
+      url: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/
+    purposes: [agentic, reasoning, coding, chat, long_context]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    notes: >-
+      Hybrid Mamba-2 / mixture-of-experts: 23 Mamba and MoE layers and only 6
+      attention layers, so the KV cache is small for its size (head_count_kv is
+      per layer in the header, 0 for the layers without attention). Trained to
+      1M tokens; Hugging Face's default configuration uses 256k.
+    sizes:
+      - parameters: 30000000000
+        active_parameters: 3500000000
+        context_length: 1048576
+        ollama_tag: nemotron-3-nano:30b
+        hf_repo: bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF
+
+  - id: glm-4.7-flash
+    display_name: GLM-4.7-Flash
+    maintainer: Z.ai
+    license:
+      spdx: MIT
+    purposes: [coding, agentic, reasoning]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/zai-org/GLM-4.7-Flash
+    notes: >-
+      Mixture-of-experts with multi-head latent attention (the header says
+      deepseek2): its KV cache is sized by attention.kv_lora_rank, not by
+      head_count_kv, which step 5 has to read.
+    sizes:
+      - parameters: 31000000000
+        active_parameters: 3000000000
+        context_length: 202752
+        ollama_tag: glm-4.7-flash
+        hf_repo: bartowski/zai-org_GLM-4.7-Flash-GGUF
+
+  - id: llama3.2
+    display_name: Llama 3.2
+    maintainer: Meta
+    license:
+      name: Llama 3.2 Community License Agreement
+      url: https://www.llama.com/llama3_2/license/
+    purposes: [chat, writing]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct
+    notes: >-
+      Older than the rest of the catalogue and text only. Kept because the
+      Llama 3 models are the most installed, run everywhere, and are the ones
+      step 0 calibrated the memory estimate on (ARCHITECTURE.md D-20).
+    sizes:
+      - parameters: 1230000000
+        context_length: 131072
+        ollama_tag: llama3.2:1b
+        hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+      - parameters: 3210000000
+        context_length: 131072
+        ollama_tag: llama3.2:3b
+        hf_repo: bartowski/Llama-3.2-3B-Instruct-GGUF
+
+  - id: llama3.1
+    display_name: Llama 3.1
+    maintainer: Meta
+    license:
+      name: Llama 3.1 Community License Agreement
+      url: https://www.llama.com/llama3_1/license/
+    purposes: [chat, writing]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
+    notes: See llama3.2.
+    sizes:
+      - parameters: 8030000000
+        context_length: 131072
+        ollama_tag: llama3.1:8b
+        hf_repo: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
+
+  - id: llama3.3
+    display_name: Llama 3.3
+    maintainer: Meta
+    license:
+      name: Llama 3.3 Community License Agreement
+      url: https://www.llama.com/llama3_3/license/
+    purposes: [chat, writing]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct
+    notes: >-
+      The top of the catalogue's size range. Its larger quants are split into
+      two files on Hugging Face; the catalogue sums the parts.
+    sizes:
+      - parameters: 70600000000
+        context_length: 131072
+        ollama_tag: llama3.3:70b
+        hf_repo: bartowski/Llama-3.3-70B-Instruct-GGUF

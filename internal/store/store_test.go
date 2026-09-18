@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -22,6 +23,14 @@ var schemaV0Tables = []string{
 	"schema_migrations",
 	"settings",
 	"watch_state",
+}
+
+// laterTables are the tables later migrations added, so a new table is a
+// line a reviewer sees here too.
+var laterTables = []string{
+	"catalog_refreshes", // 0003, step 4
+	"hf_header_cache",   // 0003, step 4
+	"hf_listing_cache",  // 0003, step 4
 }
 
 func openTemp(t *testing.T) *Store {
@@ -46,8 +55,10 @@ func TestOpenAppliesSchemaV0(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, schemaV0Tables) {
-		t.Fatalf("tables after migration:\n got %v\nwant %v", got, schemaV0Tables)
+	want := append(slices.Clone(schemaV0Tables), laterTables...)
+	slices.Sort(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("tables after migration:\n got %v\nwant %v", got, want)
 	}
 	v, err := s.SchemaVersion(ctx)
 	if err != nil {
