@@ -606,9 +606,12 @@ macOS 26.6.2: Ollama logs Metal `total="11.8 GiB"` for 16 GiB (0.74). The
 value is the OS's to choose and to change; reading it is the only way to be
 right on the next release.
 
-**Consequences.** The fixture values for Metal are illustrative until the
-fleet Mac's real `osascript` output replaces them; the live check is
-`scripts/verify.command`, which prints `/api/hardware`.
+**Consequences.** Confirmed on the fleet's M1 Pro (2026-09-18,
+`scripts/verify.command`): the Metal query answered 12,713,115,648 bytes
+(11.84 GiB, 0.74 of RAM), the figure Ollama logs, and the M1 Pro fixture
+carries that value. The other Apple Silicon fixtures' Metal values are
+illustrative and say so; replace them when a machine of that size is at hand.
+`scripts/verify.command` prints `/api/hardware` and stays the live check.
 
 ## D-26. Two dependencies: a YAML parser and golang.org/x/sys
 

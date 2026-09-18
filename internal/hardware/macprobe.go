@@ -346,9 +346,10 @@ func detectDarwin(ctx context.Context, e env, p *Profile) {
 	//     recommendedMaxWorkingSetSize — the value Ollama itself schedules
 	//     against. It is read, not computed: the often-quoted rule (two-thirds
 	//     of RAM up to 36 GB, three-quarters above) does not hold on the test
-	//     fleet's M1 Pro under macOS 26.6.2, where Ollama v0.34.2 logs Metal
-	//     total="11.8 GiB" for 16 GiB of RAM (0.74), 2026-09-18. A table
-	//     would be wrong on the next macOS release; the OS will not be.
+	//     fleet's M1 Pro under macOS 26.6.2, where this query reads
+	//     12,713,115,648 bytes for 16 GiB of RAM (0.74) — the "11.8 GiB"
+	//     Ollama v0.34.2 logs — on 2026-09-18. A table would be wrong on the
+	//     next macOS release; the OS will not be.
 	//  3. Neither readable: unknown, with the reason in Problems.
 	if appleSilicon {
 		wired, wiredErr := strconv.ParseUint(sc["iogpu.wired_limit_mb"], 10, 64)
