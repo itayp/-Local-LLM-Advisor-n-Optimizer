@@ -1,0 +1,58 @@
+# A MacBook Air (M2, 8 GB). The Metal value is illustrative (two-thirds of
+# 8 GiB); the tier boundary it exercises does not depend on it.
+-- $ sysctl --
+hw.memsize: 8589934592
+hw.physicalcpu: 8
+hw.logicalcpu: 8
+machdep.cpu.brand_string: Apple M2
+hw.optional.arm64: 1
+sysctl.proc_translated: 0
+iogpu.wired_limit_mb: 0
+-- $ sw_vers --
+ProductName:		macOS
+ProductVersion:		15.6.1
+BuildVersion:		24G90
+-- $ system_profiler --
+{
+  "SPDisplaysDataType": [
+    {
+      "_name": "Apple M2",
+      "spdisplays_mtlgpufamilysupport": "spdisplays_metal3",
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "sppci_bus": "spdisplays_builtin",
+      "sppci_cores": "10",
+      "sppci_device_type": "spdisplays_gpu",
+      "sppci_model": "Apple M2",
+      "spdisplays_ndrvs": [
+        {
+          "_name": "Color LCD",
+          "_spdisplays_display-product-id": "a050",
+          "spdisplays_connection_type": "spdisplays_internal",
+          "spdisplays_main": "spdisplays_yes",
+          "spdisplays_pixelresolution": "spdisplays_3024x1964Retina"
+        }
+      ]
+    }
+  ],
+  "SPHardwareDataType": [
+    {
+      "_name": "hardware_overview",
+      "activation_lock_status": "activation_lock_disabled",
+      "boot_rom_version": "13822.1.2",
+      "chip_type": "Apple M2",
+      "machine_model": "Mac14,2",
+      "machine_name": "MacBook Air",
+      "model_number": "REDACTED",
+      "number_processors": "proc 8:4:4",
+      "os_loader_version": "13822.1.2",
+      "physical_memory": "8 GB",
+      "platform_UUID": "REDACTED",
+      "provisioning_UDID": "REDACTED",
+      "serial_number": "REDACTED"
+    }
+  ]
+}
+-- $ osascript -l JavaScript --
+{"name":"Apple M2","recommended_max_working_set_size":5726623744,"has_unified_memory":true}
+-- $ launchctl getenv OLLAMA_MODELS --
+

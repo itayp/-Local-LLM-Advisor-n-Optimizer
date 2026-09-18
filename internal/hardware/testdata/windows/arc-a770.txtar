@@ -1,0 +1,46 @@
+# Windows 11 with an Intel Arc A770 (16 GB): detected, labelled, Vulkan, not
+# tuned. Values chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Pro",
+ "os_version": "10.0.26100",
+ "os_build": "26100",
+ "display_version": "24H2",
+ "ubr": "4652",
+ "ram_bytes": "34271797248",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "12th Gen Intel(R) Core(TM) i5-12400F",
+   "cores": "6",
+   "logical": "12",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "Intel(R) Arc(TM) A770 Graphics",
+   "pnp_device_id": "PCI\\VEN_8086&DEV_56A0&SUBSYS_10208086&REV_08\\6&3B5F1A2E&0&00080008",
+   "adapter_compatibility": "Intel Corporation",
+   "driver_version": "32.0.101.6979",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "Intel(R) Arc(TM) A770 Graphics",
+   "provider": "Intel Corporation",
+   "qw_memory_size": "17045651456",
+   "radeon_software_version": ""
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}

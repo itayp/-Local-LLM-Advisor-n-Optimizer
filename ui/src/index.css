@@ -228,3 +228,60 @@ body {
     padding: 16px;
   }
 }
+
+/* Your computer: the facts behind the summary. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  margin: 16px 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.facts ul,
+.notes {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.facts__aside {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.details {
+  margin-top: 16px;
+}
+
+.details h2,
+.screen__advanced h2 {
+  font-size: 15px;
+}
+
+.tech {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tech th,
+.tech td {
+  text-align: left;
+  vertical-align: top;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tech__rule {
+  color: var(--muted);
+}
+
+.screen__advanced {
+  overflow-x: auto;
+}

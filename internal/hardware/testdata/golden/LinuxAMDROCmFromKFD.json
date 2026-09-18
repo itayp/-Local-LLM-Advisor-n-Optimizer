@@ -1,0 +1,51 @@
+{
+  "os": "linux",
+  "os_version": "Ubuntu 24.04.3 LTS",
+  "kernel": "6.14.0-29-generic",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "cores_physical": 2,
+    "cores_logical": 2,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 33316401152,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "amd",
+      "name": "AMD NITRO+ Radeon RX 7900 XTX Vapor-X",
+      "vram_bytes": 25753026560,
+      "vram_known": true,
+      "vram_source": "sysfs mem_info_vram_total",
+      "driver_version": "amdgpu in Linux 6.14.0-29-generic",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "1002:744c",
+      "gfx_target": "gfx1100",
+      "linux_driver": "amdgpu",
+      "expected_backend": "rocm",
+      "expected_backend_reason": "Ollama's Linux ROCm build ships kernels for this card's chip.",
+      "expected_backend_rule": "amd-rocm-linux"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 25753026560,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the AMD NITRO+ Radeon RX 7900 XTX Vapor-X's own memory (sysfs mem_info_vram_total)",
+  "storage": {
+    "models_dir": "/home/itay/.ollama/models",
+    "models_dir_source": "Ollama's default when it runs as you",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "gpu_large",
+  "summary": "A desktop with an AMD NITRO+ Radeon RX 7900 XTX Vapor-X (24 GB of graphics memory): large models run on the graphics card.",
+  "expectations_from": "Ollama v0.34.2"
+}

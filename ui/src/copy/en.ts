@@ -35,9 +35,53 @@ export const en = {
     },
     computer: {
       title: 'Your computer',
-      placeholder:
-        'What this computer has — graphics card, memory, processor — in plain words, with the technical details behind "Show details".',
-      step: 'build plan step 2',
+      loading: 'Looking at this computer…',
+      failed: (message: string) => `This computer could not be read: ${message}`,
+      changed:
+        "This computer's hardware has changed since the advisor last started. Test results from before stay with the old hardware.",
+      factsLabel: 'What this computer has',
+      graphics: 'Graphics',
+      memory: 'Memory',
+      processor: 'Processor',
+      modelsSpace: 'Space for models',
+      system: 'System',
+      noGraphics: 'No graphics card',
+      unknown: 'could not be read',
+      gpuMemory: (size: string) => `${size} of graphics memory`,
+      gpuMemoryUnknown: 'its memory could not be read',
+      builtIn: 'built into the processor',
+      notUsable: 'Ollama cannot use it',
+      unifiedShare: (total: string, usable: string) => `${total}, of which the graphics can use ${usable}`,
+      unifiedShareUnknown: (total: string) => `${total}; how much of it the graphics can use could not be read`,
+      cores: (physical: number, logical: number) =>
+        physical > 0 && logical > physical
+          ? `${physical} cores, ${logical} threads`
+          : physical > 0
+            ? `${physical} cores`
+            : logical > 0
+              ? `${logical} threads`
+              : '',
+      freeSpace: (free: string) => `${free} free`,
+      folderNotYet: 'Ollama has not created its models folder yet; this is the free space on the drive it will use.',
+      showDetails: 'Show details',
+      problemsTitle: 'What could not be read',
+      filteredTitle: 'Display devices that cannot run models',
+      advanced: {
+        title: 'Technical details',
+        device: 'Device',
+        path: 'Runtime path Ollama should use',
+        why: 'Why',
+        driver: 'Driver',
+        memorySource: 'Memory read from',
+        ids: 'Identifiers',
+        vector: 'Processor extensions',
+        vectorValue: (avx2: boolean, avx512: boolean) => `AVX2 ${avx2 ? 'yes' : 'no'}, AVX-512 ${avx512 ? 'yes' : 'no'}`,
+        vectorArm: 'ARM processor (AVX does not apply)',
+        budget: 'Graphics memory budget',
+        modelsFolder: 'Models folder',
+        expectations: 'Expectations checked against',
+        profile: (id: number, fingerprint: string) => `profile ${id} · ${fingerprint}`,
+      },
     },
     ollama: {
       title: 'Ollama',

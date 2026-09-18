@@ -1,0 +1,50 @@
+# Ubuntu 24.04 workstation with two GeForce RTX 3090 cards on NVIDIA's driver.
+# Values chosen, not captured.
+-- etc/os-release --
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+ID=ubuntu
+ID_LIKE=debian
+-- proc/cpuinfo --
+processor	: 0
+model name	: AMD Ryzen Threadripper PRO 5975WX 32-Cores
+physical id	: 0
+core id		: 0
+flags		: avx avx2
+
+processor	: 1
+model name	: AMD Ryzen Threadripper PRO 5975WX 32-Cores
+physical id	: 0
+core id		: 1
+flags		: avx avx2
+-- proc/meminfo --
+MemTotal:       131619832 kB
+-- sys/class/dmi/id/chassis_type --
+7
+-- sys/bus/pci/devices/0000:21:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:21:00.0/vendor --
+0x10de
+-- sys/bus/pci/devices/0000:21:00.0/device --
+0x2204
+-- sys/bus/pci/devices/0000:21:00.0/uevent --
+DRIVER=nvidia
+PCI_CLASS=30000
+PCI_ID=10DE:2204
+PCI_SLOT_NAME=0000:21:00.0
+-- sys/bus/pci/devices/0000:4a:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:4a:00.0/vendor --
+0x10de
+-- sys/bus/pci/devices/0000:4a:00.0/device --
+0x2204
+-- sys/bus/pci/devices/0000:4a:00.0/uevent --
+DRIVER=nvidia
+PCI_CLASS=30000
+PCI_ID=10DE:2204
+PCI_SLOT_NAME=0000:4a:00.0
+-- $ nvidia-smi --
+0, NVIDIA GeForce RTX 3090, 24576, 575.64.05, 8.6, 00000000:21:00.0, 0x220410DE
+1, NVIDIA GeForce RTX 3090, 24576, 575.64.05, 8.6, 00000000:4A:00.0, 0x220410DE

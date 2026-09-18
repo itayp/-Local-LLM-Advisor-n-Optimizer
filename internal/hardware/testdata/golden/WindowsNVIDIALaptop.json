@@ -1,0 +1,63 @@
+{
+  "os": "windows",
+  "os_version": "Windows 11 Home 23H2 (build 22631.5039)",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cores_physical": 10,
+    "cores_logical": 16,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 17013719040,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "vram_bytes": 8585740288,
+      "vram_known": true,
+      "vram_source": "nvidia-smi memory.total",
+      "driver_version": "566.36",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "10de:28e0",
+      "compute_capability": "8.9",
+      "expected_backend": "cuda",
+      "expected_backend_reason": "Ollama drives NVIDIA cards from compute capability 5.0 upward with CUDA.",
+      "expected_backend_rule": "nvidia-cuda"
+    },
+    {
+      "vendor": "intel",
+      "name": "Intel(R) UHD Graphics",
+      "vram_bytes": 134217728,
+      "vram_known": true,
+      "vram_source": "Windows registry HardwareInformation.qwMemorySize",
+      "driver_version": "32.0.101.5972",
+      "is_integrated": true,
+      "integrated_known": true,
+      "pci_id": "8086:a7a8",
+      "expected_backend": "vulkan",
+      "expected_backend_reason": "Ollama drives Intel graphics (Arc cards and the graphics built into Intel processors) with Vulkan.",
+      "expected_backend_rule": "intel-vulkan"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 8585740288,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the NVIDIA GeForce RTX 4060 Laptop GPU's own memory (nvidia-smi memory.total)",
+  "storage": {
+    "models_dir": "C:\\Users\\itay\\.ollama\\models",
+    "models_dir_source": "Ollama's default on Windows",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": true,
+  "laptop_known": true,
+  "tier": "gpu_medium",
+  "summary": "A laptop with an NVIDIA GeForce RTX 4060 Laptop GPU (8 GB of graphics memory): small and medium-sized models run on the graphics card.",
+  "expectations_from": "Ollama v0.34.2"
+}

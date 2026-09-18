@@ -1,0 +1,69 @@
+{
+  "os": "linux",
+  "os_version": "Ubuntu 24.04.3 LTS",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "AMD Ryzen Threadripper PRO 5975WX 32-Cores",
+    "cores_physical": 2,
+    "cores_logical": 2,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 134778707968,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 3090",
+      "vram_bytes": 25769803776,
+      "vram_known": true,
+      "vram_source": "nvidia-smi memory.total",
+      "driver_version": "575.64.05",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "10de:2204",
+      "compute_capability": "8.6",
+      "linux_driver": "nvidia",
+      "expected_backend": "cuda",
+      "expected_backend_reason": "Ollama drives NVIDIA cards from compute capability 5.0 upward with CUDA.",
+      "expected_backend_rule": "nvidia-cuda"
+    },
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 3090",
+      "vram_bytes": 25769803776,
+      "vram_known": true,
+      "vram_source": "nvidia-smi memory.total",
+      "driver_version": "575.64.05",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "10de:2204",
+      "compute_capability": "8.6",
+      "linux_driver": "nvidia",
+      "expected_backend": "cuda",
+      "expected_backend_reason": "Ollama drives NVIDIA cards from compute capability 5.0 upward with CUDA.",
+      "expected_backend_rule": "nvidia-cuda"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 25769803776,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the NVIDIA GeForce RTX 3090's own memory (nvidia-smi memory.total); memory is not added up across cards",
+  "storage": {
+    "models_dir": "/home/itay/.ollama/models",
+    "models_dir_source": "Ollama's default when it runs as you",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "gpu_large",
+  "summary": "A desktop with an NVIDIA GeForce RTX 3090 (24 GB of graphics memory): large models run on the graphics card.",
+  "notes": [
+    "This computer has 2 graphics cards. The advisor plans for the first one, the NVIDIA GeForce RTX 3090; using several cards together is not optimised in this version."
+  ],
+  "expectations_from": "Ollama v0.34.2"
+}

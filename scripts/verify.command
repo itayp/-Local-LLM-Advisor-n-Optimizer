@@ -1,7 +1,8 @@
 #!/bin/bash
 # The CI sequence, run on the Mac: double-click this file in Finder, or run
 # `bash scripts/verify.command`. go mod tidy, make test, make build, then a
-# smoke test of the built binary. Everything it prints also goes to
+# smoke test of the built binary, which also prints this Mac's hardware
+# profile (GET /api/hardware). Everything it prints also goes to
 # verify.log in the repo root so the result can be read back later.
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -32,6 +33,9 @@ LOG="verify.log"
   curl -sf http://127.0.0.1:27183/settings | grep -qi '<!doctype html>' && echo "UI served: ok"
   CODE=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example.com' http://127.0.0.1:27183/api/health)
   echo "foreign Host header -> HTTP $CODE (want 421)"
+  echo; echo "== this Mac, as GET /api/hardware reports it (build plan step 2's gate: is it right?)"
+  curl -sf --max-time 120 http://127.0.0.1:27183/api/hardware || echo "GET /api/hardware FAILED"
+  echo
   kill $PID; wait $PID 2>/dev/null
   echo; echo "== git status"
   git status --short

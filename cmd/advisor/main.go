@@ -75,14 +75,6 @@ func run() int {
 	schema, _ := st.SchemaVersion(ctx)
 	log.Info("database ready", "path", dbPath, "schema", schema)
 
-	// The hardware profile. Step 1's Detect knows nothing; it is called here
-	// so the wiring exists and step 2 only has to fill the function in.
-	profile, err := hardware.Detect(ctx)
-	if err != nil {
-		log.Warn("hardware detection failed; continuing with an unknown profile", "err", err)
-	}
-	log.Info("machine", "os", profile.OS, "arch", profile.Arch, "tier", profile.Tier)
-
 	// Listen on the loopback address — the only one there is.
 	l, err := server.Listen(*flagPort)
 	if err != nil && *flagPort != 0 {
@@ -96,9 +88,27 @@ func run() int {
 	url := "http://" + l.Addr().String() + "/"
 	log.Info("advisor is listening", "url", url, "version", version.Version)
 
-	srv := server.New(log)
+	srv := server.New(log, st)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ctx, l) }()
+
+	// The hardware profile: detected in the background once the listener is
+	// up (system_profiler and PowerShell take seconds, and the browser should
+	// not wait for them), stored as a new row on every start so benchmarks
+	// stay attributable to the hardware they ran on, then served at
+	// GET /api/hardware.
+	go func() {
+		resp, err := srv.RecordHardware(ctx, hardware.Detect)
+		if err != nil {
+			log.Warn("hardware detection did not finish", "err", err)
+			return
+		}
+		p := resp.Profile
+		log.Info("machine", "tier", p.Tier, "summary", p.Summary, "profile_id", resp.ProfileID, "changed", resp.Changed)
+		for _, problem := range p.Problems {
+			log.Debug("hardware detection", "problem", problem)
+		}
+	}()
 
 	// Open the browser exactly once, after the listener is up. If that fails
 	// (no desktop, no browser), the URL is in the log and the daemon runs on.

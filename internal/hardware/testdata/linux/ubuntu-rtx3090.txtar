@@ -1,0 +1,74 @@
+# Ubuntu 24.04 desktop with a GeForce RTX 3090 on NVIDIA's driver.
+# Shaped like the real files and tool output; the values are chosen, not
+# captured. /proc/cpuinfo is trimmed to four logical CPUs.
+-- etc/os-release --
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+ID=ubuntu
+ID_LIKE=debian
+-- proc/sys/kernel/osrelease --
+6.8.0-79-generic
+-- proc/cpuinfo --
+processor	: 0
+model name	: AMD Ryzen 9 5950X 16-Core Processor
+physical id	: 0
+core id		: 0
+flags		: fpu vme sse sse2 avx avx2 fma
+
+processor	: 1
+model name	: AMD Ryzen 9 5950X 16-Core Processor
+physical id	: 0
+core id		: 1
+flags		: fpu vme sse sse2 avx avx2 fma
+
+processor	: 2
+model name	: AMD Ryzen 9 5950X 16-Core Processor
+physical id	: 0
+core id		: 0
+flags		: fpu vme sse sse2 avx avx2 fma
+
+processor	: 3
+model name	: AMD Ryzen 9 5950X 16-Core Processor
+physical id	: 0
+core id		: 1
+flags		: fpu vme sse sse2 avx avx2 fma
+-- proc/meminfo --
+MemTotal:       65766484 kB
+MemFree:        51230044 kB
+MemAvailable:   60125096 kB
+-- sys/class/dmi/id/chassis_type --
+3
+-- sys/bus/pci/devices/0000:00:00.0/class --
+0x060000
+-- sys/bus/pci/devices/0000:00:00.0/vendor --
+0x1022
+-- sys/bus/pci/devices/0000:00:00.0/device --
+0x1480
+-- sys/bus/pci/devices/0000:00:00.0/uevent --
+PCI_CLASS=60000
+PCI_ID=1022:1480
+PCI_SLOT_NAME=0000:00:00.0
+-- sys/bus/pci/devices/0000:0b:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:0b:00.0/vendor --
+0x10de
+-- sys/bus/pci/devices/0000:0b:00.0/device --
+0x2204
+-- sys/bus/pci/devices/0000:0b:00.0/subsystem_vendor --
+0x1458
+-- sys/bus/pci/devices/0000:0b:00.0/subsystem_device --
+0x403b
+-- sys/bus/pci/devices/0000:0b:00.0/uevent --
+DRIVER=nvidia
+PCI_CLASS=30000
+PCI_ID=10DE:2204
+PCI_SLOT_NAME=0000:0b:00.0
+-- proc/driver/nvidia/version --
+NVRM version: NVIDIA UNIX x86_64 Kernel Module  575.64.05  Fri Jul 18 23:08:46 UTC 2025
+GCC version:  gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04)
+-- $ nvidia-smi --
+0, NVIDIA GeForce RTX 3090, 24576, 575.64.05, 8.6, 00000000:0B:00.0, 0x220410DE
+-- usr/share/ollama/.ollama/models/manifests/registry.ollama.ai/library/llama3.1/8b --
+{}

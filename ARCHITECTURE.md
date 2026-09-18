@@ -1,9 +1,9 @@
 # Architecture decision record — Local LLM Advisor & Optimizer
 
-**Status:** accepted, step 1 (2026-09-18). Every later step inherits this
-shape. A change to a decision here is a new numbered entry that supersedes
-the old one — the old entry stays, marked superseded, so the reasoning
-survives.
+**Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2.
+Every later step inherits this shape. A change to a decision here is a new
+numbered entry that supersedes the old one — the old entry stays, marked
+superseded, so the reasoning survives.
 
 **Read with:** `PRD — Local LLM Advisor & Optimizer.md` (what and why),
 `BUILD_PLAN.md` (the fourteen steps), `CLAUDE.md` (the product rules and the
@@ -488,6 +488,8 @@ how much memory the graphics card has"), never as `0 GB`.
 
 ## D-22. Dependencies are few and named
 
+*Superseded in part by D-26 (step 2 adds the YAML parser and `golang.org/x/sys`).*
+
 **Decision.** Go: the standard library plus `modernc.org/sqlite`. UI: React,
 React Router, and the Vite/Vitest/Testing Library toolchain. A new dependency
 is a line in the PR description saying what it replaces and why writing it
@@ -500,6 +502,126 @@ would be worse.
 - YAML parsing for the catalogue (step 4) is the first expected addition;
   the candidates are `gopkg.in/yaml.v3` or `github.com/goccy/go-yaml`, both
   pure Go.
+
+---
+
+Step 2 (hardware detection, 2026-09-18) adds D-23 to D-26.
+
+## D-23. Hardware detection reads the OS behind one seam, and every OS path runs on every runner
+
+**Decision.** `internal/hardware` reads the machine through an `env`
+interface (commands, a root `fs.FS`, environment, disk space, CPUID). The
+real one shells out and reads files; the tests' one answers from fixtures —
+one `testdata/<os>/<machine>.txtar` per machine, holding each tool's output
+in its real format — so the Windows, macOS and Linux paths are all exercised
+on every CI runner, and the parsers never need the tool they parse. Each
+fixture machine also has a golden profile (`testdata/golden/*.json`) that is
+the reviewable answer to "what does the advisor say about this machine".
+
+The sources, per OS, and what is authoritative for what:
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| OS, CPU, RAM, form factor | one PowerShell query: CIM + registry (`-EncodedCommand`, no console window) | `sysctl`, `sw_vers`, `system_profiler -json` | `/etc/os-release`, `/proc`, `/sys/class/dmi/id/chassis_type`, sysfs CPU topology |
+| GPU list | `Win32_VideoController` (present devices only) → its display-class registry key | `SPDisplaysDataType` | `/sys/bus/pci/devices` class 0x03, names from `pci.ids` |
+| GPU memory | registry `HardwareInformation.qwMemorySize` (never `AdapterRAM`, which wraps at 4 GB) | `spdisplays_vram`; Apple Silicon: D-25 | amdgpu `mem_info_vram_total` |
+| NVIDIA | `nvidia-smi` (memory, driver, compute capability, PCI id) overrides the registry | — | `nvidia-smi`, merged by PCI address |
+| AMD LLVM target | from the name (D-24 table) | from the name | KFD topology `gfx_target_version` |
+| AVX2 / AVX-512 | CPUID via `golang.org/x/sys/cpu` (x86); not applicable on ARM | same | same |
+
+**Consequences.**
+- Every value that could not be read is unknown with the reason in
+  `Problems` (D-21). An unread device list is not "no GPU": the tier is then
+  unknown, not "cpu only".
+- The GPU list is ordered so the answer comes first: devices the runtime can
+  use, discrete before integrated, most memory first. An iGPU beside a
+  discrete card is listed and marked; two discrete cards produce a note that
+  multi-GPU is not optimised in the MVP. The budget is the largest single
+  device, never a sum (D-20, finding 8).
+- Display-only devices (virtual and remote displays, BMC chips, VM adapters)
+  are named in `filtered_adapters`, never counted as GPUs. A card with no
+  vendor driver (Linux: nothing bound; Windows: Microsoft Basic Display
+  Adapter) is still listed, from its PCI id, with what would unlock it.
+- The Intel build under Rosetta and the x64 build on ARM Windows describe the
+  machine, not the emulator (`arch` is arm64, with a note).
+- `Tier` is one of unknown, cpu_only, integrated, gpu_small (< 7 GiB),
+  gpu_medium (< 14), gpu_large (< 30), gpu_xl, sized by the best device's
+  memory; the thresholds and their reasons are in `derive.go`. `Summary` is
+  one sentence built from the profile; it is prose, the estimator decides fits.
+- Detection runs in the background after the listener is up, so the browser
+  never waits for `system_profiler` or PowerShell; `GET /api/hardware` waits
+  for it. Each daemon start inserts a `hardware_profiles` row (with the
+  daemon version, migration 0002) and never updates one. `Fingerprint`
+  identifies hardware, not state — OS family, arch, CPU model, RAM and each
+  GPU's PCI id and memory, rounded to the GiB — so a driver update is the same
+  machine and a swapped GPU is a new configuration; old benchmarks keep
+  pointing at the old row. `GET /api/hardware/history` lists configurations;
+  `GET /api/hardware/profiles/{id}` returns any stored profile.
+
+## D-24. The expected runtime path is data, checked against what Ollama ships
+
+**Decision.** `data/hardware/runtime-support.yaml` holds ordered rules
+(vendor, OS, arch, AMD LLVM target, NVIDIA compute capability and driver
+floor, Linux kernel driver, "no driver", name patterns) → expected backend,
+with a plain sentence, a source and a `checked` date per row; a table of AMD
+marketing names → LLVM targets for the OSes that do not report one; and a
+table classifying integrated versus discrete by name where the OS does not
+say. Rows were checked against Ollama v0.34.2's own build presets
+(`llama/server/CMakePresets.json`: the CUDA architectures and ROCm
+`AMDGPU_TARGETS` each shipped build compiles) and its docs. Where the two
+disagree — the Windows ROCm build compiles gfx1030 and RDNA 4, the docs list
+only the RX 7000 series — the build wins ("as Ollama ships it") and the row
+says so; step 3 records what actually happened. The file is embedded through
+a small `advisor/data` package (`go:embed` cannot reach `../../data`), parsed
+strictly (unknown keys are errors) and validated on load; the last rule must
+be a catch-all, so no GPU leaves without an expectation, even if it is
+"unknown".
+
+**Consequences.**
+- Updating for a new Ollama release is a data change reviewed like code; the
+  contract tests (`support_test.go`) show every customer-visible answer that
+  moves.
+- A condition on a value the detector could not read does not hold, so
+  unknown falls through to a later rule rather than matching by accident.
+- Rules marked `actionable` (a missing or old driver) also become a note on
+  the profile, because the fix is the user's to make.
+- An OS below Ollama's floor (macOS 14, Windows 10 22H2) expects nothing on
+  every GPU, and the tier is unknown with a sentence saying why.
+
+## D-25. Apple Silicon's GPU budget is what macOS says, never a percentage
+
+**Decision.** `gpu_usable_bytes` on Apple Silicon is `iogpu.wired_limit_mb`
+when it is set (the OS enforces exactly that), otherwise Metal's
+`recommendedMaxWorkingSetSize` — the platform default for that Mac's RAM and
+macOS release, and the number Ollama itself schedules against
+(`discover/gpu_info_darwin.m`). It is read by asking Metal through
+`osascript -l JavaScript` (JavaScript for Automation can bind
+`MTLCreateSystemDefaultDevice`), which every Mac has: no cgo, no compiler, no
+Metal in the daemon's own process. If neither can be read, the budget is
+unknown.
+
+**Why not a table or a ratio.** The widely quoted rule (two-thirds of RAM up
+to 36 GB, three-quarters above) does not hold on the fleet's M1 Pro under
+macOS 26.6.2: Ollama logs Metal `total="11.8 GiB"` for 16 GiB (0.74). The
+value is the OS's to choose and to change; reading it is the only way to be
+right on the next release.
+
+**Consequences.** The fixture values for Metal are illustrative until the
+fleet Mac's real `osascript` output replaces them; the live check is
+`scripts/verify.command`, which prints `/api/hardware`.
+
+## D-26. Two dependencies: a YAML parser and golang.org/x/sys
+
+**Decision.** `github.com/goccy/go-yaml` parses the data files (pure Go, no
+dependencies of its own). It replaces the `gopkg.in/yaml.v3` D-22 expected: its
+author labelled that project unmaintained in April 2025. Step 4's catalogue
+loader uses the same parser. `golang.org/x/sys/cpu` reads AVX2 and AVX-512F
+by CPUID, including the OS's support for the wider registers, the same way on
+all three OSes; `x/sys` was already in the module graph through
+`modernc.org/sqlite`, so this adds nothing to the build.
+
+**Consequences.** No cgo, still; `go.sum` gains one module. A future data
+file uses the same parser and strict decoding (`DisallowUnknownField`).
 
 ---
 

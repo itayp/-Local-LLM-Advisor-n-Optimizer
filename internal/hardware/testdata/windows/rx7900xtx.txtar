@@ -1,0 +1,47 @@
+# Windows 11 with a Radeon RX 7900 XTX (gfx1100, on Ollama's Windows ROCm list).
+# AMD's display-class key carries RadeonSoftwareVersion, the number AMD's own
+# software shows. Values chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Pro",
+ "os_version": "10.0.26100",
+ "os_build": "26100",
+ "display_version": "24H2",
+ "ubr": "4652",
+ "ram_bytes": "68577398784",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "AMD Ryzen 9 7950X 16-Core Processor",
+   "cores": "16",
+   "logical": "32",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "AMD Radeon RX 7900 XTX",
+   "pnp_device_id": "PCI\\VEN_1002&DEV_744C&SUBSYS_471E1DA2&REV_C8\\6&1F0C2B7A&0&00000019",
+   "adapter_compatibility": "Advanced Micro Devices, Inc.",
+   "driver_version": "32.0.21025.1024",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "AMD Radeon RX 7900 XTX",
+   "provider": "Advanced Micro Devices, Inc.",
+   "qw_memory_size": "25753026560",
+   "radeon_software_version": "25.8.1"
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}

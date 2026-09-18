@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"advisor/internal/store"
 	"advisor/internal/version"
 )
 
@@ -58,7 +59,7 @@ func IsLoopback(addr net.Addr) bool {
 	return tcp.IP.Equal(net.ParseIP(LoopbackHost))
 }
 
-// Health is the payload of GET /api/health — the whole API in step 1.
+// Health is the payload of GET /api/health.
 type Health struct {
 	Version   string `json:"version"`
 	OS        string `json:"os"`
@@ -72,15 +73,19 @@ type Server struct {
 	mux      *http.ServeMux
 	apiPaths map[string]bool // bare paths that already have a 405 fallback
 	started  time.Time
+	store    *store.Store // nil in tests that need no persistence
+	hw       hardwareState
 }
 
-// New builds a Server. Dependencies (the store, the backend registry, …)
-// are added as parameters by the steps that need them; step 1 needs none.
-func New(log *slog.Logger) *Server {
+// New builds a Server. Dependencies are added as parameters by the steps
+// that need them: step 2 adds the store (hardware profiles and their
+// history). st may be nil, for tests that need no persistence.
+func New(log *slog.Logger, st *store.Store) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now()}
+	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st}
+	s.hw.ready = make(chan struct{})
 	s.routes()
 	return s
 }
@@ -89,6 +94,9 @@ func (s *Server) routes() {
 	// The API. Every endpoint is registered through api(), which pairs the
 	// method-qualified pattern with a 405 for the other methods.
 	s.api("GET /api/health", s.handleHealth)
+	s.api("GET /api/hardware", s.handleHardware)
+	s.api("GET /api/hardware/history", s.handleHardwareHistory)
+	s.api("GET /api/hardware/profiles/{id}", s.handleHardwareProfile)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

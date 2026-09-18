@@ -1,4 +1,4 @@
-import type { APIError, Health } from './types'
+import type { APIError, HardwareHistory, HardwareResponse, Health } from './types'
 
 // The API is same-origin: the daemon serves both the UI and /api. In
 // development Vite proxies /api to the daemon (vite.config.ts).
@@ -34,4 +34,8 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export const api = {
   health: (signal?: AbortSignal) => get<Health>('/health', signal),
+  /** Waits while the daemon is still reading the machine (seconds, at start). */
+  hardware: (signal?: AbortSignal) => get<HardwareResponse>('/hardware', signal),
+  hardwareHistory: (signal?: AbortSignal) => get<HardwareHistory>('/hardware/history', signal),
+  hardwareProfile: (id: number, signal?: AbortSignal) => get<HardwareResponse>(`/hardware/profiles/${id}`, signal),
 }

@@ -1,0 +1,42 @@
+# A Windows 11 laptop with only Intel Iris Xe graphics. The PowerShell output
+# is in the shape Windows PowerShell 5.1 can produce: a byte-order mark first,
+# and one-element arrays unrolled into single values. Values chosen, not
+# captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+-- $ powershell -NoProfile --
+﻿{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Home",
+ "os_version": "10.0.26100",
+ "os_build": "26100",
+ "display_version": "24H2",
+ "ubr": "4652",
+ "ram_bytes": "17007198208",
+ "pc_system_type": "2",
+ "chassis_types": "10",
+ "cpus": {
+  "name": "11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz",
+  "cores": "4",
+  "logical": "8",
+  "architecture": "9"
+ },
+ "adapters": {
+  "name": "Intel(R) Iris(R) Xe Graphics",
+  "pnp_device_id": "PCI\\VEN_8086&DEV_9A49&SUBSYS_0A5C1028&REV_01\\3&11583659&0&10",
+  "adapter_compatibility": "Intel Corporation",
+  "driver_version": "31.0.101.5186",
+  "error_code": "0",
+  "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+  "driver_desc": "Intel(R) Iris(R) Xe Graphics",
+  "provider": "Intel Corporation",
+  "qw_memory_size": "134217728",
+  "radeon_software_version": ""
+ },
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}

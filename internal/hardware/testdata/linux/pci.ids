@@ -1,0 +1,44 @@
+#
+#	List of PCI ID's — EXCERPT for the hardware tests.
+#
+#	The format is pci.ids' own (vendor at column 0, devices after one tab,
+#	subsystems after two). Device names are as pci.ids prints them; the
+#	subsystem entries are illustrative. The real file is /usr/share/misc/pci.ids.
+#
+
+# Syntax:
+# vendor  vendor_name
+#	device  device_name				<-- single tab
+#		subvendor subdevice  subsystem_name	<-- two tabs
+
+1002  Advanced Micro Devices, Inc. [AMD/ATI]
+	15bf  Phoenix1
+	164e  Raphael
+	6798  Tahiti XT [Radeon HD 7970/8970 OEM / R9 280X]
+		106b 0128  FirePro D700
+		1002 3000  Tahiti XT2 [Radeon HD 7970 GHz Edition]
+	73bf  Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]
+	744c  Navi 31 [Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M]
+		1da2 471e  NITRO+ Radeon RX 7900 XTX Vapor-X
+1022  Advanced Micro Devices, Inc. [AMD]
+	1480  Starship/Matisse Root Complex
+10de  NVIDIA Corporation
+	2204  GA102 [GeForce RTX 3090]
+	2504  GA106 [GeForce RTX 3060 Lite Hash Rate]
+	25a2  GA107M [GeForce RTX 3050 Mobile]
+	2c05  GB203 [GeForce RTX 5070 Ti]
+1a03  ASPEED Technology, Inc.
+	1150  AST1150 PCI-to-PCI Bridge
+	2000  ASPEED Graphics Family
+8086  Intel Corporation
+	56a0  DG2 [Arc A770]
+	9a49  TigerLake-LP GT2 [Iris Xe Graphics]
+
+# List of known device classes, subclasses and programming interfaces
+
+C 00  Unclassified device
+	00  Non-VGA unclassified device
+C 03  Display controller
+	00  VGA compatible controller
+1002  THIS LINE IS AFTER THE CLASS LIST AND MUST NEVER BE READ AS A VENDOR
+	744c  WRONG NAME

@@ -1,0 +1,69 @@
+{
+  "os": "linux",
+  "os_version": "Ubuntu 24.04.3 LTS",
+  "kernel": "6.8.0-138-generic",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "Intel(R) Xeon(R) CPU E5-1650 v2 @ 3.50GHz",
+    "cores_physical": 6,
+    "cores_logical": 12,
+    "has_avx2": false,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 67460767744,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "amd",
+      "name": "AMD FirePro D700",
+      "vram_bytes": 6442450944,
+      "vram_known": true,
+      "vram_source": "sysfs mem_info_vram_total",
+      "driver_version": "amdgpu in Linux 6.8.0-138-generic",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "1002:6798",
+      "linux_driver": "amdgpu",
+      "expected_backend": "vulkan",
+      "expected_backend_reason": "Ollama drives AMD cards outside its ROCm list with Vulkan, which is on by default.",
+      "expected_backend_rule": "amd-vulkan"
+    },
+    {
+      "vendor": "amd",
+      "name": "AMD FirePro D700",
+      "vram_bytes": 6442450944,
+      "vram_known": true,
+      "vram_source": "sysfs mem_info_vram_total",
+      "driver_version": "amdgpu in Linux 6.8.0-138-generic",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "1002:6798",
+      "linux_driver": "amdgpu",
+      "expected_backend": "vulkan",
+      "expected_backend_reason": "Ollama drives AMD cards outside its ROCm list with Vulkan, which is on by default.",
+      "expected_backend_rule": "amd-vulkan"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 6442450944,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the AMD FirePro D700's own memory (sysfs mem_info_vram_total); memory is not added up across cards",
+  "storage": {
+    "models_dir": "/home/itay/.ollama/models",
+    "models_dir_source": "Ollama's default when it runs as you",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": false,
+  "tier": "gpu_small",
+  "summary": "This computer with an AMD FirePro D700 (6 GB of graphics memory): small models run on the graphics card.",
+  "notes": [
+    "This computer has 2 graphics cards. The advisor plans for the first one, the AMD FirePro D700; using several cards together is not optimised in this version.",
+    "This processor lacks AVX2, which makes models that run on the processor noticeably slower."
+  ],
+  "expectations_from": "Ollama v0.34.2"
+}

@@ -1,0 +1,49 @@
+{
+  "os": "windows",
+  "os_version": "Windows 10 Pro 22H2 (build 19045.6216)",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "AMD Ryzen 5 5600X 6-Core Processor",
+    "cores_physical": 6,
+    "cores_logical": 12,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 34271797248,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "amd",
+      "name": "AMD Radeon RX 6700 XT",
+      "vram_bytes": 12868124672,
+      "vram_known": true,
+      "vram_source": "Windows registry HardwareInformation.qwMemorySize",
+      "driver_version": "24.3.1",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "1002:73df",
+      "gfx_target": "gfx1031",
+      "expected_backend": "vulkan",
+      "expected_backend_reason": "Ollama drives AMD cards outside its ROCm list with Vulkan, which is on by default.",
+      "expected_backend_rule": "amd-vulkan"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 12868124672,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the AMD Radeon RX 6700 XT's own memory (Windows registry HardwareInformation.qwMemorySize)",
+  "storage": {
+    "models_dir": "C:\\Users\\itay\\.ollama\\models",
+    "models_dir_source": "Ollama's default on Windows",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "gpu_medium",
+  "summary": "A desktop with an AMD Radeon RX 6700 XT (12 GB of graphics memory): small and medium-sized models run on the graphics card.",
+  "expectations_from": "Ollama v0.34.2"
+}

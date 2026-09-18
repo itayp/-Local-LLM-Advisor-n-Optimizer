@@ -1,0 +1,51 @@
+# Ubuntu laptop with a Ryzen 7 7840U: Radeon 780M graphics (Phoenix) on
+# amdgpu, 512 MiB carved out of RAM and a 15 GiB GTT aperture — the shape
+# Ollama's own integrated-GPU test recognises. KFD: gfx1103; location_id 50176
+# = bus c4. Values chosen, not captured.
+-- etc/os-release --
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+ID=ubuntu
+ID_LIKE=debian
+-- proc/cpuinfo --
+processor	: 0
+model name	: AMD Ryzen 7 7840U w/ Radeon  780M Graphics
+physical id	: 0
+core id		: 0
+flags		: avx avx2 avx512f
+
+processor	: 1
+model name	: AMD Ryzen 7 7840U w/ Radeon  780M Graphics
+physical id	: 0
+core id		: 1
+flags		: avx avx2 avx512f
+-- proc/meminfo --
+MemTotal:       31989020 kB
+-- sys/class/dmi/id/chassis_type --
+10
+-- sys/bus/pci/devices/0000:c4:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:c4:00.0/vendor --
+0x1002
+-- sys/bus/pci/devices/0000:c4:00.0/device --
+0x15bf
+-- sys/bus/pci/devices/0000:c4:00.0/uevent --
+DRIVER=amdgpu
+PCI_CLASS=30000
+PCI_ID=1002:15BF
+PCI_SLOT_NAME=0000:c4:00.0
+-- sys/bus/pci/devices/0000:c4:00.0/mem_info_vram_total --
+536870912
+-- sys/bus/pci/devices/0000:c4:00.0/mem_info_gtt_total --
+16106127360
+-- sys/class/kfd/kfd/topology/nodes/1/properties --
+cpu_cores_count 0
+simd_count 24
+gfx_target_version 110003
+vendor_id 4098
+device_id 5567
+location_id 50176
+domain 0
+drm_render_minor 128

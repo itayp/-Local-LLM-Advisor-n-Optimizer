@@ -1,0 +1,42 @@
+# A rack server whose only display device is the ASPEED management chip.
+# Values chosen, not captured.
+-- etc/os-release --
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+-- proc/cpuinfo --
+processor	: 0
+model name	: Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz
+physical id	: 0
+core id		: 0
+flags		: avx avx2 avx512f
+
+processor	: 1
+model name	: Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz
+physical id	: 0
+core id		: 1
+flags		: avx avx2 avx512f
+-- proc/meminfo --
+MemTotal:       263812552 kB
+-- sys/class/dmi/id/chassis_type --
+23
+-- sys/bus/pci/devices/0000:03:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:03:00.0/vendor --
+0x1a03
+-- sys/bus/pci/devices/0000:03:00.0/device --
+0x2000
+-- sys/bus/pci/devices/0000:03:00.0/uevent --
+DRIVER=ast
+PCI_CLASS=30000
+PCI_ID=1A03:2000
+PCI_SLOT_NAME=0000:03:00.0
+-- etc/systemd/system/ollama.service --
+[Unit]
+Description=Ollama Service
+
+[Service]
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Environment="PATH=/usr/local/bin:/usr/bin"
+-- etc/systemd/system/ollama.service.d/10-models.conf --
+[Service]
+Environment="OLLAMA_HOST=127.0.0.1" "OLLAMA_MODELS=/srv/ollama/models"

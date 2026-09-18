@@ -89,7 +89,7 @@ check: ui-deps
 	cd ui && npm run check
 
 fmt:
-	gofmt -w cmd internal scripts
+	gofmt -w cmd internal scripts data
 
 clean:
 	rm -rf dist $(UI_DIST) ui/node_modules/.tmp .dev-data

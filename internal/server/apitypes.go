@@ -20,6 +20,8 @@ func APITypes() []any {
 	return []any{
 		Health{},
 		APIError{},
+		HardwareResponse{},
+		HardwareHistory{},
 		hardware.Profile{},
 		backend.Status{},
 		catalog.Family{},

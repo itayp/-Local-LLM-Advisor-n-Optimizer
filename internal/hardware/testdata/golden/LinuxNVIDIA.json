@@ -1,0 +1,51 @@
+{
+  "os": "linux",
+  "os_version": "Ubuntu 24.04.3 LTS",
+  "kernel": "6.8.0-79-generic",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "AMD Ryzen 9 5950X 16-Core Processor",
+    "cores_physical": 2,
+    "cores_logical": 4,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 67344879616,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 3090",
+      "vram_bytes": 25769803776,
+      "vram_known": true,
+      "vram_source": "nvidia-smi memory.total",
+      "driver_version": "575.64.05",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "10de:2204",
+      "compute_capability": "8.6",
+      "linux_driver": "nvidia",
+      "expected_backend": "cuda",
+      "expected_backend_reason": "Ollama drives NVIDIA cards from compute capability 5.0 upward with CUDA.",
+      "expected_backend_rule": "nvidia-cuda"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 25769803776,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "the NVIDIA GeForce RTX 3090's own memory (nvidia-smi memory.total)",
+  "storage": {
+    "models_dir": "/usr/share/ollama/.ollama/models",
+    "models_dir_source": "Ollama's default for a system install on Linux",
+    "models_dir_exists": true,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "gpu_large",
+  "summary": "A desktop with an NVIDIA GeForce RTX 3090 (24 GB of graphics memory): large models run on the graphics card.",
+  "expectations_from": "Ollama v0.34.2"
+}

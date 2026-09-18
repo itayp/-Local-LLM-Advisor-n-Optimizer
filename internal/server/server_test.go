@@ -16,7 +16,7 @@ import (
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewUnstartedServer(New(nil).Handler())
+	ts := httptest.NewUnstartedServer(New(nil, nil).Handler())
 	// httptest listens on 127.0.0.1, so the Host header is allowed.
 	ts.Start()
 	t.Cleanup(ts.Close)
@@ -164,7 +164,7 @@ func TestServeRefusesNonLoopbackListener(t *testing.T) {
 	if err != nil {
 		t.Skip("cannot bind 0.0.0.0 here:", err)
 	}
-	err = New(nil).Serve(context.Background(), l)
+	err = New(nil, nil).Serve(context.Background(), l)
 	if !errors.Is(err, ErrNotLoopback) {
 		t.Fatalf("Serve on 0.0.0.0 returned %v, want ErrNotLoopback", err)
 	}
@@ -177,7 +177,7 @@ func TestServeAndShutdown(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- New(nil).Serve(ctx, l) }()
+	go func() { done <- New(nil, nil).Serve(ctx, l) }()
 
 	resp, err := http.Get("http://" + l.Addr().String() + "/api/health")
 	if err != nil {

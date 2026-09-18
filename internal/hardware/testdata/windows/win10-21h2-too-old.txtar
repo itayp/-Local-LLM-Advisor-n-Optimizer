@@ -1,0 +1,49 @@
+# Windows 10 21H2 (build 19044), older than Ollama's floor (22H2, build
+# 19045), with a GeForce RTX 3060. Values chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+C:\Windows\System32\nvidia-smi.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 10 Pro",
+ "os_version": "10.0.19044",
+ "os_build": "19044",
+ "display_version": "21H2",
+ "ubr": "3086",
+ "ram_bytes": "17094934528",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz",
+   "cores": "6",
+   "logical": "12",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "NVIDIA GeForce RTX 3060",
+   "pnp_device_id": "PCI\\VEN_10DE&DEV_2504&SUBSYS_88471043&REV_A1\\4&2B1E4D5A&0&0008",
+   "adapter_compatibility": "NVIDIA",
+   "driver_version": "32.0.15.6094",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "NVIDIA GeForce RTX 3060",
+   "provider": "NVIDIA",
+   "qw_memory_size": "12884901888",
+   "radeon_software_version": ""
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}
+-- $ nvidia-smi --
+0, NVIDIA GeForce RTX 3060, 12288, 560.94, 8.6, 00000000:01:00.0, 0x250410DE

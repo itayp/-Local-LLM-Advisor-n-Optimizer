@@ -20,10 +20,13 @@ chats in the app they already use.
 
 ## Status
 
-Step 1 of the build plan: the architecture record, the repo skeleton and
-three-OS CI. The daemon starts, answers `GET /api/health`, and serves a UI
-shell whose screens are placeholders. No hardware detection, no Ollama calls,
-no catalogue content yet — those are steps 2, 3 and 4.
+Step 2 of the build plan: hardware detection. The daemon starts, reads the
+machine in the background (Windows, macOS and Linux; NVIDIA, Apple Silicon,
+AMD, Intel, integrated graphics and none), stores the profile on every start
+with its history, and answers `GET /api/hardware`; the "Your computer" screen
+shows it. What Ollama should be able to use per graphics card comes from
+`data/hardware/runtime-support.yaml`. No Ollama calls and no catalogue
+content yet — those are steps 3 and 4.
 
 ## Run it
 

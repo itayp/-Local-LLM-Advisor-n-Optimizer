@@ -1,0 +1,61 @@
+# A Windows 11 laptop with Intel UHD graphics and a GeForce RTX 4060 Laptop GPU
+# (Optimus). Values chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+C:\Windows\System32\nvidia-smi.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Home",
+ "os_version": "10.0.22631",
+ "os_build": "22631",
+ "display_version": "23H2",
+ "ubr": "5039",
+ "ram_bytes": "17013719040",
+ "pc_system_type": "2",
+ "chassis_types": [
+  "10"
+ ],
+ "cpus": [
+  {
+   "name": "13th Gen Intel(R) Core(TM) i7-13620H",
+   "cores": "10",
+   "logical": "16",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "Intel(R) UHD Graphics",
+   "pnp_device_id": "PCI\\VEN_8086&DEV_A7A8&SUBSYS_3C6617AA&REV_04\\3&11583659&0&10",
+   "adapter_compatibility": "Intel Corporation",
+   "driver_version": "32.0.101.5972",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "Intel(R) UHD Graphics",
+   "provider": "Intel Corporation",
+   "qw_memory_size": "134217728",
+   "radeon_software_version": ""
+  },
+  {
+   "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+   "pnp_device_id": "PCI\\VEN_10DE&DEV_28E0&SUBSYS_3C6617AA&REV_A1\\4&3A1B2C3D&0&0008",
+   "adapter_compatibility": "NVIDIA",
+   "driver_version": "32.0.15.6636",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0001",
+   "driver_desc": "NVIDIA GeForce RTX 4060 Laptop GPU",
+   "provider": "NVIDIA",
+   "qw_memory_size": "8585740288",
+   "radeon_software_version": ""
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}
+-- $ nvidia-smi --
+0, NVIDIA GeForce RTX 4060 Laptop GPU, 8188, 566.36, 8.9, 00000000:01:00.0, 0x28E010DE

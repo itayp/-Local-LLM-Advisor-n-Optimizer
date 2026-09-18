@@ -1,0 +1,48 @@
+{
+  "os": "darwin",
+  "os_version": "macOS 15.6.1 (24G90)",
+  "arch": "arm64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "Apple M2",
+    "cores_physical": 8,
+    "cores_logical": 8,
+    "has_avx2": false,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 8589934592,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "apple",
+      "name": "Apple M2",
+      "vram_bytes": 0,
+      "vram_known": false,
+      "vram_source": "not applicable: Apple Silicon graphics use the Mac's unified memory",
+      "driver_version": "part of macOS 15.6.1 (24G90)",
+      "is_integrated": true,
+      "integrated_known": true,
+      "expected_backend": "metal",
+      "expected_backend_reason": "Ollama drives the graphics of every Apple Silicon Mac with Metal.",
+      "expected_backend_rule": "apple-metal",
+      "note": "10-core GPU"
+    }
+  ],
+  "unified_memory": true,
+  "gpu_usable_bytes": 5726623744,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "macOS's default for this Mac, as Metal reports it (recommendedMaxWorkingSetSize); iogpu.wired_limit_mb is not set",
+  "storage": {
+    "models_dir": "/Users/itay/.ollama/models",
+    "models_dir_source": "Ollama's default on macOS",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": true,
+  "laptop_known": true,
+  "tier": "gpu_small",
+  "summary": "A Mac laptop with an Apple M2 chip and 8 GB of memory, of which the graphics can use 5.3 GB: small models run on the chip's graphics.",
+  "expectations_from": "Ollama v0.34.2"
+}

@@ -1,0 +1,36 @@
+# Ubuntu laptop with only the graphics built into an 11th-generation Intel
+# processor (i915). Values chosen, not captured.
+-- etc/os-release --
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+ID=ubuntu
+ID_LIKE=debian
+-- proc/cpuinfo --
+processor	: 0
+model name	: 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz
+physical id	: 0
+core id		: 0
+flags		: avx avx2 avx512f
+
+processor	: 1
+model name	: 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz
+physical id	: 0
+core id		: 1
+flags		: avx avx2 avx512f
+-- proc/meminfo --
+MemTotal:       16114044 kB
+-- sys/class/dmi/id/chassis_type --
+10
+-- sys/bus/pci/devices/0000:00:02.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:00:02.0/vendor --
+0x8086
+-- sys/bus/pci/devices/0000:00:02.0/device --
+0x9a49
+-- sys/bus/pci/devices/0000:00:02.0/uevent --
+DRIVER=i915
+PCI_CLASS=30000
+PCI_ID=8086:9A49
+PCI_SLOT_NAME=0000:00:02.0

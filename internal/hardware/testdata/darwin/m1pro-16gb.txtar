@@ -1,0 +1,61 @@
+# Shaped like the test fleet's MacBook Pro (M1 Pro, 16 GB) on macOS 26.6.2.
+# sysctl, sw_vers and system_profiler are in their real formats; identifying
+# fields are REDACTED. The Metal value is illustrative: Ollama v0.34.2 on
+# that Mac logs Metal total="11.8 GiB" (2026-09-18), and 12713115648 bytes is
+# 11.84 GiB. Replace it with the real osascript output when it is captured.
+-- $ sysctl --
+hw.memsize: 17179869184
+hw.physicalcpu: 10
+hw.logicalcpu: 10
+machdep.cpu.brand_string: Apple M1 Pro
+hw.optional.arm64: 1
+sysctl.proc_translated: 0
+iogpu.wired_limit_mb: 0
+-- $ sw_vers --
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+-- $ system_profiler --
+{
+  "SPDisplaysDataType": [
+    {
+      "_name": "Apple M1 Pro",
+      "spdisplays_mtlgpufamilysupport": "spdisplays_metal3",
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "sppci_bus": "spdisplays_builtin",
+      "sppci_cores": "16",
+      "sppci_device_type": "spdisplays_gpu",
+      "sppci_model": "Apple M1 Pro",
+      "spdisplays_ndrvs": [
+        {
+          "_name": "Color LCD",
+          "_spdisplays_display-product-id": "a050",
+          "spdisplays_connection_type": "spdisplays_internal",
+          "spdisplays_main": "spdisplays_yes",
+          "spdisplays_pixelresolution": "spdisplays_3024x1964Retina"
+        }
+      ]
+    }
+  ],
+  "SPHardwareDataType": [
+    {
+      "_name": "hardware_overview",
+      "activation_lock_status": "activation_lock_disabled",
+      "boot_rom_version": "13822.1.2",
+      "chip_type": "Apple M1 Pro",
+      "machine_model": "MacBookPro18,3",
+      "machine_name": "MacBook Pro",
+      "model_number": "REDACTED",
+      "number_processors": "proc 10:8:2",
+      "os_loader_version": "13822.1.2",
+      "physical_memory": "16 GB",
+      "platform_UUID": "REDACTED",
+      "provisioning_UDID": "REDACTED",
+      "serial_number": "REDACTED"
+    }
+  ]
+}
+-- $ osascript -l JavaScript --
+{"name":"Apple M1 Pro","recommended_max_working_set_size":12713115648,"has_unified_memory":true}
+-- $ launchctl getenv OLLAMA_MODELS --
+

@@ -1,0 +1,48 @@
+{
+  "os": "darwin",
+  "os_version": "macOS 26.6.2 (25G83)",
+  "arch": "arm64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "Apple M4 Max",
+    "cores_physical": 16,
+    "cores_logical": 16,
+    "has_avx2": false,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 137438953472,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "apple",
+      "name": "Apple M4 Max",
+      "vram_bytes": 0,
+      "vram_known": false,
+      "vram_source": "not applicable: Apple Silicon graphics use the Mac's unified memory",
+      "driver_version": "part of macOS 26.6.2 (25G83)",
+      "is_integrated": true,
+      "integrated_known": true,
+      "expected_backend": "metal",
+      "expected_backend_reason": "Ollama drives the graphics of every Apple Silicon Mac with Metal.",
+      "expected_backend_rule": "apple-metal",
+      "note": "40-core GPU"
+    }
+  ],
+  "unified_memory": true,
+  "gpu_usable_bytes": 125829120000,
+  "gpu_usable_known": true,
+  "gpu_usable_source": "iogpu.wired_limit_mb = 120000, set on this Mac",
+  "storage": {
+    "models_dir": "/Volumes/Models/ollama",
+    "models_dir_source": "OLLAMA_MODELS (set with launchctl)",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "gpu_xl",
+  "summary": "A Mac desktop with an Apple M4 Max chip and 128 GB of memory, of which the graphics can use 117 GB: very large models run on the chip's graphics.",
+  "expectations_from": "Ollama v0.34.2"
+}

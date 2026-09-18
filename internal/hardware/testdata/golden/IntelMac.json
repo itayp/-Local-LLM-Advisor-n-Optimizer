@@ -1,0 +1,62 @@
+{
+  "os": "darwin",
+  "os_version": "macOS 15.7.1 (24G231)",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz",
+    "cores_physical": 8,
+    "cores_logical": 16,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 34359738368,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "amd",
+      "name": "AMD Radeon Pro 5500M",
+      "vram_bytes": 8589934592,
+      "vram_known": true,
+      "vram_source": "system_profiler spdisplays_vram",
+      "driver_version": "part of macOS 15.7.1 (24G231)",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "1002:7340",
+      "expected_backend": "none",
+      "expected_backend_reason": "On Intel Macs Ollama runs models on the processor only; it does not use the graphics card.",
+      "expected_backend_rule": "intel-mac"
+    },
+    {
+      "vendor": "intel",
+      "name": "Intel UHD Graphics 630",
+      "vram_bytes": 1610612736,
+      "vram_known": true,
+      "vram_source": "system_profiler spdisplays_vram_shared",
+      "driver_version": "part of macOS 15.7.1 (24G231)",
+      "is_integrated": true,
+      "integrated_known": true,
+      "pci_id": "8086:3e9b",
+      "expected_backend": "none",
+      "expected_backend_reason": "On Intel Macs Ollama runs models on the processor only; it does not use the graphics card.",
+      "expected_backend_rule": "intel-mac"
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 0,
+  "gpu_usable_known": false,
+  "gpu_usable_source": "no graphics card with memory of its own that Ollama can use",
+  "storage": {
+    "models_dir": "/Users/itay/.ollama/models",
+    "models_dir_source": "Ollama's default on macOS",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": true,
+  "laptop_known": true,
+  "tier": "cpu_only",
+  "summary": "A Mac laptop with an Intel processor (Intel Core i9-9880H CPU @ 2.30GHz) and 32 GB of memory: on Intel Macs Ollama runs models on the processor, so small models only, roughly a few words a second.",
+  "expectations_from": "Ollama v0.34.2"
+}

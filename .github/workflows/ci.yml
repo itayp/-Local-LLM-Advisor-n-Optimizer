@@ -70,7 +70,7 @@ jobs:
         if: runner.os != 'Windows' # the Windows checkout may rewrite line endings
         shell: bash
         run: |
-          out=$(gofmt -l cmd internal scripts)
+          out=$(gofmt -l cmd internal scripts data)
           if [ -n "$out" ]; then echo "gofmt needed on:"; echo "$out"; exit 1; fi
 
       - name: Go — vet
@@ -98,7 +98,7 @@ jobs:
           done
           ls -la dist
 
-      - name: Smoke test — each binary starts, answers /api/health and serves the UI
+      - name: Smoke test — each binary starts, answers /api/health and /api/hardware, serves the UI
         shell: bash
         env:
           ADVISOR_DATA_DIR: ${{ runner.temp }}/advisor-smoke
@@ -124,6 +124,10 @@ jobs:
             # A foreign Host header must be refused (product rule 7's second line of defence).
             code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example.com' http://127.0.0.1:27182/api/health)
             [ "$code" = 421 ] || { echo "expected 421 for a foreign Host, got $code"; kill $pid; exit 1; }
+            # This runner's hardware, as the daemon detected and stored it on start
+            # (step 2). The request waits while detection is still running.
+            curl -sf --max-time 120 http://127.0.0.1:27182/api/hardware || { echo "GET /api/hardware failed"; kill $pid; exit 1; }
+            echo
             kill $pid || true
             wait $pid 2>/dev/null || true
           done

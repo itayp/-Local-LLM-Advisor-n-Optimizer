@@ -1,0 +1,53 @@
+{
+  "os": "linux",
+  "os_version": "Ubuntu 24.04.3 LTS",
+  "arch": "amd64",
+  "hostname": "fixture-host",
+  "cpu": {
+    "model": "Intel(R) Core(TM) i5-12400F",
+    "cores_physical": 2,
+    "cores_logical": 2,
+    "has_avx2": true,
+    "has_avx512": false,
+    "vector_known": true
+  },
+  "ram_bytes": 16500781056,
+  "ram_known": true,
+  "gpus": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 3060 Lite Hash Rate",
+      "vram_bytes": 0,
+      "vram_known": false,
+      "vram_source": "the driver does not publish this card's memory in sysfs",
+      "driver_version": "unknown",
+      "is_integrated": false,
+      "integrated_known": true,
+      "pci_id": "10de:2504",
+      "linux_driver": "none",
+      "expected_backend": "none",
+      "expected_backend_reason": "No NVIDIA driver is installed for this card, so Ollama cannot use it. Installing the NVIDIA driver fixes this.",
+      "expected_backend_rule": "nvidia-no-driver",
+      "note": "No driver is loaded for this card."
+    }
+  ],
+  "unified_memory": false,
+  "gpu_usable_bytes": 0,
+  "gpu_usable_known": false,
+  "gpu_usable_source": "no graphics card with memory of its own that Ollama can use",
+  "storage": {
+    "models_dir": "/home/itay/.ollama/models",
+    "models_dir_source": "Ollama's default when it runs as you",
+    "models_dir_exists": false,
+    "free_bytes": 536870912000,
+    "free_known": true
+  },
+  "is_laptop": false,
+  "laptop_known": true,
+  "tier": "cpu_only",
+  "summary": "A desktop whose graphics Ollama cannot use, so models run on the processor (Intel Core i5-12400F) with 15.4 GB of memory: small models only, roughly a few words a second.",
+  "notes": [
+    "NVIDIA GeForce RTX 3060 Lite Hash Rate: No NVIDIA driver is installed for this card, so Ollama cannot use it. Installing the NVIDIA driver fixes this."
+  ],
+  "expectations_from": "Ollama v0.34.2"
+}

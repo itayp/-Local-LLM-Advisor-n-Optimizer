@@ -1,0 +1,60 @@
+# Windows 11 on a desktop whose GeForce card has no NVIDIA driver yet: Windows
+# runs it on the Microsoft Basic Display Adapter, and the PCI id still says
+# whose card it is. A Remote Desktop display is filtered out. Values chosen,
+# not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Pro",
+ "os_version": "10.0.26100",
+ "os_build": "26100",
+ "display_version": "24H2",
+ "ubr": "4652",
+ "ram_bytes": "17094934528",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "Intel(R) Core(TM) i5-12400F",
+   "cores": "6",
+   "logical": "12",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "Microsoft Basic Display Adapter",
+   "pnp_device_id": "PCI\\VEN_10DE&DEV_2504&SUBSYS_88471043&REV_A1\\4&2B1E4D5A&0&0008",
+   "adapter_compatibility": "(Standard display types)",
+   "driver_version": "10.0.26100.1",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "Microsoft Basic Display Adapter",
+   "provider": "Microsoft",
+   "qw_memory_size": "",
+   "radeon_software_version": ""
+  },
+  {
+   "name": "Microsoft Remote Display Adapter",
+   "pnp_device_id": "SWD\\REMOTEDISPLAYENUM\\RDPIDD_INDIRECTDISPLAY&SESSIONID_0001",
+   "adapter_compatibility": "Microsoft",
+   "driver_version": "10.0.26100.1",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "Microsoft Remote Display Adapter",
+   "provider": "Microsoft",
+   "qw_memory_size": "",
+   "radeon_software_version": ""
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}

@@ -1,0 +1,76 @@
+# Shaped like the test fleet's Windows PC: GeForce RTX 5070 Ti (16 GB, driver
+# 610.62 — step 0's values), plus the graphics built into a Ryzen 7000
+# processor and a Parsec virtual display, which must be filtered out. The
+# PowerShell section is winProbeScript's output format. CPU, RAM and IDs are
+# chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+C:\Windows\System32\nvidia-smi.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 11 Pro",
+ "os_version": "10.0.26100",
+ "os_build": "26100",
+ "display_version": "24H2",
+ "ubr": "4652",
+ "ram_bytes": "34271797248",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "AMD Ryzen 7 7800X3D 8-Core Processor",
+   "cores": "8",
+   "logical": "16",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "NVIDIA GeForce RTX 5070 Ti",
+   "pnp_device_id": "PCI\\VEN_10DE&DEV_2C05&SUBSYS_89EF1043&REV_A1\\4&2B1E4D5A&0&0008",
+   "adapter_compatibility": "NVIDIA",
+   "driver_version": "32.0.16.1062",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0001",
+   "driver_desc": "NVIDIA GeForce RTX 5070 Ti",
+   "provider": "NVIDIA",
+   "qw_memory_size": "17094934528",
+   "radeon_software_version": ""
+  },
+  {
+   "name": "AMD Radeon(TM) Graphics",
+   "pnp_device_id": "PCI\\VEN_1002&DEV_164E&SUBSYS_88771043&REV_C9\\4&1A0E2B4C&0&0041",
+   "adapter_compatibility": "Advanced Micro Devices, Inc.",
+   "driver_version": "32.0.21025.1024",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "AMD Radeon(TM) Graphics",
+   "provider": "Advanced Micro Devices, Inc.",
+   "qw_memory_size": "536870912",
+   "radeon_software_version": "25.8.1"
+  },
+  {
+   "name": "Parsec Virtual Display Adapter",
+   "pnp_device_id": "ROOT\\DISPLAY\\0000",
+   "adapter_compatibility": "Parsec Cloud, Inc.",
+   "driver_version": "0.45.0.0",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0002",
+   "driver_desc": "Parsec Virtual Display Adapter",
+   "provider": "Parsec Cloud, Inc.",
+   "qw_memory_size": "",
+   "radeon_software_version": ""
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}
+-- $ nvidia-smi --
+0, NVIDIA GeForce RTX 5070 Ti, 16303, 610.62, 12.0, 00000000:01:00.0, 0x2C0510DE

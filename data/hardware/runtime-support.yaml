@@ -1,0 +1,352 @@
+# Which GPU path Ollama should be able to use for a card — the EXPECTATION
+# shown as hardware.GPU.expected_backend. Build-plan step 3 records what
+# actually happened after a load; the UI shows the two side by side when they
+# differ (ARCHITECTURE.md D-5). A wrong row here is a wrong sentence to a
+# customer, so every row names its source and the date it was checked.
+#
+# This file is DATA. It is embedded in the binary (package advisor/data) and
+# read by internal/hardware/support.go, whose SupportFile type mirrors it.
+#
+# Checked against Ollama v0.34.2 (tag commit dfabde45, 2026-09-17):
+#   llama/server/CMakePresets.json  the GPU targets each shipped build compiles
+#   docs/gpu.mdx                    compute capability and driver floors, Vulkan
+#   docs/macos.mdx, docs/windows.mdx  the OS floors
+# Where the docs and the build disagree, the build wins ("as Ollama ships it")
+# and the row says so.
+#
+# Schema:
+#
+#   ollama_version: v0.34.2        # the release the rows were checked against
+#
+#   os_minimum:                    # below these Ollama does not run at all, so
+#     darwin:  {version: "14.0", checked: YYYY-MM-DD, source: ...}   # every GPU
+#     windows: {build: 19045, checked: YYYY-MM-DD, source: ...}      # expects none
+#
+#   rules:                         # ORDERED: the first rule whose conditions
+#     - id: stable-name            # all hold decides. A condition on a value the
+#       vendor: nvidia             # detector could not read does not hold, so
+#       os: [linux, windows]       # "unknown" falls through to a later rule and
+#       arch: [amd64, arm64]       # never matches by accident.
+#       gfx: [gfx1030, ...]        #   vendor       nvidia | amd | intel | apple | qualcomm
+#       compute_min: "5.0"         #   os, arch     host OS / CPU architecture
+#       compute_max: "6.2"         #   gfx          AMD LLVM target
+#       driver_below: "550"        #   compute_*    NVIDIA compute capability, inclusive
+#       linux_driver: [radeon]     #   driver_below NVIDIA driver version, strictly below
+#       driver_missing: true       #   linux_driver the kernel driver bound to the card
+#       name: ['regex', ...]       #   driver_missing  no vendor driver (Linux: none
+#       backend: cuda              #     bound; Windows: Microsoft Basic Display)
+#       why: one plain sentence    #   name         Go regexp, case-insensitive, any match
+#       actionable: true           #   backend      cuda | metal | rocm | vulkan | none | unknown
+#       checked: YYYY-MM-DD        #   why          shown beside the expectation (Advanced)
+#       source: where it came from #   actionable   the why tells the user what to do, so it
+#                                  #                is also a note on the profile
+#
+#   amd_gfx:                       # AMD marketing name -> LLVM target, for Windows
+#     - gfx: gfx1100               # and macOS, where the OS does not report the
+#       name: ['regex', ...]       # target. Linux reads it from the kernel (KFD
+#       checked: YYYY-MM-DD        # topology) and falls back to this table only
+#       source: ...                # for cards the kernel's KFD does not list.
+#                                  # ORDERED, first match wins; no match = unknown.
+#
+#   integrated:                    # Is a GPU integrated (shares system memory)?
+#     - vendor: intel              # Used where the OS does not say: Windows, and
+#       name: ['regex', ...]       # Linux when the amdgpu memory signal is not
+#       integrated: false          # decisive. ORDERED, first match wins; a rule
+#       checked: YYYY-MM-DD        # without `name` matches every GPU of the
+#       source: ...                # vendor. No match leaves it unknown.
+#
+# Names are matched after removing (R), (TM), ® and ™ and collapsing spaces,
+# so "AMD Radeon(TM) RX 7900 XTX" is matched as "AMD Radeon RX 7900 XTX".
+
+ollama_version: v0.34.2
+
+os_minimum:
+  darwin:
+    version: "14.0"
+    checked: 2026-09-18
+    source: Ollama docs/macos.mdx — "MacOS Sonoma (v14) or newer"
+  windows:
+    build: 19045
+    checked: 2026-09-18
+    source: Ollama docs/windows.mdx — "Windows 10 22H2 or newer" (22H2 is build 19045)
+
+rules:
+  # --- Any vendor -----------------------------------------------------------
+  - id: intel-mac
+    os: [darwin]
+    arch: [amd64]
+    backend: none
+    why: On Intel Macs Ollama runs models on the processor only; it does not use the graphics card.
+    checked: 2026-09-18
+    source: Ollama docs/macos.mdx — "x86 (CPU only)"
+
+  # --- NVIDIA ---------------------------------------------------------------
+  - id: nvidia-no-driver
+    vendor: nvidia
+    driver_missing: true
+    backend: none
+    why: No NVIDIA driver is installed for this card, so Ollama cannot use it. Installing the NVIDIA driver fixes this.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — CUDA needs the NVIDIA driver
+  - id: nvidia-nouveau
+    vendor: nvidia
+    os: [linux]
+    linux_driver: [nouveau]
+    backend: none
+    why: This card runs on the open-source nouveau driver, which Ollama's CUDA support cannot use. Installing the NVIDIA driver fixes this.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — CUDA needs the NVIDIA driver
+  - id: nvidia-driver-too-old
+    vendor: nvidia
+    compute_min: "5.0"
+    driver_below: "550"
+    backend: vulkan
+    why: The NVIDIA driver is older than Ollama's CUDA support needs (550 or newer), so Ollama falls back to Vulkan. Updating the driver enables CUDA.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — "driver version 550 and newer"
+  - id: nvidia-maxwell-pascal-driver-too-old
+    vendor: nvidia
+    compute_min: "5.0"
+    compute_max: "6.2"
+    driver_below: "570"
+    backend: vulkan
+    why: Cards of this generation need NVIDIA driver 570 or newer for Ollama's CUDA support; this one has an older driver, so Ollama falls back to Vulkan.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — "compute capability 5.0 through 6.2 require driver version 570 or newer"
+  - id: nvidia-cuda
+    vendor: nvidia
+    compute_min: "5.0"
+    backend: cuda
+    why: Ollama drives NVIDIA cards from compute capability 5.0 upward with CUDA.
+    checked: 2026-09-18
+    source: Ollama v0.34.2 CMakePresets.json — cuda_v12 builds from sm_50, cuda_v13 from sm_75
+  - id: nvidia-too-old
+    vendor: nvidia
+    compute_max: "4.9"
+    backend: none
+    why: Ollama's CUDA support starts at compute capability 5.0 (GeForce GTX 750 and newer); this card is older.
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — "compute capability 5.0+"
+  - id: nvidia-by-name
+    # When nvidia-smi could not report the compute capability: every GeForce
+    # RTX, GTX 16xx and GTX 10xx card is well above 5.0.
+    vendor: nvidia
+    name: ['\bRTX\b', '\bGTX 16\d\d\b', '\bGTX 10\d0\b', '\bTITAN (X|Xp|V|RTX)\b']
+    backend: cuda
+    why: Every card of this line is supported by Ollama's CUDA builds.
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — compute capability table
+  - id: nvidia-unknown
+    vendor: nvidia
+    backend: unknown
+    why: The card's compute capability could not be read, so whether Ollama's CUDA support covers it is not known.
+    checked: 2026-09-18
+    source: none — the detector could not read what the rules need
+
+  # --- Apple ----------------------------------------------------------------
+  - id: apple-metal
+    vendor: apple
+    os: [darwin]
+    arch: [arm64]
+    backend: metal
+    why: Ollama drives the graphics of every Apple Silicon Mac with Metal.
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx and docs/macos.mdx — "Apple M series (CPU and GPU support)"
+
+  # --- AMD ------------------------------------------------------------------
+  - id: amd-no-driver
+    vendor: amd
+    driver_missing: true
+    backend: none
+    why: No AMD graphics driver is installed for this card, so Ollama cannot use it. Installing the AMD driver fixes this.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx
+  - id: amd-radeon-kernel-driver
+    vendor: amd
+    os: [linux]
+    linux_driver: [radeon]
+    backend: none
+    why: This card runs on Linux's old radeon driver; Vulkan needs the amdgpu driver, which older cards can be switched to.
+    actionable: true
+    checked: 2026-09-18
+    source: Mesa RADV requires the amdgpu kernel driver
+  - id: amd-rocm-linux
+    vendor: amd
+    os: [linux]
+    gfx: [gfx908, gfx90a, gfx942, gfx950, gfx1030, gfx1100, gfx1101, gfx1102, gfx1150, gfx1151, gfx1200, gfx1201]
+    backend: rocm
+    why: Ollama's Linux ROCm build ships kernels for this card's chip.
+    checked: 2026-09-18
+    source: Ollama v0.34.2 CMakePresets.json — rocm_v7_2_linux AMDGPU_TARGETS
+  - id: amd-rocm-windows
+    vendor: amd
+    os: [windows]
+    gfx: [gfx1030, gfx1100, gfx1101, gfx1102, gfx1150, gfx1151, gfx1200, gfx1201]
+    backend: rocm
+    why: Ollama's Windows ROCm build ships kernels for this card's chip (it also needs a recent AMD driver with HIP 7).
+    checked: 2026-09-18
+    # docs/gpu.mdx lists only the RX 7000 and PRO W7000 series for Windows;
+    # the Windows build also compiles gfx1030, gfx115x and gfx120x. The build
+    # is what ships, so the expectation follows it and step 3 shows the truth.
+    source: Ollama v0.34.2 CMakePresets.json — rocm_v7_1_windows AMDGPU_TARGETS
+  - id: amd-vulkan
+    vendor: amd
+    os: [linux, windows]
+    backend: vulkan
+    why: Ollama drives AMD cards outside its ROCm list with Vulkan, which is on by default.
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — "Vulkan is enabled by default when the backend is installed"
+
+  # --- Intel ----------------------------------------------------------------
+  - id: intel-no-driver
+    vendor: intel
+    driver_missing: true
+    backend: none
+    why: No Intel graphics driver is installed for this device, so Ollama cannot use it.
+    actionable: true
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx
+  - id: intel-vulkan
+    vendor: intel
+    os: [linux, windows]
+    backend: vulkan
+    why: Ollama drives Intel graphics (Arc cards and the graphics built into Intel processors) with Vulkan.
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx — Vulkan section, "Linux Intel GPU Instructions"
+
+  # --- Everything else ------------------------------------------------------
+  - id: unchecked
+    backend: unknown
+    why: Whether Ollama can use this graphics device has not been checked yet.
+    checked: 2026-09-18
+    source: none
+
+amd_gfx:
+  # RDNA 4
+  - gfx: gfx1201
+    name: ['\bRX 9070( XT| GRE)?\b', '\bAI PRO R9700\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx LLVM target table (RX 9070 XT, RX 9070); Navi 48
+  - gfx: gfx1200
+    name: ['\bRX 9060( XT)?\b']
+    checked: 2026-09-18
+    source: Navi 44 — AMD RX 9060 XT specifications; LLVM AMDGPU processor table
+  # Ryzen AI processors' built-in graphics
+  - gfx: gfx1151
+    name: ['\bRadeon 80[4-6]0S\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (Ryzen AI Max+ 395 = gfx1151); Strix Halo
+  - gfx: gfx1150
+    name: ['\bRadeon 8[89]0M\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (Ryzen AI 9 HX 375 = gfx1150); Strix Point
+  - gfx: gfx1152
+    name: ['\bRadeon 8[46]0M\b']
+    checked: 2026-09-18
+    source: Krackan Point; LLVM AMDGPU processor table
+  - gfx: gfx1103
+    name: ['\bRadeon 7[4-8]0M\b']
+    checked: 2026-09-18
+    source: Phoenix / Hawk Point; LLVM AMDGPU processor table
+  - gfx: gfx1035
+    name: ['\bRadeon 6[68]0M\b']
+    checked: 2026-09-18
+    source: Rembrandt; LLVM AMDGPU processor table
+  # RDNA 3
+  - gfx: gfx1100
+    name: ['\bRX 7900( XTX| XT| GRE|M)?\b', '\bPRO W7[89]00\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (PRO W7900 = gfx1100); Navi 31
+  - gfx: gfx1101
+    name: ['\bRX 7800( XT)?\b', '\bRX 7700( XT)?\b', '\bPRO W7700\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (PRO W7700 = gfx1101); Navi 32
+  - gfx: gfx1102
+    name: ['\bRX 7600( XT)?\b', '\bRX 7600M( XT)?\b', '\bRX 7[67]00S\b', '\bPRO W7[56]00\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (RX 7600 = gfx1102); Navi 33
+  # RDNA 2
+  - gfx: gfx1030
+    name: ['\bRX 6(800|900|950)( XTX?)?\b', '\bPRO W6800X?\b', '\bPRO W6900X\b', '\bPRO V620\b']
+    checked: 2026-09-18
+    source: Ollama docs/gpu.mdx (PRO V620 = gfx1030); Navi 21
+  - gfx: gfx1031
+    name: ['\bRX 67[05]0( XT)?\b', '\bRX 6[78][05]0M( XT)?\b']
+    checked: 2026-09-18
+    source: Navi 22 (Ollama docs/gpu.mdx example "RX 6700 XT, gfx1031")
+  - gfx: gfx1032
+    name: ['\bRX 66[05]0( XT)?\b', '\bRX 66[05]0M\b', '\bRX 6[6-8]00S\b', '\bPRO W6600\b']
+    checked: 2026-09-18
+    source: Navi 23; LLVM AMDGPU processor table
+  - gfx: gfx1034
+    name: ['\bRX 6[45]00( XT)?\b', '\bRX 6[35]00M\b', '\bPRO W6400\b']
+    checked: 2026-09-18
+    source: Navi 24 (Ollama docs/gpu.mdx — "Radeon RX 5400 is gfx1034")
+  # RDNA 1, Vega, Polaris
+  - gfx: gfx1010
+    name: ['\bRX 5[67]00( XT)?\b', '\bRX 5700M\b']
+    checked: 2026-09-18
+    source: Navi 10; LLVM AMDGPU processor table
+  - gfx: gfx1012
+    name: ['\bRX 5500( XT)?\b', '\bRX 5[35]00M\b']
+    checked: 2026-09-18
+    source: Navi 14; LLVM AMDGPU processor table
+  - gfx: gfx906
+    name: ['\bRadeon (Pro )?VII\b']
+    checked: 2026-09-18
+    source: Vega 20; LLVM AMDGPU processor table
+  - gfx: gfx900
+    name: ['\bRX Vega (56|64)\b', '\bVega Frontier\b']
+    checked: 2026-09-18
+    source: Vega 10; LLVM AMDGPU processor table
+  - gfx: gfx803
+    name: ['\bRX (4[6-9]0|5[4-9]0)X?\b']
+    checked: 2026-09-18
+    source: Polaris; LLVM AMDGPU processor table
+
+integrated:
+  - vendor: apple
+    integrated: true
+    checked: 2026-09-18
+    source: Apple Silicon — the GPU is part of the chip and shares unified memory
+  - vendor: nvidia
+    name: ['\bGB10\b', '\bTegra\b', '\bJetson\b', '\bOrin\b', '\bXavier\b']
+    integrated: true
+    checked: 2026-09-18
+    source: NVIDIA's system-on-chip GPUs (Jetson, DGX Spark) share memory with the CPU
+  - vendor: nvidia
+    integrated: false
+    checked: 2026-09-18
+    source: every other NVIDIA GPU is a discrete card
+  - vendor: intel
+    # Intel's discrete line: DG1 (Iris Xe MAX), Arc A-series (Alchemist, DG2),
+    # Arc B-series (Battlemage); C covers the next generation's naming.
+    name: ['\bArc (Pro )?[ABC]\d{2,3}[A-Z]?\b', '\bDG[12]\b', '\bIris Xe MAX\b', '\bBattlemage\b', '\bAlchemist\b']
+    integrated: false
+    checked: 2026-09-18
+    source: Intel Arc product list; pci.ids names ("DG2 [Arc A770]", "Battlemage G21 [Arc B580]")
+  - vendor: intel
+    # UHD, Iris Xe, "Arc Graphics" (Meteor Lake), "Arc 140V" (Lunar Lake).
+    integrated: true
+    checked: 2026-09-18
+    source: every other Intel GPU is built into the processor
+  - vendor: amd
+    name:
+      - '\bRadeon \d{3}M\b'              # 610M, 680M, 780M, 880M, 890M
+      - '\bRadeon 80[4-6]0S\b'           # Strix Halo
+      - '\bRadeon (RX )?Vega ([3-9]|1[01])( Graphics)?$'   # Ryzen 2000-5000 APUs (not RX Vega 56/64)
+      - '^AMD Radeon Graphics$'          # Windows' name for Ryzen 4000+ and 7000+ desktop graphics
+      - '\b(Renoir|Cezanne|Lucienne|Barcelo|Rembrandt|Phoenix|Hawk Point|Strix|Krackan|Raphael|Granite Ridge|Mendocino|Picasso|Raven|Dali|Van Gogh)'   # pci.ids codenames ("Phoenix1", "Strix Halo")
+    integrated: true
+    checked: 2026-09-18
+    source: AMD Ryzen processor graphics names (Windows) and pci.ids codenames (Linux)
+  - vendor: amd
+    name: ['\bRX\b', '\bRadeon Pro\b', '\bPRO W\d', '\bFirePro\b', '\bInstinct\b', '\bRadeon VII\b', '\bRadeon HD\b', '\bRadeon R[579]\b', '\bNavi\b', '\bVega (10|20|56|64)\b', '\b(Tahiti|Hawaii|Fiji|Polaris|Ellesmere|Baffin|Lexa|Tonga|Pitcairn|Cape Verde|Bonaire|Oland)\b']
+    integrated: false
+    checked: 2026-09-18
+    source: AMD Radeon and Radeon Pro discrete lines; pci.ids codenames

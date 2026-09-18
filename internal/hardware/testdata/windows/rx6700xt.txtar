@@ -1,0 +1,46 @@
+# Windows 11 with a Radeon RX 6700 XT (gfx1031: not in Ollama's ROCm build,
+# so Vulkan). Values chosen, not captured.
+-- env --
+SystemRoot=C:\Windows
+ProgramFiles=C:\Program Files
+USERPROFILE=C:\Users\itay
+-- exists --
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+-- $ powershell -NoProfile --
+{
+ "schema": "1",
+ "os_caption": "Microsoft Windows 10 Pro",
+ "os_version": "10.0.19045",
+ "os_build": "19045",
+ "display_version": "22H2",
+ "ubr": "6216",
+ "ram_bytes": "34271797248",
+ "pc_system_type": "1",
+ "chassis_types": [
+  "3"
+ ],
+ "cpus": [
+  {
+   "name": "AMD Ryzen 5 5600X 6-Core Processor",
+   "cores": "6",
+   "logical": "12",
+   "architecture": "9"
+  }
+ ],
+ "adapters": [
+  {
+   "name": "AMD Radeon RX 6700 XT",
+   "pnp_device_id": "PCI\\VEN_1002&DEV_73DF&SUBSYS_E4451DA2&REV_C1\\6&2A8E9F11&0&00000019",
+   "adapter_compatibility": "Advanced Micro Devices, Inc.",
+   "driver_version": "31.0.24033.1003",
+   "error_code": "0",
+   "class_key": "{4d36e968-e325-11ce-bfc1-08002be10318}\\0000",
+   "driver_desc": "AMD Radeon RX 6700 XT",
+   "provider": "Advanced Micro Devices, Inc.",
+   "qw_memory_size": "12868124672",
+   "radeon_software_version": "24.3.1"
+  }
+ ],
+ "ollama_models_user": "",
+ "ollama_models_machine": ""
+}

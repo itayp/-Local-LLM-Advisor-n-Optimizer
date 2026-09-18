@@ -1,0 +1,50 @@
+# A Mac Studio (M4 Max, 128 GB) whose owner raised the GPU cap with
+# `sudo sysctl iogpu.wired_limit_mb=120000`. The wired limit, not Metal's
+# default, is what the OS enforces. Values chosen, not captured.
+-- $ sysctl --
+hw.memsize: 137438953472
+hw.physicalcpu: 16
+hw.logicalcpu: 16
+machdep.cpu.brand_string: Apple M4 Max
+hw.optional.arm64: 1
+sysctl.proc_translated: 0
+iogpu.wired_limit_mb: 120000
+-- $ sw_vers --
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+-- $ system_profiler --
+{
+  "SPDisplaysDataType": [
+    {
+      "_name": "Apple M4 Max",
+      "spdisplays_mtlgpufamilysupport": "spdisplays_metal3",
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "sppci_bus": "spdisplays_builtin",
+      "sppci_cores": "40",
+      "sppci_device_type": "spdisplays_gpu",
+      "sppci_model": "Apple M4 Max"
+    }
+  ],
+  "SPHardwareDataType": [
+    {
+      "_name": "hardware_overview",
+      "activation_lock_status": "activation_lock_disabled",
+      "boot_rom_version": "13822.1.2",
+      "chip_type": "Apple M4 Max",
+      "machine_model": "Mac16,9",
+      "machine_name": "Mac Studio",
+      "model_number": "REDACTED",
+      "number_processors": "proc 16:12:4",
+      "os_loader_version": "13822.1.2",
+      "physical_memory": "128 GB",
+      "platform_UUID": "REDACTED",
+      "provisioning_UDID": "REDACTED",
+      "serial_number": "REDACTED"
+    }
+  ]
+}
+-- $ osascript -l JavaScript --
+{"name":"Apple M4 Max","recommended_max_working_set_size":103079215104,"has_unified_memory":true}
+-- $ launchctl getenv OLLAMA_MODELS --
+/Volumes/Models/ollama

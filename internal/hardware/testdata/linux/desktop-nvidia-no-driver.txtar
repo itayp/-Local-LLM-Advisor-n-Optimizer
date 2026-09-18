@@ -1,0 +1,35 @@
+# A fresh Ubuntu desktop: a GeForce RTX 3060 with no driver bound (nouveau
+# blacklisted, NVIDIA's driver not installed yet). Values chosen, not captured.
+-- etc/os-release --
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+ID=ubuntu
+ID_LIKE=debian
+-- proc/cpuinfo --
+processor	: 0
+model name	: Intel(R) Core(TM) i5-12400F
+physical id	: 0
+core id		: 0
+flags		: avx avx2
+
+processor	: 1
+model name	: Intel(R) Core(TM) i5-12400F
+physical id	: 0
+core id		: 1
+flags		: avx avx2
+-- proc/meminfo --
+MemTotal:       16114044 kB
+-- sys/class/dmi/id/chassis_type --
+3
+-- sys/bus/pci/devices/0000:01:00.0/class --
+0x030000
+-- sys/bus/pci/devices/0000:01:00.0/vendor --
+0x10de
+-- sys/bus/pci/devices/0000:01:00.0/device --
+0x2504
+-- sys/bus/pci/devices/0000:01:00.0/uevent --
+PCI_CLASS=30000
+PCI_ID=10DE:2504
+PCI_SLOT_NAME=0000:01:00.0

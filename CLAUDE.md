@@ -55,7 +55,7 @@ disagree, the code is wrong.
 cmd/advisor/            main: opens the store, starts the server on 127.0.0.1, opens the browser once
 internal/server/        HTTP API (/api/*), Host/Origin checks, embedded UI (go:embed), APITypes()
 internal/store/         SQLite via modernc.org/sqlite; migrations/NNNN_*.sql; DefaultDataDir
-internal/hardware/      Profile + Detect (step 2 fills it); RuntimePath, Vendor, Tier
+internal/hardware/      Profile + Detect: per-OS probes behind an env seam, runtime-support rules, tier, fingerprint
 internal/backend/       Backend interface + registry; internal/backend/ollama arrives in step 3
 internal/catalog/       curated families, GGUF header fields, external signals (step 4, 9b)
 internal/estimate/      fit + speed types; the step 0 formula (step 5)
@@ -65,7 +65,9 @@ internal/watch/         new-model watch state, notifications, log (step 10)
 internal/figure/        Source, Bytes, Rate, and Check — product rule 4
 internal/version/       Version (set by -ldflags), GoVersion
 ui/                     Vite + React + TypeScript; builds into internal/server/ui/dist
+data/                   data.go embeds the data files (package advisor/data)
 data/catalog/           families.yaml — the curated catalogue (data, never counted in prose)
+data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card, with sources and dates
 scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/
 .github/workflows/      CI: ubuntu, macos, windows
 ```
@@ -98,6 +100,9 @@ a session cannot run Go itself.
 - The daemon: `advisor [-port N] [-data-dir DIR] [-no-browser] [-v] [-version]`.
   The port is the only network setting.
 - UI alone: `cd ui && npm run dev | build | test | check`.
+- This machine's hardware profile, as the daemon would read it:
+  `ADVISOR_PRINT_PROFILE=1 go test ./internal/hardware -run TestDetectOnThisMachine -v`,
+  or `GET /api/hardware` on a running daemon.
 
 ## Conventions
 
@@ -105,7 +110,15 @@ a session cannot run Go itself.
 context (`fmt.Errorf("store: open %s: %w", …)`); package-prefixed messages.
 `log/slog` for logging. Contexts on anything that waits. Tests live beside
 the code, use `t.TempDir()`, and never touch the network or the real data
-folder. Fixture files, not live tools, for every parser (step 2).
+folder. Fixture files, not live tools, for every parser: hardware
+detection reads the machine through `internal/hardware`'s `env` seam, and a
+machine is one `testdata/<os>/<name>.txtar` holding each tool's output in its
+real format (`-- $ nvidia-smi --`, `-- sys/bus/pci/devices/…/class --`). A
+fixture says in its header whether values were captured or chosen. Each
+scenario has a golden profile in `testdata/golden/`; after an intended change
+run `go test ./internal/hardware -run Scenario -update` and review the diff
+like code. No symlinks and no colons in fixture file names (Windows checks
+them out).
 
 **API.** JSON, snake_case keys, `GET /api/…`. Register endpoints through
 `Server.api("METHOD /api/path", handler)` so a wrong method is a 405. Errors
@@ -137,11 +150,15 @@ Buttons say what they will do and what it costs. Never count the catalogue.
 
 **Data files** (`data/`) are data: the schema is in the file's header
 comment and mirrored by a Go type; entries carry the date a person reviewed
-them.
+them and where they came from. They are embedded through `data/data.go` and
+decoded strictly (`goccy/go-yaml`, unknown keys are errors).
+`runtime-support.yaml` is checked against the Ollama release it names — its
+build presets, not only its docs; `support_test.go` is its contract.
 
-**Dependencies.** Go: stdlib + `modernc.org/sqlite`. UI: React, React
-Router, Vite, Vitest, Testing Library. A new one is a sentence in the PR
-saying what it replaces. Nothing that needs cgo, ever.
+**Dependencies.** Go: stdlib + `modernc.org/sqlite`, `github.com/goccy/go-yaml`
+(data files) and `golang.org/x/sys` (CPUID) — ARCHITECTURE.md D-26. UI:
+React, React Router, Vite, Vitest, Testing Library. A new one is a sentence
+in the PR saying what it replaces. Nothing that needs cgo, ever.
 
 **Network.** Outbound requests go only to the model sources on an allow-list
 (Hugging Face until step 9a decides otherwise; the Ollama download host in
