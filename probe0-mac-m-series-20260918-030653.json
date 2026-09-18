@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "tool": "probe0",
+  "generated_at": "2026-09-18T03:06:53.705562+02:00",
+  "machine_label": "mac-m-series",
+  "hardware": {
+    "os": "darwin",
+    "os_version": "macOS 26.6.2 (25G83)",
+    "kernel": "25.6.0",
+    "arch": "arm64",
+    "hostname": "TERN00460",
+    "cpu_model": "Apple M1 Pro",
+    "cpu_cores_physical": 10,
+    "cpu_cores_logical": 10,
+    "ram_bytes": 17179869184,
+    "ram_known": true,
+    "gpus": [
+      {
+        "vendor": "Apple",
+        "name": "Apple M1 Pro",
+        "vram_bytes": 0,
+        "vram_known": false,
+        "vram_source": "not applicable (unified memory)",
+        "note": "Apple Silicon: unified memory, no dedicated VRAM"
+      }
+    ],
+    "unified_memory": true,
+    "gpu_budget_bytes": 0,
+    "gpu_budget_known": false,
+    "gpu_budget_source": "iogpu.wired_limit_mb = 0 (macOS default, unset — effective limit not readable)",
+    "problems": [
+      "iogpu.wired_limit_mb is 0 (macOS default); the effective GPU memory budget is chosen by macOS and is not read here"
+    ]
+  },
+  "ollama": {
+    "host": "http://127.0.0.1:11434",
+    "version": "",
+    "reachable": false,
+    "model_count": 0,
+    "runtime_path": ""
+  },
+  "overhead": {
+    "description": "fixed runtime/allocator term plus a compute-graph term proportional to the width of the model",
+    "fixed_mib": 208,
+    "graph_factor": 12,
+    "batch": 512,
+    "formula": "overhead = 208 MiB + 12 * n_batch(512) * embedding_length * 4 B"
+  },
+  "ctx_values": [
+    4096,
+    32768
+  ],
+  "rows": null
+}

@@ -1,0 +1,24 @@
+probe0 — Local LLM Advisor & Optimizer, step 0
+2026-09-18T03:06:53+02:00
+
+MACHINE  mac-m-series
+  OS      macOS 26.6.2 (25G83) (darwin/arm64)
+  kernel  25.6.0
+  CPU     Apple M1 Pro
+  cores   10 physical / 10 logical
+  RAM     16.00G
+  GPU 0
+    vendor  Apple
+    name    Apple M1 Pro
+    VRAM    unknown  (not applicable (unified memory))
+    note    Apple Silicon: unified memory, no dedicated VRAM
+  GPU memory budget  unknown  (iogpu.wired_limit_mb = 0 (macOS default, unset — effective limit not readable))
+  ! iogpu.wired_limit_mb is 0 (macOS default); the effective GPU memory budget is chosen by macOS and is not read here
+
+OLLAMA
+  http://127.0.0.1:11434 — not reachable: Get "http://127.0.0.1:11434/api/tags": dial tcp 127.0.0.1:11434: connect: connection refused
+
+Ollama is not reachable at http://127.0.0.1:11434 — hardware section only.
+Start Ollama (or set -host) and run again to produce the estimator rows.
+
+JSON report: probe0-mac-m-series-20260918-030653.json
