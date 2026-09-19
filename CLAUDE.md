@@ -74,6 +74,7 @@ data/hardware/          runtime-support.yaml — which GPU path Ollama should us
 data/bench/             suite.yaml + text.txt — the benchmark suite: the advisor's own prose, three prompts, the options; versioned and pinned by digest (suite_test.go)
 scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/ (internal/estimate's tests replay them)
 scripts/calibrate/      the dev-side speed instrument: llama-bench JSON → the speed model's factors, results/ to commit; README says how
+claude/                 step-by-step build history: one doc per BUILD_PLAN.md step (closed once its gate passes), plus backlog.md and ci-failures-to-fix.md; real repo files, not just Project docs
 .github/workflows/      CI: ubuntu, macos, windows
 ```
 
