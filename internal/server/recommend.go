@@ -175,6 +175,10 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "estimator", "the advisor's own data could not be read: "+err.Error())
 		return
 	}
+	// What this computer's own benchmarks measured: exact measurements
+	// replace their configurations' estimates, the rest calibrate the speed
+	// ranges (build-plan step 6, item 6).
+	engine.Measurements = s.evidence(r.Context(), m, engine.Estimator)
 	writeJSON(w, http.StatusOK, engine.Recommend(m, purposes, installed, prefs))
 }
 
@@ -238,6 +242,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "estimator", "the advisor's own data could not be read: "+err.Error())
 		return
 	}
+	measured := s.evidence(r.Context(), m, est)
 	pl := est.Place(m)
 	if ctx == 0 {
 		ctx = estimate.OllamaDefaultContext(pl)
@@ -262,6 +267,9 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		fit := FileFit{File: f, Estimate: est.FitPlaced(pl, m, estimate.Model{File: f, Projector: projector, Size: model.Size}, estimate.Request{NumCtx: ctx, KVCacheType: kv})}
+		if meas, ok := measured[recommend.MeasurementKey{CatalogFileID: f.ID, NumCtx: ctx}]; ok && kv == estimate.KVF16 {
+			fit.Estimate = fit.Estimate.WithMeasurement(meas)
+		}
 		resp.Fits = append(resp.Fits, fit)
 	}
 	for _, want := range defaultQuants {

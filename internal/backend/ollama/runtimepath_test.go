@@ -12,7 +12,7 @@ func TestPathFromLogPicksLastMatchingLine(t *testing.T) {
 	log := `time=2026-09-18T10:00:00 level=INFO msg="looking for compatible GPUs"
 time=2026-09-18T10:00:01 level=WARN msg="failed rocm init"
 time=2026-09-18T10:00:02 level=INFO source=types.go:130 msg="inference compute" id=GPU-0 library=cuda variant=v12 compute=8.9 name="NVIDIA GeForce RTX 4080" total="16.0 GiB" available="15.0 GiB"`
-	path, evidence, ok := pathFromLog(log)
+	path, evidence, ok := pathFromLog(log, false)
 	if !ok {
 		t.Fatal("expected a match")
 	}
@@ -35,7 +35,7 @@ func TestPathFromLogCoversEveryBackend(t *testing.T) {
 		`ggml_cuda_init: found 1 CUDA devices`:     hardware.PathCUDA,
 	}
 	for line, want := range cases {
-		got, _, ok := pathFromLog(line)
+		got, _, ok := pathFromLog(line, false)
 		if !ok || got != want {
 			t.Errorf("pathFromLog(%q) = %q, %v, want %q, true", line, got, ok, want)
 		}
@@ -43,10 +43,10 @@ func TestPathFromLogCoversEveryBackend(t *testing.T) {
 }
 
 func TestPathFromLogEmpty(t *testing.T) {
-	if _, _, ok := pathFromLog(""); ok {
+	if _, _, ok := pathFromLog("", false); ok {
 		t.Fatal("empty log should not match")
 	}
-	if _, _, ok := pathFromLog("   \n  "); ok {
+	if _, _, ok := pathFromLog("   \n  ", false); ok {
 		t.Fatal("whitespace-only log should not match")
 	}
 }

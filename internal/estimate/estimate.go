@@ -131,6 +131,13 @@ type Speed struct {
 	Unknown    string       `json:"unknown,omitempty"`
 	// Basis says, for the Advanced view, what the range was built from.
 	Basis string `json:"basis,omitempty"`
+	// Calibrated is true when the range was built from a benchmark of
+	// another model on this computer (calibration.go) rather than from the
+	// published figures for this kind of part; CalibratedFrom names that
+	// model. Still an estimate: only the configuration that was measured is
+	// a measurement.
+	Calibrated     bool   `json:"calibrated,omitempty"`
+	CalibratedFrom string `json:"calibrated_from,omitempty"`
 }
 
 // Basis records which inputs of an estimate were measured, estimated or
@@ -147,6 +154,9 @@ type Basis struct {
 	BudgetKnown bool `json:"budget_known"`
 	// SpeedSource is measured, estimated or unknown.
 	SpeedSource SpeedSource `json:"speed_source"`
+	// SpeedCalibrated: the estimate was built from this computer's own
+	// benchmark of another model (Speed.Calibrated).
+	SpeedCalibrated bool `json:"speed_calibrated,omitempty"`
 }
 
 // MemoryModel grades the memory estimate's footing.

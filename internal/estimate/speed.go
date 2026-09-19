@@ -33,12 +33,18 @@ import (
 // Unknown says so. The range narrows to a point the moment a benchmark
 // measures it (WithMeasurement).
 
-// speedRange is a bandwidth (GB/s) and efficiency pair, as a range.
+// speedRange is what one part of the machine achieves, as a range: the
+// memory bandwidth generation reaches (bandwidth × efficiency, GB/s) at the
+// slow and the fast end, and the rate at which it reads a prompt, in
+// parameter-tokens per second (tok/s × parameters used per token), which is
+// how a prompt rate carries over from one model size to another.
 type speedRange struct {
-	bwLow, bwHigh   float64 // GB/s
-	effLow, effHigh float64
-	ratio           Range // prompt ÷ generation
-	label           string
+	low, high             float64 // GB/s
+	promptLow, promptHigh float64 // parameter-tokens per second; 0 = no estimate
+	label                 string
+	// calibrated is set when this machine's own benchmark set the range
+	// (Calibration), and names the model it was measured on.
+	calibrated *CalibrationPoint
 }
 
 func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShare float64, cat Category) Speed {
@@ -50,10 +56,7 @@ func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShar
 	cfg := e.Config
 
 	// Bytes read per token, in GB (decimal, like the bandwidth figures).
-	active := 1.0
-	if model.Size.ActiveParameters > 0 && model.Size.Parameters > 0 {
-		active = float64(model.Size.ActiveParameters) / float64(model.Size.Parameters)
-	}
+	active := activeShare(model)
 	weightsGB := float64(t.weights) * active / 1e9
 	cacheGB := float64(t.kv) / 1e9
 	if weightsGB <= 0 {
@@ -62,15 +65,23 @@ func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShar
 	moe := model.File.Header.ExpertCount > 0
 
 	var device, system *speedRange
-	var why string
 	if pl.Device != nil && !pl.SharedMemory {
-		device, why = e.deviceSpeed(pl)
+		pop, why := e.deviceSpeed(pl)
+		device = e.withCalibration(pop, pl.Path, weightsGB)
 		if device == nil {
 			return Speed{Unknown: why}
 		}
 	}
 	if pl.Device == nil || pl.SharedMemory || gpuShare < 1 {
-		system, why = e.systemSpeed(m.Profile, pl)
+		// The whole model in system memory runs on the plan's own path (the
+		// processor, or graphics built into it); the part of a split model
+		// that spills runs on the processor.
+		path := hardware.PathCPU
+		if pl.Device == nil || pl.SharedMemory {
+			path = pl.Path
+		}
+		pop, why := e.systemSpeed(m.Profile, pl)
+		system = e.withCalibration(pop, path, weightsGB)
 		if system == nil {
 			if device != nil { // a split: the device is known, the processor's memory is not
 				why = "no speed estimate: part of this model would run on the processor, and " + why
@@ -87,8 +98,8 @@ func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShar
 		if r == nil || share <= 0 {
 			return
 		}
-		secLow += share * (weightsGB + cacheGB) / (r.bwLow * r.effLow)
-		secHigh += share * weightsGB / (r.bwHigh * r.effHigh)
+		secLow += share * (weightsGB + cacheGB) / r.low
+		secHigh += share * weightsGB / r.high
 	}
 	primary := device
 	if device != nil {
@@ -104,20 +115,17 @@ func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShar
 		genHigh *= cfg.MoEGeneration.High
 	}
 
-	// Prompt processing: the reference model's generation speed, scaled to
-	// this model's parameters, times the path's measured ratio; slowed by
-	// the same factor a split slows generation.
+	// Prompt processing: the part's prompt rate over this model's
+	// parameters; slowed by the same factor a split slows generation.
 	params := float64(model.Size.Parameters)
 	if model.Size.ActiveParameters > 0 {
 		params = float64(model.Size.ActiveParameters)
 	}
 	var prompt *figure.Rate
-	if params > 0 {
-		refGB := params * cfg.PromptReferenceBytesPerParam / 1e9
-		pLow := primary.ratio.Low * primary.bwLow * primary.effLow / refGB
-		pHigh := primary.ratio.High * primary.bwHigh * primary.effHigh / refGB
+	if params > 0 && primary.promptHigh > 0 {
+		pLow, pHigh := primary.promptLow/params, primary.promptHigh/params
 		if device != nil && gpuShare < 1 {
-			whole := weightsGB / (device.bwHigh * device.effHigh)
+			whole := weightsGB / device.high
 			slow := whole / secHigh // < 1
 			pLow, pHigh = pLow*slow, pHigh*slow
 		}
@@ -139,7 +147,21 @@ func (e *Estimator) speed(pl Placement, m Machine, model Model, t terms, gpuShar
 	if moe {
 		basis += "; scaled for a mixture-of-experts model"
 	}
-	return Speed{Known: true, Generation: &gen, Prompt: prompt, Basis: basis}
+	out := Speed{Known: true, Generation: &gen, Prompt: prompt, Basis: basis}
+	if primary.calibrated != nil {
+		out.Calibrated, out.CalibratedFrom = true, primary.calibrated.Label
+	}
+	return out
+}
+
+// activeShare is the share of a model's weights one token reads: all of
+// them for a dense model, active ÷ total for a mixture of experts and for
+// Gemma's per-layer-embedding sizes.
+func activeShare(model Model) float64 {
+	if model.Size.ActiveParameters > 0 && model.Size.Parameters > 0 {
+		return float64(model.Size.ActiveParameters) / float64(model.Size.Parameters)
+	}
+	return 1
 }
 
 // deviceSpeed is the bandwidth and efficiency of the placement's graphics
@@ -163,16 +185,29 @@ func (e *Estimator) deviceSpeed(pl Placement) (*speedRange, string) {
 	if !ok {
 		return nil, fmt.Sprintf("no speed estimate: the advisor has no speed figures for the %q runtime path", pl.Path)
 	}
-	r := &speedRange{bwLow: spec.BandwidthGBs, bwHigh: spec.BandwidthGBs, effLow: ps.Efficiency.Low, effHigh: ps.Efficiency.High, ratio: ps.PromptRatio}
+	eff, ratio := ps.Efficiency, ps.PromptRatio
 	if spec.Efficiency != nil {
-		r.effLow, r.effHigh = spec.Efficiency.Low, spec.Efficiency.High
+		eff = *spec.Efficiency
 	}
 	if spec.PromptRatio != nil {
-		r.ratio = *spec.PromptRatio
+		ratio = *spec.PromptRatio
 	}
+	r := e.population(spec.BandwidthGBs, spec.BandwidthGBs, eff, ratio)
 	r.label = fmt.Sprintf("%s: %s GB/s of memory bandwidth, of which %s reaches %.0f–%.0f%%",
-		name, trimFloat(spec.BandwidthGBs), pl.Path, 100*r.effLow, 100*r.effHigh)
+		name, trimFloat(spec.BandwidthGBs), pl.Path, 100*eff.Low, 100*eff.High)
 	return r, ""
+}
+
+// population is the range the published figures give for every part of a
+// kind: bandwidth × efficiency for generation, and the prompt-to-generation
+// ratio measured on the reference model turned into parameter-tokens per
+// second.
+func (e *Estimator) population(bwLow, bwHigh float64, eff, ratio Range) *speedRange {
+	perParam := 1e9 / e.Config.PromptReferenceBytesPerParam // reference parameters per GB
+	return &speedRange{
+		low: bwLow * eff.Low, high: bwHigh * eff.High,
+		promptLow: ratio.Low * bwLow * eff.Low * perParam, promptHigh: ratio.High * bwHigh * eff.High * perParam,
+	}
 }
 
 // systemSpeed is the same for models (or parts of models) that run on the
@@ -184,14 +219,14 @@ func (e *Estimator) systemSpeed(p hardware.Profile, pl Placement) (*speedRange, 
 		return nil, "the table of processors could not be read"
 	}
 	ps := e.Config.Paths[hardware.PathCPU]
-	r := &speedRange{effLow: ps.Efficiency.Low, effHigh: ps.Efficiency.High, ratio: ps.PromptRatio}
+	eff := ps.Efficiency
 
 	// Apple Silicon's processor reads the same unified memory as its GPU.
 	if p.UnifiedMemory {
 		if g, ok := p.PrimaryGPU(); ok {
 			if spec, found := e.Devices.GPU(g); found {
-				r.bwLow, r.bwHigh = spec.BandwidthGBs, spec.BandwidthGBs
-				r.label = fmt.Sprintf("%s: %s GB/s of memory bandwidth, of which the processor reaches %.0f–%.0f%%", cpuName, trimFloat(spec.BandwidthGBs), 100*r.effLow, 100*r.effHigh)
+				r := e.population(spec.BandwidthGBs, spec.BandwidthGBs, eff, ps.PromptRatio)
+				r.label = fmt.Sprintf("%s: %s GB/s of memory bandwidth, of which the processor reaches %.0f–%.0f%%", cpuName, trimFloat(spec.BandwidthGBs), 100*eff.Low, 100*eff.High)
 				return r, ""
 			}
 		}
@@ -205,20 +240,20 @@ func (e *Estimator) systemSpeed(p hardware.Profile, pl Placement) (*speedRange, 
 		}
 		return nil, fmt.Sprintf("the %s is not in the advisor's list of processors yet, so its memory speed is not known. A short test on this computer will measure it.", cpuName)
 	}
-	r.bwLow, r.bwHigh = spec.LowGBs, spec.HighGBs
 	x86 := p.Arch == "amd64" || p.Arch == "386"
 	avx := ""
 	switch {
 	case x86 && p.CPU.VectorKnown && !p.CPU.HasAVX2:
-		r.effLow *= e.Config.NoAVX2Factor
-		r.effHigh *= e.Config.NoAVX2Factor
+		eff.Low *= e.Config.NoAVX2Factor
+		eff.High *= e.Config.NoAVX2Factor
 		avx = "; no AVX2, which about halves it"
 	case x86 && !p.CPU.VectorKnown:
-		r.effLow *= e.Config.NoAVX2Factor
+		eff.Low *= e.Config.NoAVX2Factor
 		avx = "; whether it has AVX2 could not be read, so the low end assumes not"
 	}
+	r := e.population(spec.LowGBs, spec.HighGBs, eff, ps.PromptRatio)
 	r.label = fmt.Sprintf("%s: %s–%s GB/s of memory bandwidth (%s; what is installed is not read), of which the processor reaches %.0f–%.0f%%%s",
-		cpuName, trimFloat(spec.LowGBs), trimFloat(spec.HighGBs), spec.Memory, 100*r.effLow, 100*r.effHigh, avx)
+		cpuName, trimFloat(spec.LowGBs), trimFloat(spec.HighGBs), spec.Memory, 100*eff.Low, 100*eff.High, avx)
 	return r, ""
 }
 

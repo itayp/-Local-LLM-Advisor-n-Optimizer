@@ -422,3 +422,69 @@ body {
 .notice p:last-child {
   margin-bottom: 0;
 }
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.button--secondary {
+  background: transparent;
+}
+
+.link-button {
+  font: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Benchmarks: pick a model and a context, see what the test will do, run it. */
+.bench-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin: 16px 0;
+}
+
+.bench-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bench-form select {
+  font: inherit;
+  padding: 6px 8px;
+  max-width: 100%;
+}
+
+.bench-plan,
+.bench-running,
+.bench-run {
+  margin: 16px 0;
+}
+
+.bench-running progress {
+  width: 100%;
+  max-width: 480px;
+}
+
+.bench-resources {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bench-history__title {
+  font-size: 17px;
+  margin: 32px 0 8px;
+}
+
+.bench-status--failed {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+}

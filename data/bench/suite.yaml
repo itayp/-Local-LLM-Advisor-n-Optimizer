@@ -1,0 +1,64 @@
+# The benchmark suite — build-plan step 6, ARCHITECTURE.md D-44.
+#
+# What every benchmark sends to the model. The text is the suite's own
+# (text.txt beside this file: original English prose written for it), never
+# anything the user typed — product rule 7. Nothing here is sent anywhere
+# but the runtime on this computer.
+#
+# Schema (mirrored by internal/bench.Suite; decoded strictly — an unknown
+# key is an error):
+#
+#   version            The suite's version. Bump it on ANY change to this
+#                      file, to text.txt, or to how the harness times a
+#                      request: runs of different versions are never
+#                      compared. suite_test.go pins the digest of each
+#                      version, so an edit without a bump fails the build.
+#   reviewed_at        YYYY-MM-DD, when a person last read the suite.
+#   text               The file the prompts are cut from: paragraphs
+#                      separated by blank lines.
+#   lead               The line put before every request's text, with {n}
+#                      replaced by the request's number within the run
+#                      (0 for the warm-up). Its only job is to make every
+#                      request differ from the one before within its first
+#                      tokens, so the runtime cannot reuse its cache of the
+#                      previous prompt and time only the difference.
+#   completion_tokens  The answer's budget (num_predict). The text ends
+#                      mid-essay and is sent without a chat template, so the
+#                      model continues the prose and nearly always uses all
+#                      of it.
+#   temperature, seed  Deterministic sampling: the same answer every time.
+#   warmups            Untimed requests at the start of a run: they pay for
+#                      the load and anything else done once, and are
+#                      discarded (the load time is kept, as the load's).
+#   repeats            Timed requests per prompt; each result is their median
+#                      and their spread.
+#   prompts            id          what the API and the UI call the prompt
+#                      paragraphs  the prompt is the first N paragraphs of
+#                                  the text
+#                      tokens      its length with Llama 3's tokenizer
+#                                  (llama3-tokenizer-js, 2026-09-19), as a
+#                                  reference: each model's own tokenizer
+#                                  gives its own count, which the runtime
+#                                  reports and every result keeps. The long
+#                                  prompt stays under 8,192 − 256 so a
+#                                  context of 8,192 can hold it and its answer.
+
+version: "1"
+reviewed_at: "2026-09-19"
+text: text.txt
+lead: "{n}."
+completion_tokens: 256
+temperature: 0
+seed: 42
+warmups: 1
+repeats: 3
+prompts:
+  - id: "500"
+    paragraphs: 4
+    tokens: 475
+  - id: "2000"
+    paragraphs: 15
+    tokens: 2047
+  - id: "8000"
+    paragraphs: 54
+    tokens: 7408

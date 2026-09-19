@@ -238,13 +238,29 @@ type GenerateRequest struct {
 	// this request ("5m", "0" to unload immediately, "-1" forever). ""
 	// means the runtime's own default.
 	KeepAlive string
+
+	// Raw sends Prompt to the model exactly as given: no chat template, no
+	// system prompt, nothing the runtime adds. The benchmark harness times
+	// its own text and nothing else (step 6). Every runtime has such a mode
+	// (Ollama's raw, llama-server's /completion, LM Studio's
+	// /v1/completions).
+	Raw bool
+
+	// NoTruncate asks the runtime to refuse a prompt longer than the context
+	// instead of silently dropping part of it — a benchmark of a shortened
+	// prompt times the wrong thing — and not to shift the context when the
+	// answer reaches its end.
+	NoTruncate bool
 }
 
 // GenerateEvent is one update from Generate: a token chunk, or the final
 // event (Done == true) carrying the runtime's own timing, which the
 // benchmark harness reads for tokens/sec.
 type GenerateEvent struct {
-	Response   string
+	Response string
+	// Thinking is text a reasoning model produced before its answer, when
+	// the runtime separates the two. For timing it is output like any other.
+	Thinking   string
 	Done       bool
 	DoneReason string
 
@@ -254,6 +270,54 @@ type GenerateEvent struct {
 	PromptEvalDuration time.Duration
 	EvalCount          int
 	EvalDuration       time.Duration
+
+	// PromptEvalCached is how many of PromptEvalCount's tokens the runtime
+	// reused from its cache instead of processing — PromptEvalDuration
+	// covers only the rest. PromptEvalCachedKnown is false when the runtime
+	// does not say (Ollama before its llama-server engine).
+	PromptEvalCached      int
+	PromptEvalCachedKnown bool
+}
+
+// LoadReport is what a runtime said, in its own output, about how it loaded
+// a model: the path it took, the cache and attention settings it chose,
+// where the layers went. Read, never assumed (D-21): a field the output did
+// not state stays empty, and Evidence lists the lines that were read.
+type LoadReport struct {
+	// Read is false when the runtime's output could not be read at all
+	// (no log where one was looked for); Why then says so.
+	Read bool
+	Why  string
+
+	RuntimePath hardware.RuntimePath // "" when the output named no device
+	// Devices are the devices that hold part of the model's weights, by the
+	// runtime's own names ("CUDA0", "MTL0", "Vulkan0", "CPU_Mapped").
+	Devices []string
+
+	FlashAttention      bool
+	FlashAttentionKnown bool
+	KVCacheType         string // "f16", "q8_0", …; "" when not stated
+
+	// LayersOnGPU of Layers were placed on the graphics device; both 0 when
+	// not stated.
+	LayersOnGPU int
+	Layers      int
+
+	// ContextSize and Parallel are what the runtime was started with (the
+	// cache holds ContextSize tokens, shared between Parallel requests);
+	// 0 when not stated.
+	ContextSize int
+	Parallel    int
+
+	Evidence []string
+}
+
+// LoadObserver is implemented by a backend that can report how it loaded a
+// model. ObserveLoad marks the runtime's output as it is now; the function
+// it returns reads what the runtime said after the mark. The benchmark
+// harness calls it around its first request, which is the load.
+type LoadObserver interface {
+	ObserveLoad() func(ctx context.Context) LoadReport
 }
 
 // InstallProgress is one update from Install: a plain sentence fit for a

@@ -4,9 +4,13 @@
 # resolves the curated model catalogue against Hugging Face (`advisor catalog
 # refresh`, into a throwaway folder), then a smoke test of the built binary
 # on that catalogue, which prints this Mac's hardware profile (GET
-# /api/hardware) and what the advisor recommends for it (`advisor
-# recommend`). Everything it prints also goes to
-# verify.log in the repo root so the result can be read back later.
+# /api/hardware), what the advisor recommends for it (`advisor
+# recommend`), and build plan step 6's gate: the benchmark run twice on an
+# installed model (they must agree within 5%), then cancelled twice (nothing
+# may be left loaded) — `advisor bench`. Ollama must be running with at
+# least one model installed; BENCH_MODEL=name picks the model (default: the
+# smallest installed one the curated list knows). Everything it prints also
+# goes to verify.log in the repo root so the result can be read back later.
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 export PATH="/usr/local/go/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH"
@@ -48,11 +52,23 @@ LOG="verify.log"
   for PURPOSES in chat coding long_context,vision; do
     echo; "$BIN" recommend -port 27183 -purposes "$PURPOSES" || echo "advisor recommend -purposes $PURPOSES FAILED"
   done
+  echo; echo "== build plan step 6's gate: two runs of the same configuration agree within 5% on generation speed, and a cancelled run leaves nothing loaded"
+  BENCH=ok
+  BENCH_ARGS=(-port 27183)
+  [ -n "$BENCH_MODEL" ] && BENCH_ARGS+=(-model "$BENCH_MODEL")
+  "$BIN" bench "${BENCH_ARGS[@]}" -runs 2 || BENCH=failed
+  echo; "$BIN" bench "${BENCH_ARGS[@]}" -cancel-after 4s || BENCH=failed
+  echo; "$BIN" bench "${BENCH_ARGS[@]}" -cancel-after 20s || BENCH=failed
+  echo; echo "== what the advisor recommends now that it has measured (the measured model's cards say so)"
+  "$BIN" recommend -port 27183 -purposes chat || echo "advisor recommend FAILED"
+  echo; "$BIN" bench -port 27183 -history
   kill $PID; wait $PID 2>/dev/null
   echo; echo "== git status"
   git status --short
   echo
-  if [ "$CATALOGUE" = ok ]; then echo "ALL GREEN"; else echo "ALL GREEN EXCEPT THE CATALOGUE REFRESH: not every size resolved (see FAIL / STOPPED above)"; exit 3; fi
+  if [ "$CATALOGUE" != ok ]; then echo "ALL GREEN EXCEPT THE CATALOGUE REFRESH: not every size resolved (see FAIL / STOPPED above)"; exit 3; fi
+  if [ "$BENCH" != ok ]; then echo "ALL GREEN EXCEPT THE BENCHMARK GATE (see NOT REPEATABLE / CANCEL above; is Ollama running with a model installed?)"; exit 4; fi
+  echo "ALL GREEN"
 } 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 echo

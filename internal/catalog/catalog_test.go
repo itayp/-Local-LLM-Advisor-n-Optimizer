@@ -304,3 +304,38 @@ func TestMatchInstalled(t *testing.T) {
 		})
 	}
 }
+
+// What a runtime reports about a model it has (Ollama's /api/show
+// model_info, decoded from JSON) reads into the same header the catalogue
+// builds from a GGUF file — numbers as the parser's types, per-layer arrays
+// kept, the tokenizer left out.
+func TestHeaderFromRuntime(t *testing.T) {
+	meta := map[string]any{
+		"general.architecture": "qwen35", "general.file_type": float64(15), "general.parameter_count": float64(9_653_104_368),
+		"qwen35.block_count": float64(33), "qwen35.context_length": float64(262144), "qwen35.embedding_length": float64(4096),
+		"qwen35.attention.head_count": float64(16), "qwen35.attention.head_count_kv": float64(4),
+		"qwen35.attention.key_length": float64(256), "qwen35.full_attention_interval": float64(4),
+		"qwen35.rope.freq_base": float64(10000000), "qwen35.attention.layer_norm_rms_epsilon": 1e-6,
+		"tokenizer.ggml.tokens": []any{"a", "b"},
+	}
+	h, kv := HeaderFromRuntime(meta)
+	if h.Architecture != "qwen35" || h.BlockCount != 33 || h.HeadCountKV != 4 || !h.HeadCountKVStated || h.KeyLength != 256 ||
+		h.ContextLength != 262144 || h.FullAttentionInterval != 4 || h.FileTypeName != "Q4_K_M" || h.GGUFVersion != 0 {
+		t.Fatalf("header %+v", h)
+	}
+	if _, ok := kv["tokenizer.ggml.tokens"]; ok {
+		t.Error("the tokenizer is never kept")
+	}
+	if v, ok := kv["general.parameter_count"].(uint64); !ok || v != 9_653_104_368 {
+		t.Errorf("whole numbers become uint64: %T %v", kv["general.parameter_count"], kv["general.parameter_count"])
+	}
+	if v, ok := kv["qwen35.attention.layer_norm_rms_epsilon"].(float64); !ok || v != 1e-6 {
+		t.Errorf("fractions stay float64: %T", kv["qwen35.attention.layer_norm_rms_epsilon"])
+	}
+	// The layout reads it like a file's header: one layer in four attends;
+	// the recurrent state's size is in ssm.* keys this sample leaves out, and
+	// the layout says so rather than guess (a real /api/show carries them).
+	if l := NewLayout(h, kv); len(l.Groups) != 1 || l.Groups[0].Layers != 8 || l.RecurrentLayers != 25 || l.Basis != LayoutIncomplete {
+		t.Errorf("a hybrid layout from runtime metadata: %+v", l)
+	}
+}

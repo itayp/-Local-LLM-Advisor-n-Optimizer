@@ -21,16 +21,17 @@ chats in the app they already use.
 
 ## Status
 
-Step 5 of the build plan: the fit estimator and the recommendation engine.
-The daemon reads the machine, finds Ollama and what it has installed, keeps
-the curated model list with each file's header metadata, and now answers the
-product's central question: `GET /api/models/{id}/fit` says how much memory a
-model needs here, where it would live and how fast it should run — a range,
-labelled as an estimate — and `GET /api/recommend?purposes=…` returns up to
-three models that fit, each with its reasons in plain words, what it costs to
-download, what it changes against the model you have, and how confident the
-advisor is. The Recommend screen shows it. Benchmarks that replace the
-estimates with measurements are step 6.
+Step 6 of the build plan: the benchmark harness. The daemon reads the
+machine, finds Ollama and what it has installed, keeps the curated model list
+with each file's header metadata, estimates how much memory a model needs
+here and how fast it should run, and recommends up to three models that fit.
+Now it also measures: the Benchmarks screen (and `POST /api/bench`) runs a
+fixed suite of the advisor's own text through an installed model, timed with
+Ollama's own counters while the machine's graphics memory, load, temperature
+and power are sampled once a second; every run is stored with everything
+that makes it comparable, and a measurement replaces the estimate of its
+configuration and narrows the estimates of similar ones. First-run
+onboarding is step 7.
 
 ## Run it
 

@@ -1,0 +1,15 @@
+Sep 19 12:10:41 aiubuntu ollama[653777]: time=2026-09-19T12:10:41.118Z level=INFO source=llama_server.go:423 msg="starting llama-server" cmd="/usr/local/lib/ollama/llama-server --model /usr/share/ollama/.ollama/models/blobs/sha256-667b0c1932bc6ffc593ed1d03f895bf2dc8dc6df21db3042284a6f4416b06a29 --port 38111 --host 127.0.0.1 --no-webui --offline -c 16384 -np 1 --log-verbosity 4 --no-log-prefix --no-log-timestamps --flash-attn auto"
+Sep 19 12:10:41 aiubuntu ollama[653777]: load_backend: loaded Vulkan backend from /usr/local/lib/ollama/vulkan/libggml-vulkan.so
+Sep 19 12:10:41 aiubuntu ollama[653777]: load_backend: loaded CPU backend from /usr/local/lib/ollama/libggml-cpu-sandybridge.so
+Sep 19 12:10:41 aiubuntu ollama[653777]: ggml_vulkan: Found 2 Vulkan devices:
+Sep 19 12:10:41 aiubuntu ollama[653777]: ggml_vulkan: 0 = AMD Radeon HD 7900 Series (RADV TAHITI) (radv) | uma: 0 | fp16: 0 | bf16: 0 | warp size: 64 | shared memory: 65536 | int dot: 0 | matrix cores: none
+Sep 19 12:10:43 aiubuntu ollama[653777]: load_tensors: offloading 20 repeating layers to GPU
+Sep 19 12:10:43 aiubuntu ollama[653777]: load_tensors: offloaded 20/33 layers to GPU
+Sep 19 12:10:43 aiubuntu ollama[653777]: load_tensors:      Vulkan0 model buffer size =  2680.25 MiB
+Sep 19 12:10:43 aiubuntu ollama[653777]: load_tensors:   CPU_Mapped model buffer size =  4685.72 MiB
+Sep 19 12:10:44 aiubuntu ollama[653777]: llama_context: flash_attn    = auto
+Sep 19 12:10:44 aiubuntu ollama[653777]: llama_kv_cache:    Vulkan0 KV buffer size =  1280.00 MiB
+Sep 19 12:10:44 aiubuntu ollama[653777]: llama_kv_cache:        CPU KV buffer size =   768.00 MiB
+Sep 19 12:10:44 aiubuntu ollama[653777]: llama_kv_cache: size = 2048.00 MiB ( 16384 cells,  32 layers,  1/1 seqs), K (f16): 1024.00 MiB, V (f16): 1024.00 MiB
+Sep 19 12:10:44 aiubuntu ollama[653777]: resolve_fused_ops: layer 20 is assigned to device CPU but Flash Attention is assigned to device Vulkan0 (usually due to missing support)
+Sep 19 12:10:44 aiubuntu ollama[653777]: resolve_fused_ops: Flash Attention not supported, set to disabled

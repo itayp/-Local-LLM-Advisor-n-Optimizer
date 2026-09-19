@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"advisor/internal/backend"
+	"advisor/internal/bench"
 	"advisor/internal/store"
 	"advisor/internal/version"
 )
@@ -85,6 +86,9 @@ type Server struct {
 
 	// cat is the catalogue endpoints' state (catalog.go).
 	cat catalogState
+
+	// bench runs benchmarks (bench.go); nil without a store.
+	bench *bench.Harness
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -97,6 +101,16 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All}
 	s.hw.ready = make(chan struct{})
 	s.cat.init()
+	if st != nil {
+		h, err := bench.New(st, log)
+		if err != nil {
+			// The suite is embedded: this is a build that cannot benchmark,
+			// and the endpoints say so.
+			log.Error("loading the benchmark suite", "err", err)
+		} else {
+			s.bench = h
+		}
+	}
 	s.routes()
 	return s
 }
@@ -115,6 +129,14 @@ func (s *Server) routes() {
 	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
 	s.api("GET /api/recommend", s.handleRecommend)
 	s.api("GET /api/models/{id}/fit", s.handleModelFit)
+	s.api("POST /api/bench", s.handleBenchStart)
+	s.api("GET /api/bench/{id}", s.handleBenchRun)
+	s.api("POST /api/bench/{id}/cancel", s.handleBenchCancel)
+	// Literal paths beside the {id} wildcard: the wildcard's own fallback
+	// answers a wrong method on them with 405 (a second fallback for the
+	// literal path would conflict with "GET /api/bench/{id}").
+	s.apiLiteral("GET /api/bench/plan", s.handleBenchPlan)
+	s.apiLiteral("GET /api/bench/history", s.handleBenchHistory)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")
@@ -142,6 +164,17 @@ func (s *Server) api(pattern string, h http.HandlerFunc) {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed on this endpoint")
 		})
 	}
+}
+
+// apiLiteral registers a method-qualified literal path that sits beside a
+// wildcard sibling registered through api() ("GET /api/bench/history"
+// beside "GET /api/bench/{id}"): the sibling's bare-path fallback already
+// answers other methods with 405.
+func (s *Server) apiLiteral(pattern string, h http.HandlerFunc) {
+	if _, path, ok := strings.Cut(pattern, " "); !ok || !strings.HasPrefix(path, "/api/") {
+		panic("server: api pattern must be \"METHOD /api/...\": " + pattern)
+	}
+	s.mux.HandleFunc(pattern, h)
 }
 
 // Handler returns the full handler chain, for Serve and for tests.

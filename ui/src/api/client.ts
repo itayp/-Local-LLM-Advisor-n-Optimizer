@@ -1,5 +1,11 @@
 import type {
   APIError,
+  BenchHistory,
+  BenchPlan,
+  BenchProgress,
+  BenchRequest,
+  BenchRun,
+  InstalledModelsResponse,
   CatalogRefreshReport,
   CatalogResponse,
   HardwareHistory,
@@ -30,8 +36,10 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return send<T>('GET', path, signal)
 }
 
-async function send<T>(method: 'GET' | 'POST', path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(base + path, { method, signal, headers: { Accept: 'application/json' } })
+async function send<T>(method: 'GET' | 'POST', path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const res = await fetch(base + path, { method, signal, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   if (!res.ok) {
     let code = 'http_error'
     let message = `${res.status} ${res.statusText}`
@@ -65,4 +73,39 @@ export const api = {
   /** How every tracked variant of one catalogue size fits; without ctx, at Ollama's own default context. */
   modelFit: (modelId: number, ctx?: number, signal?: AbortSignal) =>
     get<ModelFitResponse>(`/models/${modelId}/fit${ctx ? `?ctx=${ctx}` : ''}`, signal),
+  /** What Ollama has installed, as the daemon last read it. */
+  installedModels: (signal?: AbortSignal) => get<InstalledModelsResponse>('/models/installed', signal),
+  /** What a test would do: the prompts that fit, how long it takes, and whether it is refused. Loads nothing. */
+  benchPlan: (req: BenchRequest, signal?: AbortSignal) => get<BenchPlan>(`/bench/plan?${benchQuery(req)}`, signal),
+  /** Start a test. 409 while one runs, or (code would_spill) for a configuration that would spill — unless measure_anyway. */
+  benchStart: (req: BenchRequest, signal?: AbortSignal) => send<BenchRun>('POST', '/bench', signal, req),
+  /** Stop a test and free the model's memory; answers with the run as it ended. */
+  benchCancel: (id: number, signal?: AbortSignal) => send<BenchRun>('POST', `/bench/${id}/cancel`, signal),
+  benchRun: (id: number, signal?: AbortSignal) => get<BenchRun>(`/bench/${id}`, signal),
+  benchHistory: (signal?: AbortSignal) => get<BenchHistory>('/bench/history', signal),
+  /**
+   * Follow a test as it runs: GET /api/bench/{id} as server-sent events.
+   * onProgress sees every event; the last has a finished status. Returns
+   * the function that stops following (the test itself runs on).
+   */
+  followBench: (id: number, onProgress: (p: BenchProgress) => void, onError?: () => void): (() => void) => {
+    const es = new EventSource(`${base}/bench/${id}`)
+    es.addEventListener('progress', (ev) => {
+      const p = JSON.parse((ev as MessageEvent<string>).data) as BenchProgress
+      onProgress(p)
+      if (p.status !== 'running' && p.status !== 'queued') es.close()
+    })
+    es.onerror = () => {
+      es.close()
+      onError?.()
+    }
+    return () => es.close()
+  },
+}
+
+function benchQuery(req: BenchRequest): string {
+  const q = new URLSearchParams({ model: req.model })
+  if (req.num_ctx) q.set('num_ctx', String(req.num_ctx))
+  if (req.prompts?.length) q.set('prompts', req.prompts.join(','))
+  return q.toString()
 }

@@ -98,7 +98,7 @@ jobs:
           done
           ls -la dist
 
-      - name: Smoke test — each binary starts, answers /api/health, /api/hardware and /api/recommend, serves the UI
+      - name: Smoke test — each binary starts, answers /api/health, /api/hardware, /api/recommend and /api/bench/history, serves the UI
         shell: bash
         env:
           ADVISOR_DATA_DIR: ${{ runner.temp }}/advisor-smoke
@@ -132,6 +132,9 @@ jobs:
             # been fetched here, so the honest answer is "nothing to recommend from
             # yet" — the point is that the endpoint answers on every OS.
             "$bin" recommend -port 27182 -purposes chat,coding || { echo "advisor recommend failed"; kill $pid; exit 1; }
+            # The benchmark history (step 6): no Ollama on a runner, so no runs —
+            # the point is that the harness is wired and its table answers.
+            "$bin" bench -port 27182 -history || { echo "advisor bench -history failed"; kill $pid; exit 1; }
             kill $pid || true
             wait $pid 2>/dev/null || true
           done

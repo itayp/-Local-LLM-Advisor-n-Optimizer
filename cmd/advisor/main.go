@@ -36,6 +36,9 @@ func main() {
 	if isRecommendCommand(os.Args) {
 		os.Exit(runRecommend(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if isBenchCommand(os.Args) {
+		os.Exit(runBench(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	os.Exit(run())
 }
 
@@ -105,6 +108,9 @@ func run() int {
 	if err := srv.SyncCatalogue(ctx); err != nil {
 		log.Warn("syncing the curated catalogue", "err", err)
 	}
+	// A benchmark the previous start was running did not finish: say so in
+	// its row rather than leave it "running" forever.
+	srv.RecoverBenchmarks(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ctx, l) }()
 

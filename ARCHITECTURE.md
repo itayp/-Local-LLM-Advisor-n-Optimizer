@@ -1,7 +1,8 @@
 # Architecture decision record — Local LLM Advisor & Optimizer
 
 **Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2,
-D-27 to D-31 in step 3, D-32 to D-37 in step 4, D-38 to D-43 in step 5.
+D-27 to D-31 in step 3, D-32 to D-37 in step 4, D-38 to D-43 in step 5,
+D-44 to D-49 in step 6.
 Every later step inherits this shape. A change to a decision here is a new
 numbered entry that supersedes the old one — the old entry stays, marked
 superseded, so the reasoning survives.
@@ -1184,6 +1185,237 @@ imports both; `scripts/calibrate` imports `estimate`. `hardware` gains exported
 helpers (`MatchName`, `HumanGB`, `PrimaryGPU`, `AppleGPUCores`) and no
 dependency.
 
+---
+
+Step 6 (benchmark harness, 2026-09-19) adds D-44 to D-49.
+
+## D-44. The suite is data: the advisor's own text, sent raw, versioned and pinned
+
+**Decision.** `data/bench/suite.yaml` (schema in its header, mirrored by
+`bench.Suite`, decoded strictly) names the text (`text.txt`: original
+English prose written for the suite — an allotment year, no markup, plain
+ASCII so every tokenizer sees the same bytes), three prompts cut from it by
+paragraph count (≈ 475, 2,047 and 7,408 tokens with Llama 3's tokenizer — a
+reference count; each model's own count comes back from the runtime and is
+kept), the answer's budget (256), temperature 0, a fixed seed, one warm-up
+and three timed requests per prompt. Nothing the user typed is ever sent
+(product rule 7): the harness has no input for text at all.
+
+How a request is sent, and why (checked against Ollama v0.34.2's source,
+`server/routes.go` and `llm/llama_server.go`, and the llama.cpp it ships,
+b10969):
+
+- **raw**: no chat template, no system prompt. Templates differ per model and
+  would add a different number of tokens to each; raw times the model on the
+  suite's text and nothing else. The text ends mid-essay, so the model
+  continues the prose and uses the whole budget.
+- **a numbered lead line** (`"{n}."`, n = the request's number in the run):
+  Ollama runs llama-server with `cache_prompt: true`, which reuses the prefix
+  a request shares with the previous one on the same slot — three identical
+  prompts in a row would time one token of reading. The number makes every
+  request differ at its first token; what is still reused (the begin-of-text
+  token) is reported as `prompt_eval_cached_count` and left out of the rate.
+- **`truncate: false`, `shift: false`**: with truncation on, Ollama cuts a
+  prompt longer than the context without saying so, and the harness would time
+  a different prompt. Off, the runtime refuses it, and the prompt is skipped
+  with the runtime's words as the reason.
+- Before a run, a prompt whose reference count plus the answer plus a margin
+  (`bench.Config.ContextMargin`) exceeds the context is planned out; after the
+  warm-up, the model's own tokens-per-word ratio re-checks the rest.
+
+The suite's version is part of every run's comparability key (D-46), and
+`suite_test.go` pins each version to a digest of the YAML and the text: an
+edit without a version bump fails the build.
+
+**Consequences.** At Ollama's default context on machines under 23 GiB of
+graphics memory (4k), the long prompt does not run; a run at 8,192 or more
+runs all three. The prompt lengths are a reference, not a promise, and the
+results carry each model's own counts.
+
+## D-45. A run: one at a time, timed by the runtime, and a cancel that unloads
+
+**Decision.** `bench.Harness` runs one benchmark at a time (a second request
+is 409, never queued), detached from the HTTP request that started it —
+closing the page does not stop it; cancel does. A run is:
+
+1. **prepare** — if this model is loaded (by the user's chat app, at another
+   context) it is unloaded; other loaded models are noted on the run; after
+   `Config.Settle` the sampler (D-47) takes its baseline;
+2. **warm-up** — the first prompt, untimed: the load and everything done
+   once. Its `load_duration` is kept as the run's load time;
+3. **observe the load** — what the runtime said about it (D-46), where it put
+   the model (`/api/ps` size vs size_vram → gpu, split or cpu; the log's
+   "offloaded N/M layers" wins when the two disagree), and a fresh `Detect`,
+   recorded in `backends` like any check, so the path a benchmark's load
+   established is what the recommendation engine plans against next (D-39);
+4. **timed requests** — three per prompt; generation = `eval_count /
+   eval_duration`, prompt = `(prompt_eval_count − cached) /
+   prompt_eval_duration`, both Ollama's own counters; time to first token at
+   the client, request sent to the first streamed chunk of answer (or of
+   reasoning — it is output too). Each prompt's result is the median and the
+   spread, (max − min) ÷ median, with notes when the runs disagree by more
+   than 5% (the gate's tolerance), the answer stopped early, or the cache was
+   reused;
+5. **unload** — with a context of its own, so a cancelled run still does it:
+   ask, then poll `/api/ps` until the model is absent on two readings in a
+   row, asking again whenever it reappears — a load still in progress when a
+   run is cancelled finishes and shows up after the first request. The run
+   records `unloaded` true, or false with why.
+
+The headline of a run is the shortest prompt's result: a short prompt and an
+almost empty cache are what the estimator's speed figures describe
+(llama-bench's 512-token prompt). A daemon that stops mid-run leaves a row
+that says "running"; the next start marks it failed (`Recover`).
+
+**The backend interface grows by two fields and one optional interface**
+(D-27 said `Generate` stays thin; it does): `GenerateRequest.Raw` and
+`NoTruncate`, which every runtime D-27 checked has (llama-server's
+`/completion`, LM Studio's `/v1/completions`), and `GenerateEvent.Thinking`
+and `PromptEvalCached`. `backend.LoadObserver` is optional: a backend that
+can read its own load (Ollama: the server log) implements it; one that
+cannot leaves the run's path, cache type and flash attention unknown.
+
+## D-46. What makes two runs comparable, read from the runtime, never assumed
+
+**Decision.** `bench.RunConfig` is the whole context of a run, and
+`RunConfig.Key()` is a digest of the part that decides comparability: the
+hardware fingerprint, the backend and its version, the runtime path the load
+took, the model's digest (else name, quant and size), the context asked for,
+the cache type, flash attention (unknown is its own value), the parallel
+slots, and the suite's version and digest. The daemon's version is stored,
+not keyed: what the harness does to time a request belongs to the suite's
+version. Runs are compared — "−0.4% against run 12" — only when their keys
+are equal; a vulkan run and a rocm run on one card are two configurations.
+
+The runtime path, the cache type, flash attention, the layers offloaded and
+the context the runtime was started with are **read** from the runtime's own
+account of the load: Ollama v0.34 runs llama-server with `--log-verbosity 4`,
+so its load lines reach Ollama's server log — `offloaded N/M layers to GPU`,
+`<device> model buffer size` (CUDA0, ROCm0, MTL0, Vulkan0, CPU_Mapped: the
+device every part of the weights went to), `flash_attn = auto` and
+`resolve_fused_ops: Flash Attention enabled` (auto alone decides nothing),
+`llama_kv_cache: … K (f16) … V (f16)`, and Ollama's `starting llama-server
+… -c N -np P`. `ObserveLoad` marks the log's length before the warm-up and
+reads only what follows; on Linux under systemd it reads the journal from
+the same moment. Where nothing can be read, each value is `unknown` (D-21):
+the run is stored and compared as unknown, and does not replace an estimate
+(D-48). `pathFromLog` (D-31) learned the model-buffer lines too, and — when
+`/api/ps` already says the model is in graphics memory — ignores the
+processor's lines, which builds that load backends as libraries print last.
+
+**Consequences.** Migration 0005 adds what schema v0 lacked:
+`hardware_fingerprint`, `model_digest`, `flash_attention_known`,
+`config_key`, `config_json` (the whole RunConfig and the run-level figures),
+`model_json` (the header facts the estimator used, D-48), `estimate_json`
+(the estimate the run is shown against), `notes_json`, `resident`, the
+runtime's own `ps_size_bytes` / `ps_size_vram_bytes` (its estimate, kept as
+context and as evidence for where "fits" ends — D-20 finding 4),
+`effective_ctx`, `memory_source`, `unloaded`, `measure_anyway`, and a
+`device` column on samples.
+
+## D-47. The resource sampler: the counters that exist, without root, and words where none do
+
+**Decision.** Once a second (`bench.Config.SampleInterval`) every probe the
+machine has reads its tool, through a `sysEnv` seam the tests answer from
+fixtures in each tool's real format (`internal/bench/testdata/sampler/`):
+
+| | graphics memory (the footprint's counter) | also |
+|---|---|---|
+| NVIDIA (Windows, Linux) | `nvidia-smi` memory.used, summed over cards | utilisation, temperature, power |
+| AMD on Linux | amdgpu sysfs `mem_info_vram_used` + `mem_info_gtt_used` (D-20 finding 6: part of a Vulkan model lands in GTT) | `gpu_busy_percent`, hwmon temperature and power |
+| Apple Silicon | `vm_stat` wired memory (D-20 finding 6: it tracks a model; ioreg's figure does not) | ioreg's "Device Utilization %", memory in use |
+| everything | — | system memory (`/proc/meminfo`, `vm_stat`, `GlobalMemoryStatusEx`), and the runtime's `/api/ps` |
+
+rocm-smi and amd-smi read the same sysfs counters; reading them directly
+needs no tool, no output format and no root. `powermetrics` (a Mac's
+temperature and power) needs root and is not used. Where nothing reads the
+graphics memory — AMD and Intel cards on Windows (D-6), Intel on Linux,
+graphics built into the processor, an NVIDIA card without nvidia-smi — the
+run's `sampler_note` says so in words; nothing is shown as zero.
+
+The model's footprint (`peak_vram`) is the counter's peak rise over its
+baseline before the load, summed over devices: step 0's measurement, taken
+continuously. It is not reported when another model came or went during the
+run (`/api/ps` is watched for that), and is marked partial when the model was
+split. Utilisation and power are means over the timed requests; temperature
+is the hottest reading; system memory is the peak in use (absolute: a mapped
+model sits in the page cache, which Linux counts as available).
+
+## D-48. A measurement replaces its estimate, and narrows the others
+
+**Decision.** Product rule 4's second sentence, twice over:
+
+- **The configuration measured.** When a run finishes, the `estimates` row for
+  (this hardware profile, the catalogue file, num_ctx, the cache type read,
+  the path read) is inserted or updated in place with `source = 'measured'`,
+  the measured rates (low = high), the measured footprint where the model was
+  wholly on the graphics, and `measured_run_id` — D-13 and D-43 said step 6
+  owns the row; it does. Only a configuration the estimator can be asked
+  about is written: a model the catalogue maps to a file (step 4), and a
+  cache type and path that were read. `GET /api/recommend` and
+  `GET /api/models/{id}/fit` read the latest measurement of every
+  configuration on this hardware (by fingerprint, across daemon starts) and
+  pass it through `Estimate.WithMeasurement`: the speed becomes a point, the
+  memory the measured figure, the confidence high (D-42).
+- **Everything similar.** `estimate.Calibrate` turns every finished,
+  wholly-resident, dense run into what this machine achieved: memory
+  bandwidth while answering (tok/s × the bytes a token reads, the cache at the
+  run's average fill included) and the rate it reads a prompt (tok/s ×
+  parameters). Other models on the same path are then estimated from the
+  measurement nearest in size, ± `CalibrationMargin` (5%, the gate's own
+  tolerance) + `CalibrationMarginPerDoubling` (6%) for every doubling of size
+  between them, capped at 30% and never wider than the published range was. A
+  part that is not in gpus.yaml — which had no estimate at all — gets one;
+  the processor's range, the widest of all, collapses to this machine's. The
+  estimate stays an estimate (`Speed.Calibrated`, `CalibratedFrom`), the
+  reason on the card says which test it came from, and the confidence treats
+  it as a tight path. Mixture-of-experts and split runs do not calibrate. The
+  constants are CHOSEN in `estimate.Config`, with what settles them.
+
+**Consequences.** One benchmark of llama3.1:8b on a Windows PC makes every
+other model's range on that card this card's, not the population's. The
+measured model itself, benchmarked through a name the catalogue does not
+know, still calibrates — `model_json` keeps the header facts from Ollama's
+`/api/show` (`catalog.HeaderFromRuntime`).
+
+## D-49. The API, the refusal, and the screen
+
+**Decision.**
+
+- `GET /api/bench/plan?model=&num_ctx=&prompts=` — what a run would do,
+  without loading anything: the prompts that fit, the estimate, the duration
+  (estimated, from the speed range, the load and the settle), and the
+  **refusal** (step 6, item 5). Not in the build plan's list; added because
+  product rule 5 needs the button to say how long it takes, and a refusal is
+  better shown before the click than after it.
+- `POST /api/bench` `{model, num_ctx, prompts, measure_anyway}` → 202 and the
+  run. Refused with 409 (`would_spill`, `not_recommended`) when the estimate
+  says the configuration spills onto the processor, only fits at a shorter
+  context (the plan names it), or does not fit at all — unless
+  `measure_anyway`; a run made anyway says so in its notes. A model planned
+  for the processor because there is no usable graphics is not spilling
+  (product rule 6), and a budget the advisor cannot read refuses nothing:
+  measuring is what it needs. 422 `nothing_fits` when no prompt fits the
+  context; 404 for a model not installed; 409 while a run is in progress.
+- `GET /api/bench/{id}` — the run with its samples; with `Accept:
+  text/event-stream` (a browser's `EventSource`) its progress as server-sent
+  events (`event: progress`, each carrying the whole run, so a reader that
+  falls behind loses nothing), a keep-alive comment every 15 s, and one event
+  for a run already finished.
+- `POST /api/bench/{id}/cancel` — stops the run, unloads the model (D-45),
+  and answers with the run as it ended, `unloaded` included.
+- `GET /api/bench/history[?model=][&limit=]` — newest first, each run
+  compared with the previous run of its configuration.
+
+The literal paths beside the `{id}` wildcard are registered with
+`Server.apiLiteral`: the wildcard's own fallback already answers a wrong
+method with 405. `advisor bench` is the developer's text client
+(`-runs 2`: the gate's repeatability; `-cancel-after`: the gate's cancel,
+checked against Ollama's own `/api/ps` as well as the daemon's word);
+`scripts/verify.command` runs both. A minimal **Benchmarks screen** plans,
+runs, follows, cancels and lists — so the gate runs on the Windows PC without
+a terminal; step 8 builds the full screen (compare two runs side by side).
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -1205,13 +1437,29 @@ dependency.
   real header is visible.
 - **The constants that are CHOSEN** (estimate.Config says which): where
   "fits" ends (92%), the OS reserve, the processor's efficiency range and the
-  no-AVX2 factor. Step 6 records size against size_vram and system memory for
-  every run; `scripts/calibrate` with `-ngl 0` on the Windows PC and the Mac
-  Pro settles the processor's. The Mac Pro's D700s on Vulkan are older than
-  anything in the public scoreboard — calibrate them first.
-- **llama.cpp is not Ollama.** The speed constants come from llama-bench;
-  a consistent gap to Ollama's own eval rate is a constant the model does not
-  have yet (scripts/calibrate/README.md says how to look for it).
+  no-AVX2 factor. Every benchmark run now stores Ollama's size against
+  size_vram, the log's layers offloaded, and the peak of system memory
+  (D-46, D-47): a `measure_anyway` run at the border of "fits" is the
+  evidence for 92%. `scripts/calibrate` with `-ngl 0` on the Windows PC and
+  the Mac Pro still settles the processor's population range; on a machine
+  that has run a benchmark, calibration (D-48) already replaces it. The Mac
+  Pro's D700s on Vulkan are older than anything in the public scoreboard —
+  benchmark them first.
+- **llama.cpp is not Ollama.** The population ranges come from llama-bench;
+  on a machine that has been benchmarked, Ollama's own rates replace them
+  (D-48). The fleet's benchmark rows against their uncalibrated estimates are
+  now the measurement of the gap.
+- **Where Ollama's log is** (D-46): `~/.ollama/logs/server.log` on a Mac,
+  `%LOCALAPPDATA%\Ollama\server.log` on Windows (checked against Ollama's
+  troubleshooting page, not yet on the Windows PC), the journal on a systemd
+  Linux install (readable only by a user in the `systemd-journal` or `adm`
+  group). Where it cannot be read, runs keep path and cache type unknown and
+  replace no estimate — the first Windows run is the check.
+- **The step 6 gate** — two consecutive runs agree within 5% on generation
+  speed on the NVIDIA machine and the Apple Silicon one; a cancelled run
+  leaves nothing loaded — runs through `scripts/verify.command` on the Mac and
+  the Benchmarks screen on the Windows PC. It passed against a stand-in for
+  Ollama's API in the cloud workspace only.
 - **The quant an Ollama tag pulls.** The engine assumes the usual default;
   at least one small size in Ollama's library defaults to a larger quant.
   A per-size field in families.yaml is the fix when it matters.

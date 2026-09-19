@@ -307,6 +307,11 @@ func TestLayoutsShapeTheCache(t *testing.T) {
 		if got := e.kvBytes(l, ctx, KVF16); got != want {
 			t.Errorf("cache %d, want %d", got, want)
 		}
+		// Step 5's M1 Pro run showed Gemma 4 cards with no sliding-window
+		// note: a pattern stated layer by layer says so too.
+		if !strings.Contains(strings.Join(l.Notes, "|"), "sliding-window attention on 10 of 12 layers (window 512 tokens)") {
+			t.Errorf("notes %v", l.Notes)
+		}
 	})
 	t.Run("multi-head latent attention caches one compressed key and no values", func(t *testing.T) {
 		kv := map[string]any{"deepseek2.attention.key_length_mla": float64(256), "deepseek2.attention.value_length_mla": float64(256), "deepseek2.nextn_predict_layers": float64(1)}

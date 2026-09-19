@@ -189,21 +189,43 @@ func (c *httpClient) pull(ctx context.Context, model string, progress func(statu
 	}
 }
 
+// genOptions are the request fields generate sends beside the prompt.
+type genOptions struct {
+	system    string
+	keepAlive string
+	options   map[string]any
+	// raw: no template, no system prompt (Ollama's "raw").
+	raw bool
+	// noTruncate: refuse a prompt longer than the context instead of
+	// cutting it, and do not shift the context during the answer (Ollama's
+	// "truncate": false and "shift": false; older servers ignore both).
+	noTruncate bool
+}
+
 // generate streams /api/generate. onEvent is called for every line,
-// including the final Done == true one.
-func (c *httpClient) generate(ctx context.Context, model, prompt, system, keepAlive string, options map[string]any, onEvent func(genLine) error) error {
+// including the final Done == true one. A line carrying an error (Ollama
+// reports a failure mid-stream that way, after the 200) ends the stream
+// with that error.
+func (c *httpClient) generate(ctx context.Context, model, prompt string, o genOptions, onEvent func(genLine) error) error {
 	body := map[string]any{"model": model, "stream": true}
 	if prompt != "" {
 		body["prompt"] = prompt
 	}
-	if system != "" {
-		body["system"] = system
+	if o.system != "" {
+		body["system"] = o.system
 	}
-	if keepAlive != "" {
-		body["keep_alive"] = keepAlive
+	if o.keepAlive != "" {
+		body["keep_alive"] = o.keepAlive
 	}
-	if len(options) > 0 {
-		body["options"] = options
+	if len(o.options) > 0 {
+		body["options"] = o.options
+	}
+	if o.raw {
+		body["raw"] = true
+	}
+	if o.noTruncate {
+		body["truncate"] = false
+		body["shift"] = false
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -221,7 +243,7 @@ func (c *httpClient) generate(ctx context.Context, model, prompt, system, keepAl
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("ollama: generate: %s: %s", resp.Status, strings.TrimSpace(truncate(string(data), 300)))
+		return &StatusError{Status: resp.StatusCode, Message: errorMessage(data, resp.Status)}
 	}
 	dec := json.NewDecoder(resp.Body)
 	for {
@@ -230,6 +252,9 @@ func (c *httpClient) generate(ctx context.Context, model, prompt, system, keepAl
 			return nil
 		} else if err != nil {
 			return err
+		}
+		if line.Error != "" {
+			return &StatusError{Status: resp.StatusCode, Message: line.Error}
 		}
 		if onEvent != nil {
 			if err := onEvent(line); err != nil {
@@ -242,17 +267,44 @@ func (c *httpClient) generate(ctx context.Context, model, prompt, system, keepAl
 	}
 }
 
+// StatusError is an error Ollama answered with: the HTTP status and its
+// own message ("the prompt is longer than the context length currently
+// available to the model; …").
+type StatusError struct {
+	Status  int
+	Message string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("ollama: generate: %d %s: %s", e.Status, http.StatusText(e.Status), e.Message)
+}
+
+// errorMessage reads Ollama's {"error": "..."} body, or falls back to the
+// status line and the start of the body.
+func errorMessage(body []byte, status string) string {
+	var e struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &e) == nil && e.Error != "" {
+		return e.Error
+	}
+	return strings.TrimSpace(status + ": " + truncate(string(body), 300))
+}
+
 // genLine is one line of /api/generate's streamed response.
 type genLine struct {
 	Response           string `json:"response"`
+	Thinking           string `json:"thinking"`
 	Done               bool   `json:"done"`
 	DoneReason         string `json:"done_reason"`
 	TotalDuration      int64  `json:"total_duration"` // nanoseconds
 	LoadDuration       int64  `json:"load_duration"`
 	PromptEvalCount    int    `json:"prompt_eval_count"`
+	PromptEvalCached   *int   `json:"prompt_eval_cached_count"` // Ollama 0.34+: tokens reused from the cache
 	PromptEvalDuration int64  `json:"prompt_eval_duration"`
 	EvalCount          int    `json:"eval_count"`
 	EvalDuration       int64  `json:"eval_duration"`
+	Error              string `json:"error"`
 }
 
 // unload frees a model's memory now: a generate call with keep_alive: 0 and

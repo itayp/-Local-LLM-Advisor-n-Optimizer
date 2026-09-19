@@ -388,6 +388,9 @@ export interface EstimateSpeed {
   /** Why there is no estimate, in words, when known is false. */
   unknown?: string
   basis?: string
+  /** Built from a test of another model on this computer (calibrated_from names it); still an estimate. */
+  calibrated?: boolean
+  calibrated_from?: string
 }
 
 /** Go: estimate.Basis — which inputs were measured, estimated or unknown. */
@@ -396,6 +399,8 @@ export interface EstimateBasis {
   path_source: 'established' | 'expected'
   budget_known: boolean
   speed_source: 'measured' | 'estimated' | 'unknown'
+  /** The speed range was built from a test of another model on this computer. */
+  speed_calibrated?: boolean
 }
 
 /** Go: estimate.Estimate. */
@@ -510,4 +515,216 @@ export interface ModelFitResponse {
   path_source: 'established' | 'expected'
   gpu_not_used?: UnusedGPU
   fits: FileFit[]
+}
+
+// --- Installed models (Go: internal/server/backend.go) ------------------------
+
+/** One installed model (Go: server.InstalledModelInfo). Sizes are facts from the runtime: plain text, not a Figure. */
+export interface InstalledModel {
+  backend_name: string
+  name: string
+  digest?: string
+  size_bytes: number
+  quantization?: string
+  family?: string
+  parameter_size?: string
+  modified_at?: string
+  last_seen_at: string
+  catalog_match: 'file' | 'model' | 'unknown' | ''
+  catalog_model_id?: number
+  catalog_file_id?: number
+  catalog_note?: string
+}
+
+/** GET /api/models/installed (Go: server.InstalledModelsResponse). */
+export interface InstalledModelsResponse {
+  models: InstalledModel[]
+}
+
+// --- Benchmarks (Go: internal/bench) ----------------------------------------------
+//
+// Everything a benchmark produces is MEASURED: a point, rendered with
+// <Figure>. The two exceptions are estimates and say so: a plan's duration
+// and the time left, and the estimate a run is compared with.
+
+export type BenchStatus = 'queued' | 'running' | 'done' | 'cancelled' | 'failed'
+export type BenchPhase = 'preparing' | 'loading' | 'measuring' | 'unloading' | 'finished'
+export type Resident = 'gpu' | 'split' | 'cpu' | 'unknown'
+
+/** POST /api/bench, GET /api/bench/plan (Go: bench.Request). */
+export interface BenchRequest {
+  model: string
+  /** 0 or absent: what Ollama itself uses on this computer. */
+  num_ctx?: number
+  prompts?: string[]
+  measure_anyway?: boolean
+}
+
+/** What a run was made with — two runs compare only when all of it is equal (Go: bench.RunConfig). */
+export interface BenchConfig {
+  hardware_profile_id: number
+  hardware_fingerprint: string
+  backend: string
+  backend_version: string
+  runtime_path: RuntimePath
+  runtime_path_evidence?: string
+  model: string
+  model_digest: string
+  quantization: string
+  weights_bytes: number
+  catalog_file_id: number
+  num_ctx: number
+  effective_ctx: number
+  /** "f16", "q8_0", … or "unknown" when the runtime's output could not be read. */
+  kv_cache_type: string
+  flash_attention: boolean
+  flash_attention_known: boolean
+  parallel: number
+  suite_version: string
+  suite_digest: string
+  completion_tokens: number
+  repeats: number
+  daemon_version: string
+}
+
+/** One timed request, the runtime's own counters (Go: bench.Timing). */
+export interface BenchTiming {
+  prompt_tokens: number
+  cached_tokens: number
+  cached_known: boolean
+  prompt_ms: number
+  gen_tokens: number
+  gen_ms: number
+  ttft_ms: number
+  load_ms: number
+  done_reason?: string
+}
+
+/** Medians and spread of one prompt's timed requests (Go: bench.PromptResult). */
+export interface PromptResult {
+  prompt: string
+  prompt_tokens: number
+  gen_tokens: number
+  prompt_tps?: Rate
+  generation_tps: Rate
+  ttft?: Rate
+  spread_pct: number
+  prompt_spread_pct: number
+  runs: number
+  timings: BenchTiming[]
+  notes?: string[]
+}
+
+export interface BenchSkipped {
+  prompt: string
+  why: string
+}
+
+/** The previous run of the same configuration (Go: bench.Comparison). */
+export interface BenchComparison {
+  run_id: number
+  generation_tps: Rate
+  diff_pct: number
+}
+
+/** One resource reading (Go: bench.Sample). Raw readings: the figures to show are the summaries on the run. */
+export interface BenchSample {
+  at: string
+  tool: string
+  device?: string
+  gpu_util_pct?: number
+  vram_used_bytes?: number
+  ram_used_bytes?: number
+  temp_c?: number
+  power_w?: number
+}
+
+/** GET /api/bench/{id}, and every progress event's run (Go: bench.Run). */
+export interface BenchRun {
+  id: number
+  status: BenchStatus
+  phase: BenchPhase
+  request: BenchRequest
+  config: BenchConfig
+  started_at: string
+  finished_at?: string
+  results: PromptResult[]
+  skipped?: BenchSkipped[]
+  headline?: string
+  generation_tps?: Rate
+  prompt_tps?: Rate
+  ttft?: Rate
+  load?: Rate
+  resident: Resident
+  runtime_size_bytes?: number
+  runtime_size_vram_bytes?: number
+  peak_vram?: Bytes
+  memory_source?: string
+  peak_ram?: Bytes
+  gpu_util?: Rate
+  peak_temp?: Rate
+  power?: Rate
+  sampler_note?: string
+  estimate?: Estimate
+  expected_duration?: Rate
+  replaced: boolean
+  unloaded?: boolean
+  comparison?: BenchComparison
+  notes?: string[]
+  error?: string
+  samples?: BenchSample[]
+}
+
+/** One event of GET /api/bench/{id} as a stream (Go: bench.Progress). */
+export interface BenchProgress {
+  run_id: number
+  status: BenchStatus
+  phase: BenchPhase
+  message: string
+  step: number
+  steps: number
+  elapsed_seconds: number
+  remaining?: Rate
+  last?: BenchSample
+  run: BenchRun
+}
+
+export interface PlannedPrompt {
+  id: string
+  tokens: number
+  runs: number
+  skip?: string
+}
+
+export interface BenchSuiteInfo {
+  version: string
+  digest: string
+  completion_tokens: number
+  warmups: number
+  repeats: number
+  temperature: number
+  seed: number
+}
+
+/** GET /api/bench/plan (Go: bench.Plan). */
+export interface BenchPlan {
+  model: string
+  model_source: 'catalogue' | 'runtime'
+  num_ctx: number
+  num_ctx_source: 'requested' | 'ollama_default'
+  prompts: PlannedPrompt[]
+  requests: number
+  estimate: Estimate
+  duration?: Rate
+  duration_unknown?: string
+  refusal?: string
+  refusal_code?: 'would_spill' | 'not_recommended' | 'nothing_fits'
+  suggested_ctx?: number
+  suite: BenchSuiteInfo
+  notes?: string[]
+}
+
+/** GET /api/bench/history (Go: bench.History). */
+export interface BenchHistory {
+  runs: BenchRun[]
 }

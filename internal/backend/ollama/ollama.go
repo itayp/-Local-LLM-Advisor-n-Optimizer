@@ -229,12 +229,14 @@ func (b *Backend) Generate(ctx context.Context, req backend.GenerateRequest, onE
 		return errors.New("ollama: Generate: Model is required")
 	}
 	c := b.client(0)
-	return c.generate(ctx, req.Model, req.Prompt, req.System, req.KeepAlive, req.Options, func(l genLine) error {
+	o := genOptions{system: req.System, keepAlive: req.KeepAlive, options: req.Options, raw: req.Raw, noTruncate: req.NoTruncate}
+	return c.generate(ctx, req.Model, req.Prompt, o, func(l genLine) error {
 		if onEvent == nil {
 			return nil
 		}
-		return onEvent(backend.GenerateEvent{
+		ev := backend.GenerateEvent{
 			Response:           l.Response,
+			Thinking:           l.Thinking,
 			Done:               l.Done,
 			DoneReason:         l.DoneReason,
 			TotalDuration:      time.Duration(l.TotalDuration),
@@ -243,7 +245,11 @@ func (b *Backend) Generate(ctx context.Context, req backend.GenerateRequest, onE
 			PromptEvalDuration: time.Duration(l.PromptEvalDuration),
 			EvalCount:          l.EvalCount,
 			EvalDuration:       time.Duration(l.EvalDuration),
-		})
+		}
+		if l.PromptEvalCached != nil {
+			ev.PromptEvalCached, ev.PromptEvalCachedKnown = *l.PromptEvalCached, true
+		}
+		return onEvent(ev)
 	})
 }
 

@@ -238,6 +238,10 @@ func speedReason(est estimate.Estimate) Reason {
 		return Reason{Kind: "speed", Text: fmt.Sprintf("Measured on this computer at about %s words a second — %s.", num(w), pace(w))}
 	}
 	lo, hi := g.Low*wordsPerToken, g.High*wordsPerToken
+	if est.Speed.Calibrated && est.Speed.CalibratedFrom != "" {
+		return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated from the test of %s on this computer to answer at roughly %s to %s words a second — %s.",
+			est.Speed.CalibratedFrom, num(lo), num(hi), pace((lo+hi)/2))}
+	}
 	return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated to answer at roughly %s to %s words a second — %s.", num(lo), num(hi), pace((lo+hi)/2))}
 }
 
@@ -453,8 +457,9 @@ func wantedPurpose(c candidate, p catalog.Purpose) bool {
 //	        the memory arithmetic could not read in full)
 //	high    the fit rests on arithmetic that has been measured (step 0's
 //	        gate, or a benchmark of this very configuration), the runtime
-//	        has been SEEN taking this path, and the speed is measured or is
-//	        an estimate on a path whose parts behave alike (cuda, metal)
+//	        has been SEEN taking this path, and the speed is measured, or
+//	        is an estimate on a path whose parts behave alike (cuda, metal),
+//	        or is calibrated by a test on this computer (step 6)
 //	medium  everything else: all inputs known, at least one of them only
 //	        expected, modelled or wide
 func confidence(est estimate.Estimate, pl estimate.Placement) (Confidence, string) {
@@ -485,7 +490,9 @@ func confidence(est estimate.Estimate, pl estimate.Placement) (Confidence, strin
 	case estimate.SpeedUnknown:
 		lower(ConfidenceLow, "there is no speed estimate for this computer yet")
 	case estimate.SpeedEstimated:
-		if pl.Path != hardware.PathCUDA && pl.Path != hardware.PathMetal || pl.SharedMemory {
+		// A range built from a test on this computer is this computer's, not
+		// a population's: it is as tight as cuda's and metal's.
+		if (pl.Path != hardware.PathCUDA && pl.Path != hardware.PathMetal || pl.SharedMemory) && !b.SpeedCalibrated {
 			lower(ConfidenceMedium, "speed varies a lot between computers like this one, so the range is wide")
 		}
 	}

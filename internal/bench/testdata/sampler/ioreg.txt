@@ -1,0 +1,8 @@
++-o AGXAcceleratorG13X  <class AGXAcceleratorG13X, id 0x1000002c3, registered, matched, active, busy 0 (0 ms), retain 94>
+    {
+      "IOClass" = "AGXAcceleratorG13X"
+      "model" = "Apple M1 Pro"
+      "gpu-core-count" = 16
+      "PerformanceStatistics" = {"In use system memory (driver)"=0,"Alloc system memory"=7449378816,"Tiler Utilization %"=41,"recoveryCount"=0,"lastRecoveryTime"=0,"Renderer Utilization %"=88,"TiledSceneBytes"=1507328,"Device Utilization %"=92,"SplitSceneCount"=0,"Allocated PB Size"=3407872,"In use system memory"=6512648192}
+      "AGXParameterBufferMaxSizeNeverShrinks" = 0
+    }

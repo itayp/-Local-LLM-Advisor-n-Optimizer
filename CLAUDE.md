@@ -63,7 +63,7 @@ internal/catalog/hf/    the Hugging Face client: listings with ETags, header ran
 internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files) and MapInstalled
 internal/estimate/      Fit (memory terms, split, category + the threshold that decided), the speed range, placement, gpus.yaml loader; Config holds every constant
 internal/recommend/     Recommend: at most three cards with templated reasons, versus-current, confidence; Config holds every weight
-internal/bench/         benchmark runs, results, samples (step 6)
+internal/bench/         the benchmark harness (step 6): suite loader, plan + spill refusal, one-at-a-time runner with a cancel that unloads, 1 Hz resource sampler (per-OS probes behind a sysEnv seam), medians + spread, write-back and calibration evidence
 internal/watch/         new-model watch state, notifications, log (step 10)
 internal/figure/        Source, Bytes, Rate, and Check — product rule 4
 internal/version/       Version (set by -ldflags), GoVersion
@@ -71,6 +71,7 @@ ui/                     Vite + React + TypeScript; builds into internal/server/u
 data/                   data.go embeds the data files (package advisor/data)
 data/catalog/           families.yaml — the curated catalogue (data, never counted in prose)
 data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card; gpus.yaml — memory bandwidth per graphics part and processor family; both with sources and dates
+data/bench/             suite.yaml + text.txt — the benchmark suite: the advisor's own prose, three prompts, the options; versioned and pinned by digest (suite_test.go)
 scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/ (internal/estimate's tests replay them)
 scripts/calibrate/      the dev-side speed instrument: llama-bench JSON → the speed model's factors, results/ to commit; README says how
 .github/workflows/      CI: ubuntu, macos, windows
@@ -113,6 +114,13 @@ a session cannot run Go itself.
 - The developer's view of a running daemon's recommendations, as text:
   `advisor recommend [-port N] [-purposes chat,coding] [-current NAME]` —
   what `scripts/verify.command` prints for build-plan step 5's gate.
+- The developer's benchmark client for a running daemon (build-plan step 6's
+  gate): `advisor bench [-model NAME] [-num-ctx N] [-prompts 500,2000]
+  [-runs 2] [-measure-anyway]` runs the suite and prints it (exit 3 when
+  consecutive runs differ by more than `-agree`, 5%); `advisor bench
+  -cancel-after 10s` checks a cancel leaves nothing loaded (asking Ollama's
+  own `/api/ps` too); `advisor bench -history`. The customer's is the
+  Benchmarks screen, on the same API.
 - `go run ./scripts/calibrate -label NAME bench.json` scores a llama-bench
   run against the speed model (scripts/calibrate/README.md).
 - UI alone: `cd ui && npm run dev | build | test | check`.
@@ -137,7 +145,12 @@ like code. No symlinks and no colons in fixture file names (Windows checks
 them out). GGUF fixtures are real headers — the first megabytes of a model
 file, gzipped, never a whole file — with their provenance in
 `internal/catalog/gguf/testdata/README.md`; the Hugging Face client and the
-refresh are tested against an `httptest` hub that serves them by range.
+refresh are tested against an `httptest` hub that serves them by range. The
+benchmark sampler reads the machine through `internal/bench`'s `sysEnv` seam
+(fixtures in `testdata/sampler/`, each tool's real format), and the Ollama
+adapter's load report parses server-log fixtures shaped from the format
+strings of the Ollama and llama.cpp builds it names
+(`internal/backend/ollama/testdata/README.md` says which).
 
 **API.** JSON, snake_case keys, `GET /api/…`. Register endpoints through
 `Server.api("METHOD /api/path", handler)` so a wrong method is a 405. Errors
@@ -157,10 +170,13 @@ it into a sentence, never `0 GB`. A speed the advisor cannot estimate is an
 absent `Rate` and a sentence (`estimate.Speed.Unknown`); a memory budget it
 cannot read is category `unknown`.
 
-**Constants live in two configs.** Every number the estimator uses is in
+**Constants live in configs.** Every number the estimator uses is in
 `estimate.Config` (`internal/estimate/config.go`), marked MEASURED (fleet),
 MEASURED (public) or CHOSEN with what would settle it; every weight and
-threshold of the recommendation engine is in `recommend.Config`. No magic
+threshold of the recommendation engine is in `recommend.Config`; every
+constant of the benchmark harness is in `bench.Config`, and what it sends to
+the model is the suite (`data/bench/`) — change either and bump the suite's
+version when the change alters what a run measures. No magic
 number anywhere else in those packages. The memory formula is pinned by
 `step0_test.go` — a change that moves a step 0 row is a change to
 ARCHITECTURE.md D-20, not a refactor — and the outcomes the weights must

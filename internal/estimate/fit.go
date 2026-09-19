@@ -13,6 +13,10 @@ import (
 type Estimator struct {
 	Config  Config
 	Devices *DeviceTable
+	// Calibration is what this machine's own benchmarks measured (nil when
+	// there are none): speed estimates on a calibrated path are built from
+	// it instead of the population's range (calibration.go).
+	Calibration *Calibration
 }
 
 // New returns the estimator the advisor ships with: DefaultConfig and the
@@ -138,6 +142,7 @@ func (e *Estimator) FitPlaced(pl Placement, m Machine, model Model, req Request)
 	est.Speed = e.speed(pl, m, model, t, gpuShare, est.Category)
 	if est.Speed.Known {
 		est.Basis.SpeedSource = SpeedEstimated
+		est.Basis.SpeedCalibrated = est.Speed.Calibrated
 	}
 	return est
 }

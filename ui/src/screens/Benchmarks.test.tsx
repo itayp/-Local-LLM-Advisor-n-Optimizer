@@ -1,0 +1,245 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { App } from '../App'
+import type { BenchPlan, BenchProgress, BenchRun, Estimate, InstalledModel } from '../api/types'
+import { en } from '../copy/en'
+
+const c = en.screens.benchmarks
+
+const estimated = { value: 45, low: 35, high: 55, unit: 'tok/s', source: 'estimated' as const }
+
+function estimate(): Estimate {
+  const b = (v: number) => ({ value: v, source: 'estimated' as const })
+  return {
+    request: { catalog_file_id: 3, num_ctx: 4096, kv_cache_type: 'f16', runtime_path: 'metal' },
+    memory: { weights: b(2e9), kv_cache: b(4e8), overhead: b(0), total: b(2.4e9), gpu_resident: b(2.4e9), cpu_offload: b(0), effective_ctx: 4096 },
+    speed: { known: true, generation: estimated, prompt: { value: 500, low: 300, high: 700, unit: 'tok/s', source: 'estimated' } },
+    category: 'fits_with_headroom',
+    threshold: '2.2 GB needed of 11.8 GB the graphics can use (19%)',
+    budget_bytes: 11.8 * 1024 ** 3,
+    budget_known: true,
+    budget_kind: 'unified_memory',
+    basis: { memory_model: 'validated', path_source: 'established', budget_known: true, speed_source: 'estimated' },
+  }
+}
+
+const models: InstalledModel[] = [
+  { backend_name: 'ollama', name: 'llama3.1:8b', size_bytes: 4.9e9, last_seen_at: '', catalog_match: 'file' },
+  { backend_name: 'ollama', name: 'llama3.2:3b', size_bytes: 2.0e9, last_seen_at: '', catalog_match: 'file' },
+  { backend_name: 'ollama', name: 'minicpm-v4.6:latest', size_bytes: 1.1e9, last_seen_at: '', catalog_match: 'unknown' },
+]
+
+function plan(over: Partial<BenchPlan> = {}): BenchPlan {
+  return {
+    model: 'llama3.2:3b',
+    model_source: 'catalogue',
+    num_ctx: 4096,
+    num_ctx_source: 'ollama_default',
+    prompts: [
+      { id: '500', tokens: 475, runs: 3 },
+      { id: '2000', tokens: 2047, runs: 3 },
+      { id: '8000', tokens: 7408, runs: 0, skip: 'needs a context of at least 7,728 tokens to hold the prompt and its answer' },
+    ],
+    requests: 7,
+    estimate: estimate(),
+    duration: { value: 150, low: 70, high: 230, unit: 's', source: 'estimated' },
+    suite: { version: '1', digest: 'e8fe8f89b46d9a09', completion_tokens: 256, warmups: 1, repeats: 3, temperature: 0, seed: 42 },
+    ...over,
+  }
+}
+
+const measured = (v: number, unit = 'tok/s') => ({ value: v, low: v, high: v, unit, source: 'measured' as const })
+
+function run(over: Partial<BenchRun> = {}): BenchRun {
+  return {
+    id: 7,
+    status: 'done',
+    phase: 'finished',
+    request: { model: 'llama3.2:3b' },
+    config: {
+      hardware_profile_id: 1, hardware_fingerprint: 'fp', backend: 'ollama', backend_version: '0.34.2', runtime_path: 'metal',
+      model: 'llama3.2:3b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 2e9, catalog_file_id: 3, num_ctx: 4096,
+      effective_ctx: 4096, kv_cache_type: 'f16', flash_attention: true, flash_attention_known: true, parallel: 1, suite_version: '1',
+      suite_digest: 'e8fe8f89b46d9a09', completion_tokens: 256, repeats: 3, daemon_version: 'test',
+    },
+    started_at: '2026-09-19T12:00:00Z',
+    finished_at: '2026-09-19T12:02:10Z',
+    results: [
+      { prompt: '500', prompt_tokens: 481, gen_tokens: 256, prompt_tps: measured(812.4), generation_tps: measured(41.3), ttft: measured(612, 'ms'),
+        spread_pct: 1.2, prompt_spread_pct: 0.8, runs: 3, timings: [] },
+    ],
+    headline: '500',
+    generation_tps: measured(41.3),
+    resident: 'gpu',
+    peak_vram: { value: 2.9 * 1024 ** 3, source: 'measured' },
+    estimate: estimate(),
+    replaced: true,
+    unloaded: true,
+    sampler_note: 'temperature and power are not read on a Mac: the tool that reads them needs an administrator’s password',
+    ...over,
+  }
+}
+
+/** FakeEventSource stands in for the browser's: a test pushes events. */
+class FakeEventSource {
+  static last: FakeEventSource | null = null
+  url: string
+  closed = false
+  onerror: (() => void) | null = null
+  private listeners: ((ev: MessageEvent<string>) => void)[] = []
+  constructor(url: string) {
+    this.url = url
+    FakeEventSource.last = this
+  }
+  addEventListener(_type: string, fn: (ev: MessageEvent<string>) => void) {
+    this.listeners.push(fn)
+  }
+  push(p: BenchProgress) {
+    for (const fn of this.listeners) fn({ data: JSON.stringify(p) } as MessageEvent<string>)
+  }
+  close() {
+    this.closed = true
+  }
+}
+
+function serve(opts: { plan?: (url: string) => BenchPlan; start?: () => Response; history?: BenchRun[] } = {}) {
+  const calls: { url: string; method: string; body?: string }[] = []
+  vi.stubGlobal('EventSource', FakeEventSource)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body as string | undefined })
+      const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status })
+      if (url === '/api/health') return json({ version: 'test', os: 'darwin', arch: 'arm64', go_version: 'go1.27.1' })
+      if (url === '/api/models/installed') return json({ models })
+      if (url.startsWith('/api/bench/plan')) return json(opts.plan ? opts.plan(url) : plan())
+      if (url === '/api/bench/history') return json({ runs: opts.history ?? [] })
+      if (url === '/api/bench' && method === 'POST') return opts.start ? opts.start() : json(run({ status: 'running', phase: 'preparing', results: [] }), 202)
+      if (url === '/api/bench/7/cancel') return json(run({ status: 'cancelled', results: [], generation_tps: undefined, replaced: false }))
+      return json({ error: { code: 'not_found', message: 'no' } }, 404)
+    }),
+  )
+  return calls
+}
+
+function open(advanced = false) {
+  return render(
+    <MemoryRouter initialEntries={['/benchmarks']}>
+      <App initialSettings={{ advanced }} />
+    </MemoryRouter>,
+  )
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  FakeEventSource.last = null
+})
+
+describe('Benchmarks', () => {
+  it('plans a test before offering it: how long, what is left out, and a button that says so', async () => {
+    const calls = serve()
+    open()
+    // The smallest model the catalogue knows is picked first.
+    const button = await screen.findByRole('button', { name: 'Run a 1–4 minute test' })
+    expect(screen.getByRole('combobox', { name: c.model })).toHaveValue('llama3.2:3b')
+    expect(calls.some((x) => x.url === '/api/bench/plan?model=llama3.2%3A3b')).toBe(true)
+    const planBox = screen.getByTestId('bench-plan')
+    // Product rule 4: the duration and the estimate before are estimates.
+    expect(within(planBox).getByText('1–4 minutes').closest('.figure')).toHaveAttribute('data-source', 'estimated')
+    expect(within(planBox).getByText(/35\.0–55\.0 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
+    expect(within(planBox).getByText(/7,728 tokens/)).toBeInTheDocument()
+    expect(button).toBeEnabled()
+    expect(calls.some((x) => x.method === 'POST')).toBe(false)
+  })
+
+  it('runs the test, follows its progress, and shows the result as measured', async () => {
+    const calls = serve()
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: 'Run a 1–4 minute test' }))
+    const post = calls.find((x) => x.method === 'POST')
+    expect(JSON.parse(post?.body ?? '{}')).toEqual({ model: 'llama3.2:3b', measure_anyway: false })
+
+    const es = FakeEventSource.last
+    expect(es?.url).toBe('/api/bench/7')
+    const live = run({ status: 'running', phase: 'measuring', results: [] })
+    es?.push({ run_id: 7, status: 'running', phase: 'measuring', message: 'Timing the 475-token prompt, 2 of 3', step: 2, steps: 7,
+      elapsed_seconds: 31, remaining: { value: 80, low: 40, high: 120, unit: 's', source: 'estimated' }, run: live })
+    expect(await screen.findByText('Timing the 475-token prompt, 2 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: c.progressLabel })).toHaveAttribute('value', '2')
+    expect(screen.getByRole('button', { name: c.cancel })).toBeInTheDocument()
+
+    es?.push({ run_id: 7, status: 'done', phase: 'finished', message: 'Finished', step: 7, steps: 7, elapsed_seconds: 130, run: run() })
+    const result = await screen.findByTestId('bench-run')
+    expect(within(result).getByText('41.3 tok/s').closest('.figure')).toHaveAttribute('data-source', 'measured')
+    expect(within(result).getByText(/35\.0–55\.0 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
+    expect(within(result).getByText(c.replaced)).toBeInTheDocument()
+    expect(within(result).getByText(c.unloaded)).toBeInTheDocument()
+    expect(within(result).getByText(/administrator/)).toBeInTheDocument()
+    expect(screen.queryByTestId('bench-running')).not.toBeInTheDocument()
+    expect(es?.closed).toBe(true)
+    // The technical columns stay behind the Advanced toggle.
+    expect(screen.queryByTestId('bench-advanced')).not.toBeInTheDocument()
+  })
+
+  it('stops a running test, and says the memory was freed', async () => {
+    serve()
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: 'Run a 1–4 minute test' }))
+    FakeEventSource.last?.push({ run_id: 7, status: 'running', phase: 'loading', message: 'Loading llama3.2:3b and warming it up', step: 0,
+      steps: 7, elapsed_seconds: 2, run: run({ status: 'running', results: [] }) })
+    await userEvent.click(await screen.findByRole('button', { name: c.cancel }))
+    const result = await screen.findByTestId('bench-run')
+    expect(within(result).getByText(c.status.cancelled)).toBeInTheDocument()
+    expect(within(result).getByText(c.unloaded)).toBeInTheDocument()
+  })
+
+  it('shows the refusal in words when the model would spill, and offers the slow test only on request', async () => {
+    const refusal = 'At a context of 4,096 tokens this model does not fit in the graphics memory: part of it would run on the processor, several times slower.'
+    const calls = serve({ plan: () => plan({ refusal, refusal_code: 'would_spill' }) })
+    open()
+    expect(await screen.findByTestId('bench-refusal')).toHaveTextContent(refusal)
+    expect(screen.queryByRole('button', { name: /Run a/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: c.runAnyway }))
+    expect(JSON.parse(calls.find((x) => x.method === 'POST')?.body ?? '{}').measure_anyway).toBe(true)
+  })
+
+  it('asks for a new plan when the context changes', async () => {
+    const calls = serve()
+    open()
+    await screen.findByTestId('bench-plan')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: c.context }), '8192')
+    await screen.findByTestId('bench-plan')
+    expect(calls.some((x) => x.url === '/api/bench/plan?model=llama3.2%3A3b&num_ctx=8192')).toBe(true)
+  })
+
+  it('lists earlier tests and shows one, with its technical details under Advanced', async () => {
+    serve({ history: [run(), run({ id: 6, generation_tps: measured(40.9), comparison: undefined })] })
+    open(true)
+    const table = await screen.findByTestId('bench-history')
+    expect(within(table).getAllByText(/tok\/s/)[0].closest('.figure')).toHaveAttribute('data-source', 'measured')
+    await userEvent.click(within(table).getAllByRole('button', { name: c.show })[0])
+    const tech = await screen.findByTestId('bench-advanced')
+    for (const term of [c.advanced.path, c.advanced.kvCache, c.advanced.flash, c.advanced.quantization]) {
+      expect(within(tech).getByText(term.label)).toBeInTheDocument()
+      expect(within(tech).getByText(term.explain)).toBeInTheDocument()
+    }
+    for (const fig of tech.querySelectorAll('.figure')) expect(fig).toHaveAttribute('data-source', 'measured')
+  })
+
+  it('says so when nothing is installed', async () => {
+    serve()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        new Response(JSON.stringify(url === '/api/models/installed' ? { models: [] } : url === '/api/bench/history' ? { runs: [] } : { version: 't' }), {
+          status: 200,
+        }),
+      ),
+    )
+    open()
+    expect(await screen.findByText(c.noModels)).toBeInTheDocument()
+  })
+})

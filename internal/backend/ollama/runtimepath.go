@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -71,7 +72,14 @@ func (b *Backend) readRecentLog() string {
 // library=<name> form against real runs on CUDA, Metal and Vulkan across
 // three machines; the loaded/ggml_* forms are kept as a fallback for older
 // or differently-built binaries.
-func pathFromLog(logText string) (path hardware.RuntimePath, evidence string, ok bool) {
+//
+// gpuOnly skips the processor's lines. It is what a caller that already
+// knows the model is on a graphics device (size_vram > 0) wants: llama.cpp
+// builds that load their backends as libraries log the processor's backend
+// last ("load_backend: loaded CPU backend from …" after the CUDA one), so
+// without it the last line would name the processor for a model that sits
+// wholly in graphics memory.
+func pathFromLog(logText string, gpuOnly bool) (path hardware.RuntimePath, evidence string, ok bool) {
 	if strings.TrimSpace(logText) == "" {
 		return "", "", false
 	}
@@ -97,14 +105,51 @@ func pathFromLog(logText string) (path hardware.RuntimePath, evidence string, ok
 		{hardware.PathCPU, "loaded cpu backend"},
 	}
 	for _, line := range strings.Split(logText, "\n") {
+		// llama.cpp's own line for each load names the device every part of
+		// the weights went to — the most direct evidence there is.
+		if p, ok2 := bufferPath(line); ok2 && (!gpuOnly || p.UsesGPU()) {
+			path, evidence, ok = p, strings.TrimSpace(line), true
+			continue
+		}
 		l := strings.ToLower(line)
 		for _, r := range rules {
+			if gpuOnly && !r.path.UsesGPU() {
+				continue
+			}
 			if strings.Contains(l, r.needle) {
 				path, evidence, ok = r.path, strings.TrimSpace(line), true
 			}
 		}
 	}
 	return path, evidence, ok
+}
+
+// modelBufferRE matches llama.cpp's per-load line
+// "load_tensors:        CUDA0 model buffer size =  4403.49 MiB" (llama.cpp
+// src/llama-model.cpp): the buffer's name is the device's ("CUDA0",
+// "ROCm1", "MTL0_Mapped", "Vulkan0", "CPU_Mapped", "CPU_REPACK").
+var modelBufferRE = regexp.MustCompile(`(?i)\b([A-Za-z]+)(\d*)(?:_[A-Za-z]+)? model buffer size\s*=\s*([\d.]+)\s*MiB`)
+
+// devicePaths maps a llama.cpp backend device name (without its index) to
+// the runtime path: ggml's GGML_CUDA_NAME ("CUDA", "ROCm" when built for
+// HIP), GGML_METAL_NAME ("MTL"), GGML_VK_NAME ("Vulkan"), and the CPU.
+var devicePaths = map[string]hardware.RuntimePath{
+	"cuda":   hardware.PathCUDA,
+	"rocm":   hardware.PathROCm,
+	"mtl":    hardware.PathMetal,
+	"metal":  hardware.PathMetal,
+	"vulkan": hardware.PathVulkan,
+	"cpu":    hardware.PathCPU,
+}
+
+// bufferPath reads one model-buffer line.
+func bufferPath(line string) (hardware.RuntimePath, bool) {
+	m := modelBufferRE.FindStringSubmatch(line)
+	if m == nil {
+		return "", false
+	}
+	p, ok := devicePaths[strings.ToLower(m[1])]
+	return p, ok
 }
 
 // runtimePathsFromPS derives Status.RuntimePaths from one /api/ps entry:
@@ -129,7 +174,7 @@ func runtimePathsFromPS(sizeVRAM uint64, logText string) (paths map[int]hardware
 		paths[0] = hardware.PathCPU
 		return paths, "ran on the CPU (/api/ps size_vram is 0)"
 	}
-	if path, evidence, ok := pathFromLog(logText); ok {
+	if path, evidence, ok := pathFromLog(logText, true); ok {
 		paths[0] = path
 		return paths, "confirmed from the server log: " + evidence
 	}

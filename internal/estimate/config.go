@@ -148,6 +148,29 @@ type Config struct {
 	// token and hardly with the quant; anchoring the ratio to the reference
 	// size keeps a Q8_0 file from looking half as fast at reading a prompt.
 	PromptReferenceBytesPerParam float64
+
+	// ---- Calibration (build-plan step 6) ------------------------------------
+
+	// CalibrationMargin, CalibrationMarginPerDoubling and CalibrationMaxMargin
+	// set how far an estimate calibrated by this machine's own benchmark
+	// (calibration.go) may be from the rate measured on another model: the
+	// margin is CalibrationMargin for a model of the size measured, plus
+	// CalibrationMarginPerDoubling for every doubling or halving of size
+	// between them, capped at CalibrationMaxMargin and never wider than the
+	// uncalibrated range.
+	//
+	// CHOSEN. The base is the gate's own tolerance: two runs of one
+	// configuration agree within 5% (BUILD_PLAN.md step 6), so a model of the
+	// measured size cannot be known better than that. The growth with size is
+	// there because a small model spends a larger share of each token on
+	// fixed costs (kernel launches, sampling) and reaches less of the
+	// bandwidth: llama.cpp's scoreboards show a 1B model at roughly two thirds
+	// of the efficiency of a 7B one on the same card. 6% per doubling covers
+	// that between 1B and 8B (three doublings: ±23%). Two benchmarks of
+	// different sizes on one fleet machine settle both numbers.
+	CalibrationMargin            float64
+	CalibrationMarginPerDoubling float64
+	CalibrationMaxMargin         float64
 }
 
 // Range is a low..high pair; every speed constant is one, because every
@@ -259,5 +282,9 @@ func DefaultConfig() Config {
 		MoEPrompt:     Range{0.35, 1.0},
 
 		PromptReferenceBytesPerParam: 0.567,
+
+		CalibrationMargin:            0.05,
+		CalibrationMarginPerDoubling: 0.06,
+		CalibrationMaxMargin:         0.30,
 	}
 }

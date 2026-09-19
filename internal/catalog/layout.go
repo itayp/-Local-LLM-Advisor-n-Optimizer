@@ -249,6 +249,16 @@ func NewLayout(h GGUFHeader, kv map[string]any) Layout {
 		case isList && len(list) >= n:
 			copy(sliding, list[:n])
 			stated()
+			count := 0
+			for _, v := range sliding {
+				if v {
+					count++
+				}
+			}
+			// Gemma 4 states the pattern layer by layer; step 5's cards for it
+			// carried no note, so the Advanced view could not show why its
+			// cache grows slowly (step 6's catch-up of step 5's "worth a look").
+			note("sliding-window attention on %d of %d layers (window %d tokens), as the header states layer by layer", count, n, h.SlidingWindow)
 		case isPeriod || isKnown:
 			pattern := known
 			if isPeriod {
