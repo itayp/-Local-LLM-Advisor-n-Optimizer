@@ -34,16 +34,16 @@ jobs:
             targets: 'windows/amd64'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # git describe needs the tags for the version stamp
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -140,7 +140,7 @@ jobs:
         if: runner.os == 'Linux'
         run: make build VERSION=${{ steps.version.outputs.version }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: advisor-${{ matrix.os }}
           path: dist/advisor-*

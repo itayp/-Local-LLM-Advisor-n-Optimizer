@@ -113,9 +113,17 @@ func TestDetectNotInstalled(t *testing.T) {
 }
 
 func TestDetectInstalledNotRunning(t *testing.T) {
+	// findBinary's $PATH lookup key is OS-specific (install_windows.go
+	// looks up "ollama.exe"; install_darwin.go and install_linux.go look
+	// up "ollama"). This test exercises Detect's shared fallback logic on
+	// every OS CI runs on, so the fake PATH answers both names — the point
+	// under test is "found on PATH", not which OS's exact binary name.
 	b := backendWithEnv(fakeEnv{
-		vars:  map[string]string{"OLLAMA_HOST": "127.0.0.1:1"},
-		paths: map[string]string{"ollama": "/usr/local/bin/ollama"},
+		vars: map[string]string{"OLLAMA_HOST": "127.0.0.1:1"},
+		paths: map[string]string{
+			"ollama":     "/usr/local/bin/ollama",
+			"ollama.exe": "/usr/local/bin/ollama.exe",
+		},
 	})
 	status, err := b.Detect(context.Background())
 	if err != nil {
