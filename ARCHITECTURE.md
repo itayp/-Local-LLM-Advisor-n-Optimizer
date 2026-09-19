@@ -1485,6 +1485,71 @@ the suite version is in the key. The M1 Pro's gate has to be run again on
 suite 2 with llama3.1:8b. The Windows and Mac Pro results stand as the first
 evidence for repeatability, but they were measured on suite 1.
 
+## D-51. Step 6's gate is met: the M1 Pro on suite 2, and what the margin leaves open
+
+Closes the step 6 gate that D-50 reopened, after the M1 Pro's re-run
+(2026-09-19, `scripts/verify.command`, Ollama 0.34.2, suite 2, daemon
+`3ca6b70`).
+
+**What the run showed.**
+
+- **Repeatable, with 0.6 points to spare.** Two consecutive runs of
+  llama3.2:3b at a context of 4,096 answered at 54.9 and 52.5 tok/s: 4.4%
+  against the 5% limit. Both read the metal path and the f16 cache from
+  Ollama's log and unloaded afterwards, and both replaced their estimate.
+  The second run's plan had already narrowed onto the first run's
+  measurement — 44–60 tok/s, where run 1's plan had said 53–85 — which is
+  build-plan step 6's item 6 working on a real machine rather than in a
+  test.
+- **The gate model is llama3.2:3b, not llama3.1:8b.** D-50 §3 named
+  llama3.1:8b as this laptop's pick. The rule it states — the smallest
+  installed curated model of at least 3 billion parameters whose plan is
+  not refused — picks llama3.2:3b, which families.yaml puts at 3.21
+  billion. Both models are installed here. The code
+  (`gateMinParameters = 3e9` in `cmd/advisor/bench.go`) does what D-50
+  decided; D-50's example of it was wrong.
+- **The margin belongs to the short prompt.** The headline is the shortest
+  prompt that has an answering speed (D-50 §2), here the 501-token one. Its
+  three timings inside the second run disagreed by 20.6%, and the harness
+  said so in words. The 1,970-token prompt, which nothing headlines, moved
+  51.1 to 51.5 tok/s across the same two runs — 0.8%.
+- **Both cancel phases pass.** `-cancel-during loading` and
+  `-cancel-during measuring` each ended with the daemon and Ollama's own
+  `/api/ps` agreeing that nothing was left loaded. The check D-50 §4 put in
+  place of the fixed 20 s is exercised in both phases, on the machine whose
+  short runs defeated the old one.
+- **Suite 2's answers are long enough to time.** Every timed answer ran to
+  the 256-token budget, so nothing fell under `MinAnswerTokens` and no
+  prompt lost its answering speed. The 7,472-token prompt was skipped at a
+  context of 4,096, with the reason in words.
+- **Wired memory moves between runs.** The same model reported 2.8 GB and
+  then 3.2 GB of graphics memory taken while Ollama's own size stayed at
+  2.4 GB. On Apple Silicon that figure is wired memory (D-47), which counts
+  what else the machine has wired, so it carries a few hundred megabytes of
+  other processes with it.
+
+**Decision.** The step 6 gate is met and step 6 is closed. Nothing about
+one laptop's run is evidence enough to move a constant or a rule.
+
+**Consequences.**
+
+- The fleet's evidence is one machine on suite 2 and two on suite 1: the
+  RTX 5070 Ti's pass (+0.4%, −0.1%, +0.2%) and the Mac Pro's (−0.1%) were
+  measured before the suite changed, and suites are never compared. A
+  Windows run on suite 2 is a confirmation for step 7 to take when that
+  machine is next up, not a gate that is owed.
+- **The thin margin and the headline's noisy prompt are one open item, not
+  two fixes.** Raising the 3 billion bar so the gate lands on a model the
+  memory paces, or headlining the longest prompt that has an answering
+  speed instead of the shortest, would each likely tighten 4.4%. Neither is
+  worth a change on a single run. Every run stores its per-prompt spread,
+  so the fleet's next benchmarks say whether 4.4% was this laptop that
+  afternoon or the pace of a 3B model.
+- The Apple Silicon memory reading carries other processes' wired pages, so
+  a `measure_anyway` run at the edge of "fits" is weaker evidence for the
+  92% threshold on a Mac than on a machine with its own graphics memory.
+  The NVIDIA machine is where that constant should be settled.
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -1524,13 +1589,16 @@ evidence for repeatability, but they were measured on suite 1.
   Linux install (readable only by a user in the `systemd-journal` or `adm`
   group). Where it cannot be read, runs keep path and cache type unknown and
   replace no estimate — the first Windows run is the check.
-- **The step 6 gate** — two consecutive runs agree within 5% on generation
-  speed on the NVIDIA machine and the Apple Silicon one; a cancelled run
-  leaves nothing loaded. First fleet runs (suite 1, D-50): the RTX 5070 Ti
-  passed (+0.4%, −0.1%, +0.2%; a cancelled run left nothing loaded), and the
-  Mac Pro passed too (−0.1%). The M1 Pro's cancel passed, but its
-  repeatability did not: llama3.2:1b was −7.0%. It now reruns on suite 2
-  with the gate's ≥ 3B model, through `scripts/verify.command`.
+- **The step 6 gate is met** (D-51) — two consecutive runs agree within 5%
+  on generation speed on the NVIDIA machine and the Apple Silicon one; a
+  cancelled run leaves nothing loaded. The RTX 5070 Ti passed on suite 1
+  (+0.4%, −0.1%, +0.2%; a cancelled run left nothing loaded) and the Mac Pro
+  too (−0.1%); the M1 Pro passed on suite 2 with llama3.2:3b (−4.4%, and a
+  cancel in each phase), through `scripts/verify.command`. What stays open is
+  confirmation rather than the gate: a Windows run on suite 2 when that
+  machine is next up, and whether a memory-paced gate model or a longer
+  headline prompt would tighten the M1 Pro's 4.4%. The per-prompt spreads
+  every run stores are the evidence for both.
 - **Load time.** Two Windows runs at different contexts both reported a
   load of 1,675 ms. That is Ollama's `load_duration` for the warm-up,
   stored per run; the Mac's two runs differed (1,865 and 2,800 ms). It is
