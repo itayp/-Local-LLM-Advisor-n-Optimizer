@@ -739,3 +739,97 @@ export interface BenchPlanMeasured {
 export interface BenchHistory {
   runs: BenchRun[]
 }
+
+// --- Backends (Go: internal/backend, internal/server/backend.go) ----------
+//
+// A runtime's own status, read straight from the process or the OS: not
+// estimated, not measured — plain text, not a Figure.
+
+export type BackendState = 'not_installed' | 'installed_not_running' | 'running' | 'unsupported'
+
+/** Go: server.BackendInfo. */
+export interface BackendInfo {
+  name: string
+  state: BackendState
+  version?: string
+  host?: string
+  installed_version?: string
+  runtime_paths?: Record<string, RuntimePath>
+  env?: Record<string, string>
+  detail?: string
+  checked_at: string
+}
+
+/** GET /api/backends (Go: server.BackendsResponse). */
+export interface BackendsResponse {
+  backends: BackendInfo[]
+}
+
+// --- Onboarding, install, pull, chat apps (Go: internal/server, step 7) ---
+//
+// The first-run flow's own API. Byte counts here are read live from a
+// download's own counter (backend.InstallProgress / PullProgress) — facts,
+// tagged `source:"n/a"` on the Go side, shown as plain text and never
+// through <Figure>.
+
+/** GET /api/onboarding, POST /api/onboarding/complete (Go: server.OnboardingStatus). */
+export interface OnboardingStatus {
+  completed: boolean
+  completed_at?: string
+}
+
+/** GET /api/backends/{name}/install-size (Go: server.InstallSizeResponse). */
+export interface InstallSizeResponse {
+  bytes: number
+  known: boolean
+}
+
+export type InstallState = 'idle' | 'running' | 'done' | 'failed'
+
+/** GET and POST /api/backends/{name}/install (Go: server.InstallStatus). */
+export interface InstallStatus {
+  backend: string
+  status: InstallState
+  message?: string
+  completed_bytes: number
+  total_bytes?: number
+  error?: string
+}
+
+/** POST /api/backends/{name}/start (Go: server.BackendStartResponse). */
+export interface BackendStartResponse {
+  backend: string
+  status: 'starting'
+}
+
+/** POST /api/models/pull (Go: server.PullRequest). */
+export interface PullRequest {
+  ollama_tag: string
+}
+
+export type PullState = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
+
+/** GET and POST /api/models/pull (Go: server.PullStatus). */
+export interface PullStatus {
+  model?: string
+  status: PullState
+  message?: string
+  completed_bytes: number
+  total_bytes?: number
+  error?: string
+}
+
+/** One chat app the advisor found on this machine — or didn't (Go: chatapps.App). The advisor never installs or drives one (D-4). */
+export interface ChatApp {
+  id: string
+  name: string
+  found: boolean
+  path?: string
+  note?: string
+  download_url: string
+}
+
+/** GET /api/chatapps (Go: server.ChatAppsResponse). */
+export interface ChatAppsResponse {
+  apps: ChatApp[]
+}

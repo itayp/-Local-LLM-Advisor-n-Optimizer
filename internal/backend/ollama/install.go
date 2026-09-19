@@ -33,16 +33,26 @@ const downloadHost = "ollama.com"
 // file at a predictable, fixed URL to verify against. That is stated here
 // rather than silently skipped (D-21: unknown is unknown) — if Ollama
 // starts publishing one, this is where to add checking it.
-func downloadFile(ctx context.Context, rawURL, destPath string, progress func(backend.InstallProgress)) (int64, error) {
+// checkDownloadURL parses rawURL and refuses anything that is not an https
+// URL on downloadHost — the same check downloadFile and InstallSize both
+// need before making a request.
+func checkDownloadURL(rawURL string) (*url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return 0, fmt.Errorf("ollama: install: bad URL %q: %w", rawURL, err)
+		return nil, fmt.Errorf("ollama: install: bad URL %q: %w", rawURL, err)
 	}
 	if u.Scheme != "https" {
-		return 0, fmt.Errorf("ollama: install: refusing a non-https URL: %s", rawURL)
+		return nil, fmt.Errorf("ollama: install: refusing a non-https URL: %s", rawURL)
 	}
 	if u.Hostname() != downloadHost {
-		return 0, fmt.Errorf("ollama: install: refusing to download from %q, only %q is allowed", u.Hostname(), downloadHost)
+		return nil, fmt.Errorf("ollama: install: refusing to download from %q, only %q is allowed", u.Hostname(), downloadHost)
+	}
+	return u, nil
+}
+
+func downloadFile(ctx context.Context, rawURL, destPath string, progress func(backend.InstallProgress)) (int64, error) {
+	if _, err := checkDownloadURL(rawURL); err != nil {
+		return 0, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -110,6 +120,38 @@ func (b *Backend) Install(ctx context.Context, progress func(backend.InstallProg
 // lines instead of guessing at Ollama's default log location.
 func (b *Backend) Start(ctx context.Context) error {
 	return b.osStart(ctx)
+}
+
+// InstallSize reports the size of the installer/archive Install would
+// download, before Install is ever called — product rule 5: the button
+// says what it will cost before it is clicked. It asks with a HEAD request
+// (the same host-and-scheme check as the download itself; no body is
+// fetched) and reports known == false rather than a guess when the server
+// does not answer with a Content-Length (D-21).
+func (b *Backend) InstallSize(ctx context.Context) (int64, bool, error) {
+	rawURL, err := b.installURL()
+	if err != nil {
+		return 0, false, err
+	}
+	if _, err := checkDownloadURL(rawURL); err != nil {
+		return 0, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return 0, false, fmt.Errorf("ollama: install size: %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, false, fmt.Errorf("ollama: install size: %s: %s", rawURL, resp.Status)
+	}
+	if resp.ContentLength <= 0 {
+		return 0, false, nil
+	}
+	return resp.ContentLength, true, nil
 }
 
 // dataDir mirrors store.DefaultDataDir's per-OS convention

@@ -328,6 +328,20 @@ type InstallProgress struct {
 	Total     int64
 }
 
+// InstallSizer is implemented by a backend that can say, before Install
+// ever runs, about how large its download is. Product rule 5: the button
+// has to say what it will cost before it is clicked, and Install itself is
+// not the place to find out — by the time it reports a Total, the download
+// has already started. Optional (a type assertion, the same shape as
+// LoadObserver above) because not every backend has a single downloadable
+// installer to ask about.
+type InstallSizer interface {
+	// InstallSize reports the download's size in bytes. known is false
+	// when the size could not be read (D-21: unknown is unknown, never a
+	// default) — the caller says so in words rather than showing "about 0 MB".
+	InstallSize(ctx context.Context) (bytes int64, known bool, err error)
+}
+
 // Backend is a runtime the advisor can drive.
 type Backend interface {
 	// Name is the registry key and the value stored in backends.name:

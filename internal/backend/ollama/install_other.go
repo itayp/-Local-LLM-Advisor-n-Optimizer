@@ -17,6 +17,10 @@ import (
 
 func (b *Backend) findBinary() (string, bool) { return "", false }
 
+func (b *Backend) installURL() (string, error) {
+	return "", fmt.Errorf("ollama: install: this operating system is not supported")
+}
+
 func (b *Backend) osInstall(context.Context, func(backend.InstallProgress)) error {
 	return fmt.Errorf("ollama: install: this operating system is not supported")
 }

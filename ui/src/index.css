@@ -488,3 +488,107 @@ body {
   color: var(--warn-fg);
   background: var(--warn-bg);
 }
+
+/* Onboarding (build-plan step 7): the first-run flow main.tsx shows
+   instead of the app shell until it's completed once. Deliberately
+   plainer than .shell — no nav, no footer, just the question in front of
+   the person and one button that says what it does. */
+.onboarding {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.onboarding__dots {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.onboarding__dots li {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.onboarding__dots li.done {
+  background: var(--accent);
+}
+
+.onboarding__dots li.active {
+  background: var(--accent);
+  outline: 2px solid var(--accent-bg);
+  outline-offset: 2px;
+}
+
+.onboarding__step h1 {
+  margin-top: 0;
+  font-size: 26px;
+}
+
+.onboarding__step .button {
+  margin-top: 16px;
+}
+
+.onboarding__progress {
+  margin: 16px 0;
+}
+
+.onboarding__progress progress {
+  width: 100%;
+}
+
+.onboarding__model-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 17px;
+}
+
+.onboarding__model-name code {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+}
+
+/* Term (components/Term.tsx): a technical word with its explainer a tap
+   away — every screen that uses one of copy/glossary.ts's terms renders
+   it this way rather than restating the sentence itself (CLAUDE.md rule
+   2). Inline (a button and a span, not <details>): Term shows up inside
+   ordinary sentences, and only phrasing content is valid there. */
+.term {
+  display: inline;
+}
+
+.term__toggle {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-left: 2px;
+  line-height: 13px;
+  text-align: center;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.term__toggle[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.term__explain {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}

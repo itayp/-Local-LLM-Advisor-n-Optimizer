@@ -1613,3 +1613,70 @@ one laptop's run is evidence enough to move a constant or a rule.
 - **The live gate** passed on the M1 Pro (2026-09-19, `verify.command`):
   every size resolved, no weights downloaded. `advisor catalog refresh` in
   `scripts/verify.command` stays the live check for catalogue edits.
+
+## D-52. Step 7: onboarding polls rather than streams, sits in front of the router, and a chat app is detected, never driven
+
+**Decision.**
+
+- **Install and pull progress are polled, not streamed.** D-49 gave
+  `GET /api/bench/{id}` an SSE mode because a benchmark run can be watched
+  by more than one tab and takes minutes with samples arriving at 1 Hz; an
+  install or a pull is a short, one-viewer, foreground action the person
+  just clicked a button to start. `internal/server/install.go` and
+  `pull.go` keep an in-memory tracker (one entry per backend name for
+  installs, one global slot for pulls — Ollama itself only usefully pulls
+  one thing at a time) and the UI polls `GET .../install` /
+  `GET /api/models/pull` once a second. Neither is written to the store:
+  D-13's history tables are evidence the app is built on, and a one-time
+  foreground action is not that — if the daemon restarts mid-install the
+  person just clicks the button again, and `Detect()` / `Models()` tell the
+  truth either way.
+- **`InstallSizer` is an optional capability interface**, the same shape as
+  `LoadObserver`: a `HEAD` request against the installer's own host before
+  `Install` ever runs, so the button can say "about N MB" before the click
+  (product rule 5) without widening `Backend` for every future runtime that
+  may not have one downloadable file to ask about.
+- **`internal/chatapps` is a sibling of `internal/backend`, not a member of
+  it** (D-4): a runtime is what the advisor drives (`Detect`, `Install`,
+  `Start`, `Pull`) and stores in `backends`/`installed_models`; a chat app
+  is only ever detected, for a link at the end of onboarding, and nothing
+  about it is stored. It mirrors `internal/backend/ollama`'s own shape — an
+  `env` seam (`lookPath`, `statSize`, `userHomeDir`) with per-OS
+  `installLocations`/`pathCommand` files — because the problem is the same
+  one: is a known program on this machine, checked without starting or
+  downloading anything. `$PATH` first (a CLI companion like LM Studio's
+  `lms` survives a custom install location), then well-known directories,
+  existence only — a macOS `.app` is a directory, so size is not a portable
+  signal (D-21: absence is "not seen here," never "not installed").
+- **`OnboardingGate` wraps `<App>` in `main.tsx`, not a route inside it.**
+  `App.tsx` is `screens/index.ts`'s route tree and nothing else; its own
+  tests, and every screen's own test, render `<App>` directly at a chosen
+  path and must keep doing that unaffected by whether setup has run. The
+  gate asks `GET /api/onboarding` once; if it cannot be answered at all it
+  fails open to the working app rather than trapping the person behind a
+  door that may never unlock — nothing runs without its own button click
+  either way (product rule 5), so that fallback is safe. A `settings` row
+  (`onboarding.completed`, step 1's key/value table, no history — a
+  setting, not evidence) is what `POST /api/onboarding/complete` sets and
+  what every daemon start after that reads back.
+- **The glossary is a component, not a table cell.** Recommend's and
+  Benchmarks' Advanced panels (steps 5 and 6) already explain a technical
+  term next to it in a table row; onboarding's plain-language screens show
+  a handful of the same terms inline in a sentence, where a table doesn't
+  fit. `copy/glossary.ts` holds the one-line explainer once per term;
+  `<Term>` renders it as a button + span, not `<details>`/`<summary>` —
+  `Term` sits inside ordinary `<p>` sentences, and only phrasing content is
+  legal there. Not every one of CLAUDE.md's seven listed terms had to
+  appear in onboarding's own copy to satisfy the rule; the rule is that
+  none of the seven is ever shown bare, and the Advanced panels already
+  satisfy it for the ones onboarding's plain flow has no natural sentence
+  for (quantization, KV cache, offload).
+
+**Open for step 8.** The full Ollama screen (a persistent view of the same
+three states, not just a first-run gate) and the full Models screen reuse
+`GET /api/backends` and `GET /api/chatapps` as they stand; neither endpoint
+needs to change shape for that. `OllamaStep`'s polling interval (1.5 s for
+backend status, 1 s while an install or start is in flight) is an
+onboarding-only constant, not `estimate.Config`/`bench.Config` material —
+worth a shared UI-polling constant if step 8's screens grow the same
+pattern rather than each picking their own number.

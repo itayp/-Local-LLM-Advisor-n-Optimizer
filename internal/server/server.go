@@ -89,6 +89,13 @@ type Server struct {
 
 	// bench runs benchmarks (bench.go); nil without a store.
 	bench *bench.Harness
+
+	// installs and pulls track the one in-flight (or last-finished)
+	// install-per-backend and model download (install.go, pull.go) — the
+	// UI button build-plan step 7 adds. In memory only; see their doc
+	// comments for why.
+	installs installTracker
+	pulls    pullTracker
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -137,6 +144,21 @@ func (s *Server) routes() {
 	// literal path would conflict with "GET /api/bench/{id}").
 	s.apiLiteral("GET /api/bench/plan", s.handleBenchPlan)
 	s.apiLiteral("GET /api/bench/history", s.handleBenchHistory)
+	// First-run onboarding (build-plan step 7): whether it has run once.
+	s.api("GET /api/onboarding", s.handleOnboardingStatus)
+	s.api("POST /api/onboarding/complete", s.handleOnboardingComplete)
+	// Ollama install/start, and a model pull — both a button in the
+	// onboarding flow starts, follows by polling, and (pull) can cancel.
+	s.api("GET /api/backends/{name}/install-size", s.handleBackendInstallSize)
+	s.api("GET /api/backends/{name}/install", s.handleBackendInstallStatus)
+	s.api("POST /api/backends/{name}/install", s.handleBackendInstallStart)
+	s.api("POST /api/backends/{name}/start", s.handleBackendStart)
+	s.api("GET /api/models/pull", s.handlePullStatus)
+	s.api("POST /api/models/pull", s.handlePullStart)
+	s.api("POST /api/models/pull/cancel", s.handlePullCancel)
+	// Chat apps already on this machine (build-plan step 7, D-4): the
+	// advisor only detects and hands off, never installs one.
+	s.api("GET /api/chatapps", s.handleChatApps)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

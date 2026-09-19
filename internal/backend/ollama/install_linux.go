@@ -56,8 +56,22 @@ func ollamaArch() (string, error) {
 // who "has heard you can run AI on their own computer... has no idea what
 // a GGUF is" (CLAUDE.md) — never asking for a password wins over surviving
 // a reboot unattended.
+// installURL is where osInstall downloads from, and what InstallSize
+// (install.go) asks about before the button is ever clicked (product rule 5).
+func (b *Backend) installURL() (string, error) {
+	arch, err := ollamaArch()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("https://ollama.com/download/ollama-linux-%s.tar.zst", arch), nil
+}
+
 func (b *Backend) osInstall(ctx context.Context, progress func(backend.InstallProgress)) error {
 	arch, err := ollamaArch()
+	if err != nil {
+		return err
+	}
+	url, err := b.installURL()
 	if err != nil {
 		return err
 	}
@@ -70,7 +84,6 @@ func (b *Backend) osInstall(ctx context.Context, progress func(backend.InstallPr
 		return fmt.Errorf("ollama: install: %w", err)
 	}
 
-	url := fmt.Sprintf("https://ollama.com/download/ollama-linux-%s.tar.zst", arch)
 	archivePath := filepath.Join(os.TempDir(), "ollama-linux-"+arch+".tar.zst")
 	if progress != nil {
 		progress(backend.InstallProgress{Status: "downloading Ollama for Linux (" + arch + ")"})

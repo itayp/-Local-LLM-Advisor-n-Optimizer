@@ -1,17 +1,24 @@
 import type {
   APIError,
+  BackendsResponse,
+  BackendStartResponse,
   BenchHistory,
   BenchPlan,
   BenchProgress,
   BenchRequest,
   BenchRun,
+  ChatAppsResponse,
   InstalledModelsResponse,
   CatalogRefreshReport,
   CatalogResponse,
   HardwareHistory,
   HardwareResponse,
   Health,
+  InstallSizeResponse,
+  InstallStatus,
   ModelFitResponse,
+  OnboardingStatus,
+  PullStatus,
   Purpose,
   RecommendResult,
   UnknownInstalledResponse,
@@ -101,6 +108,34 @@ export const api = {
     }
     return () => es.close()
   },
+
+  /** Whether the first-run flow (build-plan step 7) has been completed. */
+  onboardingStatus: (signal?: AbortSignal) => get<OnboardingStatus>('/onboarding', signal),
+  /** Mark first-run setup as finished. */
+  onboardingComplete: (signal?: AbortSignal) => send<OnboardingStatus>('POST', '/onboarding/complete', signal),
+  /** Every registered runtime's status, detected fresh on every call — cheap, never starts anything. */
+  backends: (signal?: AbortSignal) => get<BackendsResponse>('/backends', signal),
+  /** name's installer size, before Install ever runs (product rule 5). */
+  backendInstallSize: (name: string, signal?: AbortSignal) =>
+    get<InstallSizeResponse>(`/backends/${encodeURIComponent(name)}/install-size`, signal),
+  /** The latest install status for name; the UI polls this (no SSE — a short, one-viewer action). */
+  backendInstallStatus: (name: string, signal?: AbortSignal) =>
+    get<InstallStatus>(`/backends/${encodeURIComponent(name)}/install`, signal),
+  /** Start installing name. 409 while one is already running for it. */
+  backendInstallStart: (name: string, signal?: AbortSignal) =>
+    send<InstallStatus>('POST', `/backends/${encodeURIComponent(name)}/install`, signal),
+  /** Launch name's runtime; poll backends() afterwards until it reports running. */
+  backendStart: (name: string, signal?: AbortSignal) =>
+    send<BackendStartResponse>('POST', `/backends/${encodeURIComponent(name)}/start`, signal),
+  /** The latest download status; the UI polls this. */
+  pullStatus: (signal?: AbortSignal) => get<PullStatus>('/models/pull', signal),
+  /** Start downloading an Ollama tag (a recommendation's pull_name). 409 while one is already running. */
+  pullStart: (ollamaTag: string, signal?: AbortSignal) =>
+    send<PullStatus>('POST', '/models/pull', signal, { ollama_tag: ollamaTag }),
+  /** Stop the running download. */
+  pullCancel: (signal?: AbortSignal) => send<PullStatus>('POST', '/models/pull/cancel', signal),
+  /** Chat apps already on this machine, detected fresh on every call. The advisor never installs or drives one (D-4). */
+  chatApps: (signal?: AbortSignal) => get<ChatAppsResponse>('/chatapps', signal),
 }
 
 function benchQuery(req: BenchRequest): string {

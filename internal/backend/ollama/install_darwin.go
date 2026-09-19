@@ -35,17 +35,27 @@ func (b *Backend) findBinary() (string, bool) {
 	return "", false
 }
 
+// installURL is where osInstall downloads from, and what InstallSize
+// (install.go) asks about before the button is ever clicked (product rule 5).
+func (b *Backend) installURL() (string, error) {
+	return "https://ollama.com/download/Ollama.dmg", nil
+}
+
 // osInstall downloads Ollama.dmg and opens it. macOS installers are not run
 // silently: product rule 5 puts the explanation on the button before this
 // is ever called, and from here the user still drags Ollama into
 // Applications and opens it themselves, same as if they had downloaded it
 // by hand. Detect() reports the result once they do.
 func (b *Backend) osInstall(ctx context.Context, progress func(backend.InstallProgress)) error {
+	url, err := b.installURL()
+	if err != nil {
+		return err
+	}
 	dest := filepath.Join(os.TempDir(), "Ollama.dmg")
 	if progress != nil {
 		progress(backend.InstallProgress{Status: "downloading Ollama for macOS"})
 	}
-	if _, err := downloadFile(ctx, "https://ollama.com/download/Ollama.dmg", dest, progress); err != nil {
+	if _, err := downloadFile(ctx, url, dest, progress); err != nil {
 		return err
 	}
 	if progress != nil {

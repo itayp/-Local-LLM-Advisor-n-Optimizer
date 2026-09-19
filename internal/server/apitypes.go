@@ -5,6 +5,7 @@ import (
 	"advisor/internal/bench"
 	"advisor/internal/catalog"
 	"advisor/internal/catalog/refresh"
+	"advisor/internal/chatapps"
 	"advisor/internal/estimate"
 	"advisor/internal/hardware"
 	"advisor/internal/recommend"
@@ -48,5 +49,13 @@ func APITypes() []any {
 		watch.Notification{},
 		watch.LogEntry{},
 		watch.Settings{},
+		OnboardingStatus{},
+		InstallSizeResponse{},
+		InstallStatus{},
+		BackendStartResponse{},
+		PullRequest{},
+		PullStatus{},
+		chatapps.App{},
+		ChatAppsResponse{},
 	}
 }
