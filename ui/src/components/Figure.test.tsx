@@ -28,7 +28,7 @@ describe('Figure (product rule 4)', () => {
         <Figure rate={{ value: 51.2, low: 51.2, high: 51.2, unit: 'tok/s', source: 'measured' }} />
       </>,
     )
-    expect(screen.getByText(/45\.0–55\.0 tok\/s/)).toHaveAttribute('data-source', 'estimated')
+    expect(screen.getByText(/45–55 tok\/s/)).toHaveAttribute('data-source', 'estimated')
     expect(screen.getByText('51.2 tok/s')).toHaveAttribute('data-source', 'measured')
   })
 
@@ -37,5 +37,8 @@ describe('Figure (product rule 4)', () => {
     expect(formatBytes(16 * 1024 ** 3)).toBe('16 GB')
     expect(formatBytes(250 * 1024 ** 2)).toBe('250 MB')
     expect(formatRate({ value: 120, low: 120, high: 120, unit: 'tok/s', source: 'measured' })).toBe('120 tok/s')
+    // An estimate's range claims no decimals it does not have.
+    expect(formatRate({ value: 52, low: 47.02, high: 56.96, unit: 'tok/s', source: 'estimated' })).toBe('47–57 tok/s')
+    expect(formatRate({ value: 3.3, low: 2.1, high: 4.5, unit: 'tok/s', source: 'estimated' })).toBe('2.1–4.5 tok/s')
   })
 })

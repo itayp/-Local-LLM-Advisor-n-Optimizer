@@ -37,14 +37,32 @@ func TestSummariseNotesWhatMakesAResultLessCertain(t *testing.T) {
 
 	noisy := append([]Timing(nil), steady...)
 	noisy[1].GenMs = 3000
-	noisy[2].GenTokens, noisy[1].GenTokens, noisy[0].GenTokens = 40, 40, 40
+	noisy[2].GenTokens, noisy[1].GenTokens, noisy[0].GenTokens = 100, 100, 100
 	noisy[0].CachedTokens = 300
 	noisy[0].PromptMs = 0
 	r = summarise("500", noisy, 256, cfg)
-	for _, want := range []string{"disagreed", "stopped after 40", "reused up to 300"} {
+	for _, want := range []string{"disagreed", "stopped after 100", "reused up to 300"} {
 		if !hasNote(r.Notes, want) {
 			t.Errorf("missing note %q in %v", want, r.Notes)
 		}
+	}
+
+	// Answers shorter than MinAnswerTokens time the reading, not the
+	// answering: left out of the median when others are long enough,
+	// and the answering speed absent, with why, when none is.
+	mixed := append([]Timing(nil), steady...)
+	mixed[1].GenTokens, mixed[1].GenMs = 12, 50
+	r = summarise("500", mixed, 256, cfg)
+	if r.GenTPS == nil || r.GenTPS.Value < 119 || r.GenTPS.Value > 122 || !hasNote(r.Notes, "1 of the 3 answers stopped before 64") {
+		t.Errorf("mixed: %+v %v", r.GenTPS, r.Notes)
+	}
+	allShort := append([]Timing(nil), steady...)
+	for i := range allShort {
+		allShort[i].GenTokens, allShort[i].GenMs = 40, 300
+	}
+	r = summarise("2000", allShort, 256, cfg)
+	if r.GenTPS != nil || !strings.Contains(r.GenUnknown, "after 40 tokens") || r.PromptTPS == nil || r.TTFT == nil || hasNote(r.Notes, "stopped after") {
+		t.Errorf("all short: %+v", r)
 	}
 
 	none := []Timing{{PromptTokens: 480, GenTokens: 256, GenMs: 2000}}

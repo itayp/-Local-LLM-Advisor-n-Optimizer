@@ -606,7 +606,9 @@ export interface PromptResult {
   prompt_tokens: number
   gen_tokens: number
   prompt_tps?: Rate
-  generation_tps: Rate
+  /** Absent when every answer stopped before the harness's minimum; generation_unknown says why. */
+  generation_tps?: Rate
+  generation_unknown?: string
   ttft?: Rate
   spread_pct: number
   prompt_spread_pct: number
@@ -722,6 +724,15 @@ export interface BenchPlan {
   suggested_ctx?: number
   suite: BenchSuiteInfo
   notes?: string[]
+  /** The latest finished run of this configuration on this computer: shown in the estimate's place (rule 4). */
+  measured?: BenchPlanMeasured
+}
+
+/** Go: bench.PlanMeasured. */
+export interface BenchPlanMeasured {
+  run_id: number
+  at: string
+  generation_tps: Rate
 }
 
 /** GET /api/bench/history (Go: bench.History). */

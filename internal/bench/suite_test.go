@@ -12,6 +12,7 @@ import (
 // version must have measured the same thing (data/bench/suite.yaml).
 var suiteDigests = map[string]string{
 	"1": "e8fe8f89b46d9a09",
+	"2": "8cb591d2368f4374",
 }
 
 func TestTheSuiteIsPinnedToItsVersion(t *testing.T) {
@@ -100,6 +101,39 @@ func TestRequestsDifferAtTheStart(t *testing.T) {
 	}
 }
 
+// Every prompt stops mid-sentence and well short of the text's end, so the
+// model has a sentence to finish and nothing in the prompt says the text is
+// over: version 1's long prompt was the whole essay, and models answered it
+// with an end-of-text after one token.
+func TestPromptsEndMidSentence(t *testing.T) {
+	s, err := DefaultSuite()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := len(s.paragraphs[len(s.paragraphs)-1]) + len(s.paragraphs[len(s.paragraphs)-2])
+	for _, p := range s.Prompts {
+		body := s.Body(p)
+		if got := len(strings.Fields(body)); got != p.Words {
+			t.Errorf("prompt %s: %d words, want %d", p.ID, got, p.Words)
+		}
+		if end := body[len(body)-1]; !unicode.IsLetter(rune(end)) {
+			t.Errorf("prompt %s ends %q", p.ID, body[len(body)-20:])
+		}
+		if p.Words > s.words-last {
+			t.Errorf("prompt %s reaches the text's last two paragraphs, its ending", p.ID)
+		}
+		if strings.Count(body, "\n\n") == 0 && p.Words > 200 {
+			t.Errorf("prompt %s lost its paragraph breaks", p.ID)
+		}
+	}
+	// The body is the text itself, cut: its start and the paragraph breaks
+	// are the file's.
+	short := s.Body(s.Prompts[0])
+	if !strings.HasPrefix(short, "A Year on the Allotment\n\nThe allotments sit") || !strings.HasSuffix(short, "the laziest method for") {
+		t.Fatalf("the 500 prompt: %q … %q", short[:40], short[len(short)-40:])
+	}
+}
+
 func TestInvalidSuitesFailLoudly(t *testing.T) {
 	good := `version: "9"
 reviewed_at: "2026-09-19"
@@ -111,20 +145,22 @@ seed: 1
 warmups: 1
 repeats: 2
 prompts:
-  - {id: a, paragraphs: 1, tokens: 5}
+  - {id: a, words: 4, tokens: 5}
 `
 	fs := func(y string) fstest.MapFS {
-		return fstest.MapFS{"s.yaml": {Data: []byte(y)}, "t.txt": {Data: []byte("One two three.\n\nFour five.\n")}}
+		return fstest.MapFS{"s.yaml": {Data: []byte(y)}, "t.txt": {Data: []byte("One two three.\n\nFour five six.\n")}}
 	}
 	if _, err := LoadSuite(fs(good), "s.yaml"); err != nil {
 		t.Fatalf("a good suite: %v", err)
 	}
 	for name, y := range map[string]string{
-		"unknown key":    good + "extra: 1\n",
-		"lead without n": strings.Replace(good, `"{n}."`, `"Go."`, 1),
-		"too many paras": strings.Replace(good, "paragraphs: 1", "paragraphs: 3", 1),
-		"no repeats":     strings.Replace(good, "repeats: 2", "repeats: 0", 1),
-		"text elsewhere": strings.Replace(good, "t.txt", "../t.txt", 1),
+		"unknown key":     good + "extra: 1\n",
+		"lead without n":  strings.Replace(good, `"{n}."`, `"Go."`, 1),
+		"the whole text":  strings.Replace(good, "words: 4", "words: 6", 1),
+		"ends a sentence": strings.Replace(good, "words: 4", "words: 3", 1),
+		"no words":        strings.Replace(good, "words: 4", "words: 0", 1),
+		"no repeats":      strings.Replace(good, "repeats: 2", "repeats: 0", 1),
+		"text elsewhere":  strings.Replace(good, "t.txt", "../t.txt", 1),
 	} {
 		if _, err := LoadSuite(fs(y), "s.yaml"); err == nil {
 			t.Errorf("%s: loaded", name)

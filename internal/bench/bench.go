@@ -152,8 +152,12 @@ type PromptResult struct {
 	GenTokens    int    `json:"gen_tokens" source:"n/a"`    // a count: tokens in the answer (median)
 
 	PromptTPS *figure.Rate `json:"prompt_tps,omitempty"` // (prompt_eval_count − reused) / prompt_eval_duration; absent when the runtime gave no time
-	GenTPS    figure.Rate  `json:"generation_tps"`       // eval_count / eval_duration
-	TTFT      *figure.Rate `json:"ttft,omitempty"`       // ms to the first streamed token, measured at the client; absent when no token came
+	// GenTPS is eval_count / eval_duration over the answers of at least
+	// Config.MinAnswerTokens; absent when every answer was shorter (the
+	// model stopped on its own), and GenUnknown says so in words.
+	GenTPS     *figure.Rate `json:"generation_tps,omitempty"`
+	GenUnknown string       `json:"generation_unknown,omitempty"`
+	TTFT       *figure.Rate `json:"ttft,omitempty"` // ms to the first streamed token, measured at the client; absent when no token came
 
 	// SpreadPct is (max − min) ÷ median of the generation rate over the
 	// timed requests, in percent; PromptSpreadPct the same for the prompt
@@ -167,6 +171,17 @@ type PromptResult struct {
 	// disagreed, an answer that stopped early, a prompt the runtime partly
 	// reused from its cache.
 	Notes []string `json:"notes,omitempty"`
+}
+
+// headlineResult is the result that stands for a run: the shortest prompt
+// with an answering speed; false when no prompt has one.
+func headlineResult(results []PromptResult) (PromptResult, bool) {
+	for _, r := range results {
+		if r.GenTPS != nil {
+			return r, true
+		}
+	}
+	return PromptResult{}, false
 }
 
 // Skipped is a prompt a run did not time, and why.
@@ -201,9 +216,9 @@ type Run struct {
 	Skipped []Skipped      `json:"skipped,omitempty"`
 
 	// Headline is the prompt whose medians stand for the run — the shortest
-	// that ran, which matches what the estimator's figures are for (llama.cpp's
-	// 512-token prompt, an almost empty cache while answering) — and GenTPS,
-	// PromptTPS and TTFT are its medians.
+	// that ran with an answering speed, which matches what the estimator's
+	// figures are for (llama.cpp's 512-token prompt, an almost empty cache
+	// while answering) — and GenTPS, PromptTPS and TTFT are its medians.
 	Headline  string       `json:"headline,omitempty"`
 	GenTPS    *figure.Rate `json:"generation_tps,omitempty"`
 	PromptTPS *figure.Rate `json:"prompt_tps,omitempty"`
@@ -324,6 +339,19 @@ type Plan struct {
 	SuggestedCtx int       `json:"suggested_ctx,omitempty" source:"n/a"` // configuration the advisor suggests
 	Suite        SuiteInfo `json:"suite"`
 	Notes        []string  `json:"notes,omitempty"`
+	// Measured is the latest finished run of this configuration on this
+	// machine — the same model file, context, runtime version and suite —
+	// when one timed an answering speed. A measurement replaces the estimate
+	// the moment it exists (product rule 4): the screen shows it in the
+	// estimate's place.
+	Measured *PlanMeasured `json:"measured,omitempty"`
+}
+
+// PlanMeasured is the run a plan found for its configuration.
+type PlanMeasured struct {
+	RunID  int64       `json:"run_id" source:"n/a"` // a row id
+	At     time.Time   `json:"at"`
+	GenTPS figure.Rate `json:"generation_tps"`
 }
 
 // PlannedPrompt is one prompt of a plan.

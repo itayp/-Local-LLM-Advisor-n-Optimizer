@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"advisor/internal/backend"
 	"advisor/internal/catalog"
@@ -222,8 +223,34 @@ func (h *Harness) prepare(ctx context.Context, t Target, req Request) (*prepared
 	}
 	plan.Requests = h.suite.Warmups + len(p.prompts)*h.suite.Repeats
 	plan.Duration, plan.DurationUnknown = h.duration(est, p.prompts, p.facts)
+	plan.Measured = h.lastMeasured(ctx, t, status, *inst, numCtx)
 	p.plan = plan
 	return p, nil
+}
+
+// lastMeasured finds the latest finished run of the configuration a plan is
+// for: this machine, runtime and runtime version, model file, context and
+// suite version. The runtime path, cache type and flash attention are known
+// only after a load, so they are not compared here; a run that found them
+// different from the one before says so in its comparison.
+func (h *Harness) lastMeasured(ctx context.Context, t Target, status backend.Status, inst backend.Installed, numCtx int) *PlanMeasured {
+	if h.store == nil || t.Fingerprint == "" {
+		return nil
+	}
+	rows, err := h.store.BenchRuns(ctx, store.BenchRunFilter{HardwareFingerprint: t.Fingerprint, BackendName: t.Backend.Name(),
+		ModelName: inst.Name, Status: string(StatusDone), Limit: 50})
+	if err != nil {
+		return nil
+	}
+	for _, r := range rows {
+		if r.GenTPSMedian == nil || r.NumCtx != numCtx || r.SuiteVersion != h.suite.Version || r.BackendVersion != status.Version ||
+			(inst.Digest != "" && r.ModelDigest != "" && r.ModelDigest != inst.Digest) {
+			continue
+		}
+		at, _ := time.Parse(time.RFC3339, r.FinishedAt)
+		return &PlanMeasured{RunID: r.ID, At: at, GenTPS: figure.MeasuredRate(*r.GenTPSMedian, "tok/s")}
+	}
+	return nil
 }
 
 // refuse fills in the plan's refusal when the estimator says this

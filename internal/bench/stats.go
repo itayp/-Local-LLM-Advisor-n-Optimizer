@@ -67,9 +67,11 @@ func (t Timing) genRate() float64 {
 func summarise(prompt string, timings []Timing, completion int, cfg Config) PromptResult {
 	r := PromptResult{Prompt: prompt, Runs: len(timings), Timings: timings}
 	var gen, pr, ttft, ptoks, gtoks []float64
-	cachedMax := 0
+	cachedMax, short := 0, 0
 	for _, t := range timings {
-		if v := t.genRate(); v > 0 {
+		if t.GenTokens < cfg.MinAnswerTokens {
+			short++
+		} else if v := t.genRate(); v > 0 {
 			gen = append(gen, v)
 		}
 		if v := t.promptRate(); v > 0 {
@@ -86,7 +88,10 @@ func summarise(prompt string, timings []Timing, completion int, cfg Config) Prom
 	}
 	r.PromptTokens = int(math.Round(median(ptoks)))
 	r.GenTokens = int(math.Round(median(gtoks)))
-	r.GenTPS = figure.MeasuredRate(round2(median(gen)), "tok/s")
+	if len(gen) > 0 {
+		g := figure.MeasuredRate(round2(median(gen)), "tok/s")
+		r.GenTPS = &g
+	}
 	if len(pr) > 0 {
 		p := figure.MeasuredRate(round2(median(pr)), "tok/s")
 		r.PromptTPS = &p
@@ -102,7 +107,16 @@ func summarise(prompt string, timings []Timing, completion int, cfg Config) Prom
 		r.Notes = append(r.Notes, fmt.Sprintf("the %d timed runs disagreed by %.0f%% on the answering speed; something else may have been using the computer",
 			len(gen), 100*spread(gen)))
 	}
-	if completion > 0 && float64(r.GenTokens) < cfg.ShortAnswerShare*float64(completion) {
+	switch {
+	case len(gen) == 0 && short > 0:
+		r.GenUnknown = fmt.Sprintf("the model stopped on its own after %d tokens, too few to time how fast it answers (that takes %d); the reading speed is still measured",
+			r.GenTokens, cfg.MinAnswerTokens)
+	case len(gen) == 0:
+		r.GenUnknown = "the runtime reported no time for the answer"
+	case short > 0:
+		r.Notes = append(r.Notes, fmt.Sprintf("%d of the %d answers stopped before %d tokens and were left out of the answering speed",
+			short, len(timings), cfg.MinAnswerTokens))
+	case completion > 0 && float64(r.GenTokens) < cfg.ShortAnswerShare*float64(completion):
 		r.Notes = append(r.Notes, fmt.Sprintf("the model stopped after %d of the %d tokens it was given, so the answering speed rests on fewer tokens than planned",
 			r.GenTokens, completion))
 	}

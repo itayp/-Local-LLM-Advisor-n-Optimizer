@@ -1416,6 +1416,75 @@ checked against Ollama's own `/api/ps` as well as the daemon's word);
 runs, follows, cancels and lists — so the gate runs on the Windows PC without
 a terminal; step 8 builds the full screen (compare two runs side by side).
 
+## D-50. The fleet's first runs: prompts cut mid-sentence, short answers not timed, a gate model that the machine paces
+
+Supersedes parts of D-44 (how prompts are cut), D-45 (the headline) and
+D-49 (the CLI's cancel), after the step 6 gate's first runs on the fleet
+(2026-09-19, Ollama 0.34.2, suite 1).
+
+**What the runs showed.**
+
+- Repeatable where the machine paces the model: the RTX 5070 Ti agreed
+  within 0.4% (llama3.2:1b at 4k and 32k, qwen3:14b at 32k), the Mac Pro's
+  D700s on Vulkan within 0.1% (llama3.2:1b). The M1 Pro did not:
+  llama3.2:1b ran 109.5, 101.8 and 103.7 tok/s in three runs, while each
+  run's own three timings agreed within 3.4%. At 100+ tok/s a 1B model is
+  paced by the processor's work per token (and Ollama's two HTTP hops per
+  token to llama-server), not by memory, and a laptop with 13 GB of its
+  16 GB in use moves that between one load and the next.
+- Suite 1 cut prompts at paragraph ends, and its longest prompt was the
+  whole essay. Models answered it with an end-of-text after 1 token, and
+  stopped after 24 and 46 tokens on others. An answer of 24 tokens at
+  430 tok/s is 56 ms, which a rate cannot be built on. The M1 Pro's 46-token
+  answers spread 7% and 36%, against 2.5–3.4% for its 256-token ones.
+- The cancel check fired after a fixed 20 s. On the M1 Pro a whole run of
+  llama3.2:1b took 20 s, so the run had finished and there was nothing left
+  to cancel.
+- The plan shown above a finished run still carried the estimate the run
+  had just replaced (the Mac Pro's screen: ≈ 100–176 tok/s above a measured
+  53.2). The estimated ranges also printed decimals they do not have
+  ("≈ 47.0–57.0").
+
+**Decision.**
+
+1. **Suite 2.** Each prompt is the text's first N `words`, cut mid-sentence;
+   the loader refuses a cut after punctuation. The text gains four
+   paragraphs in the second February (the seed swap, the annual meeting,
+   the work party, a late snow), so the long prompt ends in the middle of
+   the narrative, well before the essay's two closing paragraphs. The
+   prompts are ≈ 501, 1,970 and 7,472 tokens with Llama 3's tokenizer
+   (7,472 + 256 + the margin fits 8,192). Temperature 0 cannot be told to
+   ignore the end-of-text token: Ollama 0.34.2 forwards no `ignore_eos` to
+   llama-server (checked in `llm/llama_server.go`). So a model can still stop
+   early, but it has to finish a sentence first.
+2. **Short answers time the reading, not the answering.** An answer under
+   `bench.Config.MinAnswerTokens` (64) is left out of the answering median.
+   When every answer of a prompt is that short, the prompt keeps its reading
+   speed and time to first token, and its answering speed is absent with
+   the reason in words (`generation_unknown`). The run's headline is the
+   shortest prompt that has an answering speed. A run where no prompt has
+   one finishes, says so, and replaces no estimate.
+3. **The gate measures a model the machine paces.** Without `-model`,
+   `advisor bench` picks the smallest installed curated model of at least
+   3 billion parameters whose plan is not refused. If there is none, it
+   takes the largest smaller one and says why. On the M1 Pro that is
+   llama3.1:8b. The customer's screen is unchanged: any installed model,
+   with the spread shown.
+4. **The cancel check follows the run.** `-cancel-during loading|measuring`
+   (replacing `-cancel-after`) cancels when the progress stream reaches that
+   phase. If the run ends first, the check reports that it was not tested,
+   rather than passing or failing it.
+5. **The plan shows the measurement.** `Plan.Measured` is the latest
+   finished run of the same model file, context, runtime version and suite
+   on this machine. The screen shows it in the estimate's place (product
+   rule 4) and asks for the plan again when a run ends. Estimated ranges
+   print whole numbers from 10 up.
+
+**Consequences.** Runs of suite 1 and suite 2 are never compared, because
+the suite version is in the key. The M1 Pro's gate has to be run again on
+suite 2 with llama3.1:8b. The Windows and Mac Pro results stand as the first
+evidence for repeatability, but they were measured on suite 1.
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -1457,9 +1526,16 @@ a terminal; step 8 builds the full screen (compare two runs side by side).
   replace no estimate — the first Windows run is the check.
 - **The step 6 gate** — two consecutive runs agree within 5% on generation
   speed on the NVIDIA machine and the Apple Silicon one; a cancelled run
-  leaves nothing loaded — runs through `scripts/verify.command` on the Mac and
-  the Benchmarks screen on the Windows PC. It passed against a stand-in for
-  Ollama's API in the cloud workspace only.
+  leaves nothing loaded. First fleet runs (suite 1, D-50): the RTX 5070 Ti
+  passed (+0.4%, −0.1%, +0.2%; a cancelled run left nothing loaded), and the
+  Mac Pro passed too (−0.1%). The M1 Pro's cancel passed, but its
+  repeatability did not: llama3.2:1b was −7.0%. It now reruns on suite 2
+  with the gate's ≥ 3B model, through `scripts/verify.command`.
+- **Load time.** Two Windows runs at different contexts both reported a
+  load of 1,675 ms. That is Ollama's `load_duration` for the warm-up,
+  stored per run; the Mac's two runs differed (1,865 and 2,800 ms). It is
+  probably a coincidence, and `GET /api/bench/{id}` shows each request's
+  `load_ms` if it happens again.
 - **The quant an Ollama tag pulls.** The engine assumes the usual default;
   at least one small size in Ollama's library defaults to a larger quant.
   A per-size field in families.yaml is the fix when it matters.

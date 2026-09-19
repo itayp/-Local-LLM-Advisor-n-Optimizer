@@ -41,6 +41,9 @@ type fakeBackend struct {
 	// sticky: Unload does not take (the model stays loaded)
 	sticky bool
 	delay  time.Duration // how long each answer takes, in real time
+	// answer is how many tokens the model writes for a prompt of this many
+	// tokens before it stops on its own; nil: the whole budget, 256.
+	answer func(promptTokens int) int
 }
 
 func (f *fakeBackend) Name() string { return "ollama" }
@@ -134,10 +137,16 @@ func (f *fakeBackend) Generate(ctx context.Context, req backend.GenerateRequest,
 	if err := on(backend.GenerateEvent{Response: "The"}); err != nil {
 		return err
 	}
-	return on(backend.GenerateEvent{Done: true, DoneReason: "length", LoadDuration: load,
+	answer, reason := 256, "length"
+	if f.answer != nil {
+		if answer = f.answer(tokens); answer < 256 {
+			reason = "stop"
+		}
+	}
+	return on(backend.GenerateEvent{Done: true, DoneReason: reason, LoadDuration: load,
 		PromptEvalCount: tokens, PromptEvalCached: 1, PromptEvalCachedKnown: true,
 		PromptEvalDuration: time.Duration(float64(tokens-1) / f.promptTPS * float64(time.Second)),
-		EvalCount:          256, EvalDuration: time.Duration(256 / gen * float64(time.Second))})
+		EvalCount:          answer, EvalDuration: time.Duration(float64(answer) / gen * float64(time.Second))})
 }
 
 // llamaInfo is what Ollama's /api/show says about llama3.1:8b.
@@ -315,7 +324,7 @@ func TestARunMeasuresEveryPromptAndStoresTheWholeContext(t *testing.T) {
 	c := run.Config
 	if c.RuntimePath != hardware.PathCUDA || c.KVCacheType != "f16" || !c.FlashAttention || !c.FlashAttentionKnown ||
 		c.EffectiveCtx != 8192 || c.Parallel != 1 || c.BackendVersion != "0.34.2" || c.ModelDigest != "sha256:46e0c10c039e" ||
-		c.SuiteVersion != "1" || c.SuiteDigest == "" || c.HardwareProfileID == 0 || c.HardwareFingerprint == "" || c.Repeats != 3 {
+		c.SuiteVersion != "2" || c.SuiteDigest == "" || c.HardwareProfileID == 0 || c.HardwareFingerprint == "" || c.Repeats != 3 {
 		t.Fatalf("config %+v", c)
 	}
 	if run.Resident != ResidentGPU || run.RuntimeSizeBytes != 5_463_000_000 {
@@ -387,6 +396,61 @@ func TestARunMeasuresEveryPromptAndStoresTheWholeContext(t *testing.T) {
 	if cal := r.t.Estimator.Calibrate(ev.Observations); cal == nil || len(cal.Points[hardware.PathCUDA]) != 1 {
 		t.Fatalf("calibration %+v", cal)
 	}
+
+	// The next plan of this configuration shows the latest measurement in
+	// the estimate's place; a plan at another context has none.
+	plan, err := r.h.Plan(context.Background(), r.t, Request{Model: "llama3.1:8b", NumCtx: 8192})
+	if err != nil || plan.Measured == nil || plan.Measured.RunID != run2.ID || plan.Measured.GenTPS != *run2.GenTPS || plan.Measured.At.IsZero() {
+		t.Fatalf("plan measured %+v %v", plan.Measured, err)
+	}
+	if plan, _ := r.h.Plan(context.Background(), r.t, Request{Model: "llama3.1:8b", NumCtx: 4096}); plan.Measured != nil {
+		t.Fatalf("another context's plan: %+v", plan.Measured)
+	}
+}
+
+// A model that stops on its own before MinAnswerTokens times its reading
+// but not its answering: the prompt stays with its reading speed and says
+// why the answering speed is absent, and the run's headline moves to the
+// next prompt that has one. When no prompt has one, the run still finishes,
+// says so, and replaces no estimate.
+func TestShortAnswersTimeTheReadingNotTheAnswering(t *testing.T) {
+	r := newRig(t)
+	r.b.answer = func(tokens int) int {
+		if tokens < 1000 {
+			return 30 // the 500-token prompt: the model stops after 30 tokens
+		}
+		return 256
+	}
+	started, err := r.h.Start(context.Background(), r.t, Request{Model: "llama3.1:8b", NumCtx: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _ := r.wait(t, started.ID)
+	if run.Status != StatusDone || len(run.Results) != 2 {
+		t.Fatalf("run %s %q results %+v", run.Status, run.Error, run.Results)
+	}
+	short := run.Results[0]
+	if short.Prompt != "500" || short.GenTPS != nil || !strings.Contains(short.GenUnknown, "after 30 tokens") || short.PromptTPS == nil || short.TTFT == nil {
+		t.Fatalf("the short prompt: %+v", short)
+	}
+	if run.Headline != "2000" || run.GenTPS == nil || *run.GenTPS != *run.Results[1].GenTPS {
+		t.Fatalf("headline %q %+v", run.Headline, run.GenTPS)
+	}
+	back, err := r.h.Get(context.Background(), run.ID, false)
+	if err != nil || back.Headline != "2000" || back.GenTPS == nil || back.Results[0].GenTPS != nil || back.Results[0].GenUnknown == "" {
+		t.Fatalf("stored: %+v %v", back, err)
+	}
+
+	r.b.answer = func(int) int { return 12 }
+	started, err = r.h.Start(context.Background(), r.t, Request{Model: "llama3.1:8b", NumCtx: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _ = r.wait(t, started.ID)
+	if run.Status != StatusDone || run.GenTPS != nil || run.Replaced || !hasNote(run.Notes, "too early on every prompt") ||
+		run.Results[0].PromptTPS == nil || run.Comparison != nil {
+		t.Fatalf("no answering speed at all: %s %+v notes %v", run.Status, run.GenTPS, run.Notes)
+	}
 }
 
 func hasNote(notes []string, s string) bool {
@@ -410,7 +474,7 @@ func TestPromptsThatDoNotFitAreSkippedWithAReason(t *testing.T) {
 	if plan.NumCtx != 4096 || plan.NumCtxSource != "ollama_default" {
 		t.Fatalf("plan context %d (%s)", plan.NumCtx, plan.NumCtxSource)
 	}
-	if plan.Prompts[0].Runs != 3 || plan.Prompts[1].Runs != 3 || plan.Prompts[2].Runs != 0 || !strings.Contains(plan.Prompts[2].Skip, "7,728") {
+	if plan.Prompts[0].Runs != 3 || plan.Prompts[1].Runs != 3 || plan.Prompts[2].Runs != 0 || !strings.Contains(plan.Prompts[2].Skip, "7,792") {
 		t.Fatalf("prompts %+v", plan.Prompts)
 	}
 	if plan.Requests != 7 || plan.Duration == nil || plan.Duration.Source != figure.Estimated || plan.Duration.Unit != "s" {

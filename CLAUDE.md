@@ -117,10 +117,12 @@ a session cannot run Go itself.
 - The developer's benchmark client for a running daemon (build-plan step 6's
   gate): `advisor bench [-model NAME] [-num-ctx N] [-prompts 500,2000]
   [-runs 2] [-measure-anyway]` runs the suite and prints it (exit 3 when
-  consecutive runs differ by more than `-agree`, 5%); `advisor bench
-  -cancel-after 10s` checks a cancel leaves nothing loaded (asking Ollama's
-  own `/api/ps` too); `advisor bench -history`. The customer's is the
-  Benchmarks screen, on the same API.
+  consecutive runs differ by more than `-agree`, 5%; without `-model`, the
+  smallest installed curated model of 3B parameters or more that fits —
+  ARCHITECTURE.md D-50); `advisor bench -cancel-during loading|measuring`
+  checks a cancel leaves nothing loaded (asking Ollama's own `/api/ps`
+  too); `advisor bench -history`. The customer's is the Benchmarks screen,
+  on the same API.
 - `go run ./scripts/calibrate -label NAME bench.json` scores a llama-bench
   run against the speed model (scripts/calibrate/README.md).
 - UI alone: `cd ui && npm run dev | build | test | check`.

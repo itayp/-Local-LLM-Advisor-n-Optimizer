@@ -68,7 +68,7 @@ func TestPrintRunReadsLikeTheGate(t *testing.T) {
 	run := bench.Run{ID: 7, Status: bench.StatusDone,
 		Config: bench.RunConfig{Model: "llama3.2:3b", Quantization: "Q4_K_M", NumCtx: 4096, EffectiveCtx: 4096, Backend: "ollama",
 			BackendVersion: "0.34.2", RuntimePath: "metal", KVCacheType: "f16", FlashAttentionKnown: true, FlashAttention: true, SuiteVersion: "1"},
-		Results: []bench.PromptResult{{Prompt: "500", PromptTokens: 481, GenTokens: 256, PromptTPS: &pr, GenTPS: gen, TTFT: &ttft, SpreadPct: 1.2}},
+		Results: []bench.PromptResult{{Prompt: "500", PromptTokens: 481, GenTokens: 256, PromptTPS: &pr, GenTPS: &gen, TTFT: &ttft, SpreadPct: 1.2}},
 		GenTPS:  &gen, Resident: bench.ResidentGPU, Replaced: true, Unloaded: &yes,
 		Estimate:    &estimate.Estimate{Speed: estimate.Speed{Known: true, Generation: &est}},
 		Skipped:     []bench.Skipped{{Prompt: "8000", Why: "needs a context of at least 7,728 tokens"}},
@@ -77,7 +77,7 @@ func TestPrintRunReadsLikeTheGate(t *testing.T) {
 	var out bytes.Buffer
 	printRun(&out, run)
 	for _, want := range []string{"Run 7: llama3.2:3b (Q4_K_M) at a context of 4096 — done", "path metal · f16 cache · flash attention on",
-		"500         481        812.4          41.3       612 ms", "estimated before: ≈ 35–48 tok/s (estimated) → measured 41.3 tok/s (measured); estimate replaced: yes",
+		"500         481        812.4          41.3      256       612 ms", "estimated before: ≈ 35–48 tok/s (estimated) → measured 41.3 tok/s (measured); estimate replaced: yes",
 		"skipped 8000", "not sampled: temperature", "unloaded afterwards: yes"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in:\n%s", want, out.String())

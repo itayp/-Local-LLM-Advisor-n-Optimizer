@@ -149,7 +149,7 @@ describe('Benchmarks', () => {
     const planBox = screen.getByTestId('bench-plan')
     // Product rule 4: the duration and the estimate before are estimates.
     expect(within(planBox).getByText('1–4 minutes').closest('.figure')).toHaveAttribute('data-source', 'estimated')
-    expect(within(planBox).getByText(/35\.0–55\.0 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
+    expect(within(planBox).getByText(/35–55 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
     expect(within(planBox).getByText(/7,728 tokens/)).toBeInTheDocument()
     expect(button).toBeEnabled()
     expect(calls.some((x) => x.method === 'POST')).toBe(false)
@@ -171,10 +171,14 @@ describe('Benchmarks', () => {
     expect(screen.getByRole('progressbar', { name: c.progressLabel })).toHaveAttribute('value', '2')
     expect(screen.getByRole('button', { name: c.cancel })).toBeInTheDocument()
 
+    const plans = () => calls.filter((x) => x.url.startsWith('/api/bench/plan')).length
+    const plansBefore = plans()
     es?.push({ run_id: 7, status: 'done', phase: 'finished', message: 'Finished', step: 7, steps: 7, elapsed_seconds: 130, run: run() })
     const result = await screen.findByTestId('bench-run')
+    // The plan is asked for again: the run has just replaced its estimate.
+    await vi.waitFor(() => expect(plans()).toBeGreaterThan(plansBefore))
     expect(within(result).getByText('41.3 tok/s').closest('.figure')).toHaveAttribute('data-source', 'measured')
-    expect(within(result).getByText(/35\.0–55\.0 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
+    expect(within(result).getByText(/35–55 tok\/s/).closest('.figure')).toHaveAttribute('data-source', 'estimated')
     expect(within(result).getByText(c.replaced)).toBeInTheDocument()
     expect(within(result).getByText(c.unloaded)).toBeInTheDocument()
     expect(within(result).getByText(/administrator/)).toBeInTheDocument()
@@ -227,6 +231,42 @@ describe('Benchmarks', () => {
       expect(within(tech).getByText(term.explain)).toBeInTheDocument()
     }
     for (const fig of tech.querySelectorAll('.figure')) expect(fig).toHaveAttribute('data-source', 'measured')
+  })
+
+  it('shows the last measurement of this setting in the estimate’s place', async () => {
+    serve({ plan: () => plan({ measured: { run_id: 6, at: '2026-09-19T17:06:56Z', generation_tps: measured(53.2) } }) })
+    open()
+    const planBox = await screen.findByTestId('bench-plan')
+    expect(within(planBox).getByText(c.lastMeasured)).toBeInTheDocument()
+    expect(within(planBox).getByText('53.2 tok/s').closest('.figure')).toHaveAttribute('data-source', 'measured')
+    expect(within(planBox).queryByText(c.estimateBefore)).not.toBeInTheDocument()
+  })
+
+  it('shows a passage whose answers were too short to time: its reading speed, and why the answering speed is missing', async () => {
+    const why = 'the model stopped on its own after 30 tokens, too few to time how fast it answers (that takes 64); the reading speed is still measured'
+    serve({
+      history: [
+        run({
+          results: [
+            { prompt: '500', prompt_tokens: 481, gen_tokens: 30, prompt_tps: measured(812.4), generation_unknown: why, ttft: measured(612, 'ms'),
+              spread_pct: 0, prompt_spread_pct: 0.8, runs: 3, timings: [] },
+            { prompt: '2000', prompt_tokens: 1975, gen_tokens: 256, prompt_tps: measured(705.1), generation_tps: measured(38.2), ttft: measured(2900, 'ms'),
+              spread_pct: 1.1, prompt_spread_pct: 0.5, runs: 3, timings: [] },
+          ],
+          headline: '2000',
+          generation_tps: measured(38.2),
+        }),
+      ],
+    })
+    open(true)
+    await userEvent.click(within(await screen.findByTestId('bench-history')).getByRole('button', { name: c.show }))
+    const result = await screen.findByTestId('bench-run')
+    // The headline is the passage that timed an answer: its speeds, not the first passage's.
+    expect(within(result).getAllByText('38.2 tok/s')[0].closest('.figure')).toHaveAttribute('data-source', 'measured')
+    expect(within(result).getAllByText('705 tok/s').length).toBeGreaterThan(0)
+    expect(within(result).getByText(c.promptNote('500', why))).toBeInTheDocument()
+    const rows = within(screen.getByTestId('bench-advanced')).getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.startsWith('481—'))).toBe(true)
   })
 
   it('says so when nothing is installed', async () => {

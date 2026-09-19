@@ -175,7 +175,9 @@ export const en = {
       takes: 'Takes',
       takesUnknown: 'a few minutes: there is no speed estimate for this computer yet',
       estimateBefore: 'Estimated before testing',
+      lastMeasured: 'Measured here last time',
       promptSkipped: (id: string, why: string) => `The ${id}-token passage is left out: ${why}`,
+      promptNote: (id: string, note: string) => `The ${id}-token passage: ${note}`,
       minutes: (lo: number, hi: number) => (hi <= 1 ? 'about a minute' : lo === hi ? `${lo} minutes` : `${lo}–${hi} minutes`),
       run: (lo: number, hi: number) =>
         hi <= 1 ? 'Run a one-minute test' : lo === hi ? `Run a ${lo}-minute test` : `Run a ${lo}–${hi} minute test`,

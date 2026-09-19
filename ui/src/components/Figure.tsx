@@ -56,6 +56,12 @@ export function formatBytes(n: number): string {
 
 export function formatRate(r: Rate): string {
   const one = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1))
-  if (r.low !== r.high) return `${one(r.low)}–${one(r.high)} ${r.unit}`
+  // An estimated range is a range because it is not precise: whole numbers
+  // from 10 up ("47–57", never "47.0–57.0"), one decimal only below.
+  const whole = (v: number) => (v >= 10 ? v.toFixed(0) : v.toFixed(1))
+  if (r.low !== r.high) {
+    const f = r.source === 'estimated' ? whole : one
+    return `${f(r.low)}–${f(r.high)} ${r.unit}`
+  }
   return `${one(r.value)} ${r.unit}`
 }

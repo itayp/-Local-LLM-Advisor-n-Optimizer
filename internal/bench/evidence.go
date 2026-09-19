@@ -249,12 +249,10 @@ func runFromRow(row store.BenchRunRow) (Run, error) {
 		}
 	}
 	_ = json.Unmarshal([]byte(row.NotesJSON), &run.Notes)
-	if len(run.Results) > 0 {
-		first := run.Results[0]
-		g := first.GenTPS
-		run.GenTPS, run.PromptTPS, run.TTFT = &g, first.PromptTPS, first.TTFT
+	if head, ok := headlineResult(run.Results); ok {
+		run.GenTPS, run.PromptTPS, run.TTFT = head.GenTPS, head.PromptTPS, head.TTFT
 		if run.Headline == "" {
-			run.Headline = first.Prompt
+			run.Headline = head.Prompt
 		}
 	}
 	if row.PeakVRAMBytes != nil {
@@ -348,10 +346,13 @@ func (h *Harness) Evidence(ctx context.Context, fingerprint, backendName string)
 			continue
 		}
 		var results []PromptResult
-		if err := json.Unmarshal([]byte(row.ResultsJSON), &results); err != nil || len(results) == 0 {
+		if err := json.Unmarshal([]byte(row.ResultsJSON), &results); err != nil {
 			continue
 		}
-		head := results[0]
+		head, ok := headlineResult(results)
+		if !ok {
+			continue
+		}
 		o := estimate.Observation{
 			Label: row.ModelName, Model: facts.Model(), Path: path,
 			Resident:      (path.UsesGPU() && row.Resident == string(ResidentGPU)) || (path == hardware.PathCPU && row.Resident == string(ResidentCPU)),

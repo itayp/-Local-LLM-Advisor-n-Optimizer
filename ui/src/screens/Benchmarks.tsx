@@ -40,9 +40,13 @@ export function Benchmarks() {
   const [shown, setShown] = useState<BenchRun | null>(null)
   const [history, setHistory] = useState<BenchRun[]>([])
   const [busy, setBusy] = useState<'starting' | 'cancelling' | null>(null)
+  // Bumped when a run ends, so the plan is asked for again: a finished run
+  // replaces the estimate the plan showed (product rule 4).
+  const [finished, setFinished] = useState(0)
   const stopFollowing = useRef<(() => void) | null>(null)
 
   const loadHistory = useCallback(() => {
+    setFinished((n) => n + 1)
     api
       .benchHistory()
       .then((h) => setHistory(h.runs ?? []))
@@ -131,7 +135,7 @@ export function Benchmarks() {
         setError(err instanceof Error ? err.message : String(err))
       })
     return () => ac.abort()
-  }, [model, ctx])
+  }, [model, ctx, finished])
 
   const start = (anyway: boolean) => {
     setBusy('starting')
@@ -251,7 +255,14 @@ function Plan({ plan, busy, onRun }: { plan: BenchPlan; busy: boolean; onRun: (a
             <span className="card__unknown">{c.takesUnknown}</span>
           )}
         </dd>
-        {gen ? (
+        {plan.measured ? (
+          <>
+            <dt>{c.lastMeasured}</dt>
+            <dd>
+              <Figure rate={plan.measured.generation_tps} />
+            </dd>
+          </>
+        ) : gen ? (
           <>
             <dt>{c.estimateBefore}</dt>
             <dd>
@@ -311,9 +322,14 @@ function Running({ p, cancelling, onCancel }: { p: BenchProgress; cancelling: bo
 }
 
 function RunView({ run, advanced }: { run: BenchRun; advanced: boolean }) {
-  const head = run.results[0]
+  const head = run.results.find((r) => r.prompt === run.headline) ?? run.results[0]
   const before = run.estimate?.speed.generation
-  const notes = [...(run.notes ?? []), ...run.results.flatMap((r) => r.notes ?? [])]
+  const notes = [
+    ...(run.notes ?? []),
+    ...run.results.flatMap((r) =>
+      [...(r.generation_unknown ? [r.generation_unknown] : []), ...(r.notes ?? [])].map((n) => c.promptNote(r.prompt, n)),
+    ),
+  ]
   return (
     <article className="card bench-run" aria-label={`${c.result}: ${run.config.model}`} data-testid="bench-run">
       <header className="card__head">
@@ -439,9 +455,7 @@ function Technical({ run }: { run: BenchRun }) {
           {run.results.map((r) => (
             <tr key={r.prompt}>
               <th scope="row">{r.prompt_tokens.toLocaleString('en-US')}</th>
-              <td>
-                <Figure rate={r.generation_tps} />
-              </td>
+              <td>{r.generation_tps ? <Figure rate={r.generation_tps} /> : '—'}</td>
               <td>{r.prompt_tps ? <Figure rate={r.prompt_tps} /> : '—'}</td>
               <td>{r.ttft ? <Figure rate={r.ttft} /> : '—'}</td>
               <td>{r.spread_pct}%</td>

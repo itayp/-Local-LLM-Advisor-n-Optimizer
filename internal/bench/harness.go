@@ -400,17 +400,18 @@ func (h *Harness) execute(ctx context.Context, a *activeRun, p *prepared) {
 		if len(timings) == 0 {
 			continue
 		}
-		res := summarise(spec.ID, timings, h.suite.CompletionTokens, h.cfg)
-		if res.GenTPS.Value <= 0 {
-			s.run.Skipped = append(s.run.Skipped, Skipped{Prompt: spec.ID, Why: "the runtime reported no answering time"})
-			continue
-		}
-		s.run.Results = append(s.run.Results, res)
+		// A prompt whose answers were all too short to time still timed its
+		// reading: it stays, with its answering speed absent and why.
+		s.run.Results = append(s.run.Results, summarise(spec.ID, timings, h.suite.CompletionTokens, h.cfg))
 		h.headline(s)
 		h.save(ctx, s)
 	}
-	if len(s.run.Results) == 0 {
+	switch _, ok := headlineResult(s.run.Results); {
+	case len(s.run.Results) == 0:
 		runErr = errors.New("no prompt could be timed; the reasons are listed with the prompts")
+	case !ok:
+		s.run.Notes = append(s.run.Notes, "the model stopped on its own too early on every prompt to time how fast it answers; "+
+			"the reading speeds are measured, and the estimate of its answering speed stays as it was")
 	}
 }
 
@@ -586,15 +587,15 @@ func skipped(list []Skipped, id string) bool {
 	return false
 }
 
-// headline sets the run's headline figures from the shortest prompt timed.
+// headline sets the run's headline figures from the shortest prompt timed
+// with an answering speed.
 func (h *Harness) headline(s *runState) {
-	if len(s.run.Results) == 0 {
+	r, ok := headlineResult(s.run.Results)
+	if !ok {
 		return
 	}
-	r := s.run.Results[0]
 	s.run.Headline = r.Prompt
-	g := r.GenTPS
-	s.run.GenTPS, s.run.PromptTPS, s.run.TTFT = &g, r.PromptTPS, r.TTFT
+	s.run.GenTPS, s.run.PromptTPS, s.run.TTFT = r.GenTPS, r.PromptTPS, r.TTFT
 }
 
 // unload asks the runtime to free the model and waits until its list of

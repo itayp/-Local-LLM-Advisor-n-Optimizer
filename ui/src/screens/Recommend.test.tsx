@@ -139,7 +139,7 @@ describe('Recommend', () => {
     expect(within(item).getByText('7.1 GB')).toBeInTheDocument()
 
     // Product rule 4: the speed is a RANGE, in the estimated treatment.
-    const speed = within(item).getByText(/79\.0–113 tok\/s/)
+    const speed = within(item).getByText(/79–113 tok\/s/)
     expect(speed.closest('.figure')).toHaveAttribute('data-source', 'estimated')
     expect(within(item).getAllByText(/7\.9 GB/)[0].closest('.figure')).toHaveAttribute('data-source', 'estimated')
 

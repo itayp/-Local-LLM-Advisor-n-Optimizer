@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"advisor/internal/bench"
+	"advisor/internal/catalog"
 	"advisor/internal/figure"
 	"advisor/internal/server"
 )
@@ -31,21 +32,33 @@ import (
 //
 //	advisor bench [-port N] [-model NAME] [-num-ctx N] [-prompts 500,2000]
 //	              [-measure-anyway] [-runs N] [-agree PCT]
-//	advisor bench -cancel-after 10s [-model NAME] …
+//	advisor bench -cancel-during loading|measuring [-model NAME] …
 //	advisor bench -history [-model NAME]
 
 const benchUsage = `usage:
   advisor bench [-port N] [-model NAME] [-num-ctx N] [-prompts 500,2000] [-measure-anyway] [-runs N] [-agree PCT]
       Run the benchmark suite on an installed model through the running daemon
-      and print the result. Without -model, the smallest installed model the
-      curated list knows. -runs 2 runs it twice and exits 3 when the two
-      generation rates differ by more than -agree percent (default 5).
-  advisor bench -cancel-after DURATION [...]
-      Start a run, cancel it after DURATION, and check that the model is no
-      longer loaded — asking the daemon, and Ollama itself. Exits 3 if it is.
+      and print the result. Without -model, the gate's model: the smallest
+      installed model of the curated list with at least 3 billion parameters
+      that the plan does not refuse (else the largest smaller one). -runs 2
+      runs it twice and exits 3 when the two generation rates differ by more
+      than -agree percent (default 5).
+  advisor bench -cancel-during loading|measuring [...]
+      Start a run, cancel it as soon as it is loading the model or timing
+      its first prompt, and check that the model is no longer loaded —
+      asking the daemon, and Ollama itself. Exits 3 if it is.
   advisor bench -history [-model NAME]
       List the stored runs.
 `
+
+// gateMinParameters is where the gate's default model starts. Below about
+// 3 billion parameters a model answers so fast that the processor's work
+// per token, not the memory, sets its pace, and a busy laptop moves that
+// between one load and the next: llama3.2:1b on the M1 Pro (2026-09-19)
+// ran 109.5, 101.8 and 103.7 tok/s in three runs while each run's own
+// timings agreed within 3.4%. The gate is about the harness, so it measures
+// a model whose speed the machine, not its background load, decides.
+const gateMinParameters = 3e9
 
 func isBenchCommand(args []string) bool { return len(args) > 1 && args[1] == "bench" }
 
@@ -67,7 +80,7 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 	anyway := fs.Bool("measure-anyway", false, "run a configuration the estimate says would spill onto the processor")
 	runs := fs.Int("runs", 1, "how many runs, one after the other")
 	agree := fs.Float64("agree", 5, "with -runs 2 or more: the largest difference, in percent, between consecutive generation rates")
-	cancelAfter := fs.Duration("cancel-after", 0, "start a run, cancel it after this long, check nothing is left loaded")
+	cancelDuring := fs.String("cancel-during", "", "start a run, cancel it while it is \"loading\" or \"measuring\", check nothing is left loaded")
 	history := fs.Bool("history", false, "list the stored runs")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -81,14 +94,23 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 	if *history {
 		return c.history(*model)
 	}
+	var phase bench.Phase
+	switch *cancelDuring {
+	case "":
+	case string(bench.PhaseLoading), string(bench.PhaseMeasuring):
+		phase = bench.Phase(*cancelDuring)
+	default:
+		fmt.Fprintf(stderr, "advisor bench: -cancel-during is %q or %q\n", bench.PhaseLoading, bench.PhaseMeasuring)
+		return 2
+	}
 	if *model == "" {
-		m, err := c.pickModel()
+		m, why, err := c.pickModel(*numCtx)
 		if err != nil {
 			fmt.Fprintf(stderr, "advisor bench: %v\n", err)
 			return 1
 		}
 		*model = m
-		fmt.Fprintf(stdout, "Testing %s (the smallest installed model the curated list knows; -model picks another).\n", m)
+		fmt.Fprintf(stdout, "Testing %s (%s; -model picks another).\n", m, why)
 	}
 	req := bench.Request{Model: *model, NumCtx: *numCtx, MeasureAnyway: *anyway}
 	for _, p := range strings.Split(*prompts, ",") {
@@ -96,8 +118,8 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 			req.Prompts = append(req.Prompts, p)
 		}
 	}
-	if *cancelAfter > 0 {
-		return c.cancelCheck(req, *cancelAfter)
+	if phase != "" {
+		return c.cancelCheck(req, phase)
 	}
 
 	var done []bench.Run
@@ -110,6 +132,10 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 		printRun(stdout, run)
 		if run.Status != bench.StatusDone {
 			return 1
+		}
+		if *runs > 1 && run.GenTPS == nil {
+			fmt.Fprintln(stdout, "NOT COMPARABLE: the run timed no answering speed (see its notes); pick a model with -model")
+			return 3
 		}
 		done = append(done, run)
 	}
@@ -132,24 +158,75 @@ func runBench(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// pickModel is the smallest installed model the catalogue knows, else the
-// smallest installed model.
-func (c *benchCLI) pickModel() (string, error) {
+// pickModel chooses the model the gate measures when none is named: of the
+// installed models the curated list knows (all of them when it knows none),
+// the smallest with at least gateMinParameters, then the rest largest
+// first — the first whose plan at numCtx is not refused.
+func (c *benchCLI) pickModel(numCtx int) (string, string, error) {
 	var inv server.InstalledModelsResponse
 	if err := c.getJSON("/api/models/installed", &inv); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(inv.Models) == 0 {
-		return "", errors.New("no model is installed in Ollama; download one first (ollama pull llama3.2:3b)")
+		return "", "", errors.New("no model is installed in Ollama; download one first (ollama pull llama3.2:3b)")
 	}
-	sort.SliceStable(inv.Models, func(i, j int) bool {
-		ki, kj := inv.Models[i].CatalogMatch == "file", inv.Models[j].CatalogMatch == "file"
-		if ki != kj {
-			return ki
+	known := inv.Models[:0:0]
+	for _, m := range inv.Models {
+		if m.CatalogMatch == "file" {
+			known = append(known, m)
 		}
-		return inv.Models[i].SizeBytes < inv.Models[j].SizeBytes
+	}
+	if len(known) == 0 {
+		known = inv.Models
+	}
+	for _, m := range gateOrder(known) {
+		q := url.Values{"model": {m.Name}}
+		if numCtx > 0 {
+			q.Set("num_ctx", strconv.Itoa(numCtx))
+		}
+		var plan bench.Plan
+		if err := c.getJSON("/api/bench/plan?"+q.Encode(), &plan); err != nil || plan.Refusal != "" {
+			continue
+		}
+		of := "installed model"
+		if len(known) < len(inv.Models) || known[0].CatalogMatch == "file" {
+			of = "installed model the curated list knows"
+		}
+		if params(m) >= gateMinParameters {
+			return m.Name, "the smallest " + of + " with at least 3 billion parameters that fits", nil
+		}
+		return m.Name, "no " + of + " of 3 billion parameters or more fits, so the largest smaller one; small models vary more between runs", nil
+	}
+	return "", "", errors.New("every installed model's plan is refused on this machine (it would spill onto the processor); pick one with -model and -measure-anyway")
+}
+
+// gateOrder sorts candidates for the gate: at least gateMinParameters,
+// smallest first; then the smaller ones, largest first.
+func gateOrder(models []server.InstalledModelInfo) []server.InstalledModelInfo {
+	out := append([]server.InstalledModelInfo(nil), models...)
+	sort.SliceStable(out, func(i, j int) bool {
+		pi, pj := params(out[i]), params(out[j])
+		bi, bj := pi >= gateMinParameters, pj >= gateMinParameters
+		switch {
+		case bi != bj:
+			return bi
+		case bi:
+			return pi < pj || (pi == pj && out[i].SizeBytes < out[j].SizeBytes)
+		default:
+			return pi > pj || (pi == pj && out[i].SizeBytes > out[j].SizeBytes)
+		}
 	})
-	return inv.Models[0].Name, nil
+	return out
+}
+
+// params is a model's parameter count as the runtime states it ("8.0B"); 0
+// when it does not.
+func params(m server.InstalledModelInfo) float64 {
+	n, ok := catalog.ParseParameterSize(m.ParameterSize)
+	if !ok {
+		return 0
+	}
+	return float64(n)
 }
 
 // run starts a run and follows its stream to the end, printing each new
@@ -242,21 +319,34 @@ func (c *benchCLI) follow(id int64, onEvent func(bench.Progress) bool) (bench.Pr
 }
 
 // cancelCheck is the gate's second half: a cancelled run leaves nothing
-// loaded — as the daemon saw it, and as Ollama itself says.
-func (c *benchCLI) cancelCheck(req bench.Request, after time.Duration) int {
+// loaded — as the daemon saw it, and as Ollama itself says. The cancel is
+// sent when the run's progress reaches the phase asked for (for
+// "measuring", a moment into the first timed request, so an answer is
+// being written), not after a fixed time: a small model on a fast machine
+// finishes a whole run in twenty seconds.
+func (c *benchCLI) cancelCheck(req bench.Request, phase bench.Phase) int {
 	started, err := c.start(req)
 	if err != nil {
 		fmt.Fprintf(c.errOut, "advisor bench: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(c.out, "\nRun %d: %s — cancelling after %s\n", started.ID, started.Config.Model, after)
-	deadline := time.Now().Add(after)
-	if _, err := c.follow(started.ID, func(bench.Progress) bool { return time.Now().Before(deadline) }); err != nil {
+	fmt.Fprintf(c.out, "\nRun %d: %s — cancelling while %s\n", started.ID, started.Config.Model, phase)
+	reached := false
+	last, err := c.follow(started.ID, func(p bench.Progress) bool {
+		reached = p.Phase == phase
+		return !reached
+	})
+	if err != nil {
 		fmt.Fprintf(c.errOut, "advisor bench: %v\n", err)
 		return 1
 	}
-	if d := time.Until(deadline); d > 0 {
-		time.Sleep(d)
+	if !reached {
+		fmt.Fprintf(c.out, "  the run ended (%s) before it was %s, so there was nothing to cancel\n", last.Status, phase)
+		fmt.Fprintln(c.out, "CANCEL NOT TESTED")
+		return 1
+	}
+	if phase == bench.PhaseMeasuring {
+		time.Sleep(300 * time.Millisecond)
 	}
 	resp, err := c.client.Post(c.base+"/api/bench/"+strconv.FormatInt(started.ID, 10)+"/cancel", "application/json", nil)
 	if err != nil {
@@ -400,16 +490,19 @@ func printRun(w io.Writer, r bench.Run) {
 		fmt.Fprintf(w, "  error: %s\n", r.Error)
 	}
 	if len(r.Results) > 0 {
-		fmt.Fprintf(w, "  %-7s %7s %12s %13s %12s %8s\n", "prompt", "tokens", "read tok/s", "answer tok/s", "first token", "spread")
+		fmt.Fprintf(w, "  %-7s %7s %12s %13s %8s %12s %8s\n", "prompt", "tokens", "read tok/s", "answer tok/s", "answered", "first token", "spread")
 		for _, p := range r.Results {
-			read, ttft := "—", "—"
+			read, gen, ttft, spread := "—", "—", "—", "—"
 			if p.PromptTPS != nil {
 				read = fmt.Sprintf("%.1f", p.PromptTPS.Value)
+			}
+			if p.GenTPS != nil {
+				gen, spread = fmt.Sprintf("%.1f", p.GenTPS.Value), fmt.Sprintf("%.1f%%", p.SpreadPct)
 			}
 			if p.TTFT != nil {
 				ttft = fmt.Sprintf("%.0f ms", p.TTFT.Value)
 			}
-			fmt.Fprintf(w, "  %-7s %7d %12s %13.1f %12s %7.1f%%\n", p.Prompt, p.PromptTokens, read, p.GenTPS.Value, ttft, p.SpreadPct)
+			fmt.Fprintf(w, "  %-7s %7d %12s %13s %8d %12s %8s\n", p.Prompt, p.PromptTokens, read, gen, p.GenTokens, ttft, spread)
 		}
 	}
 	var res []string
@@ -453,6 +546,9 @@ func printRun(w io.Writer, r bench.Run) {
 		fmt.Fprintf(w, "  skipped %s: %s\n", s.Prompt, s.Why)
 	}
 	for _, p := range r.Results {
+		if p.GenUnknown != "" {
+			fmt.Fprintf(w, "  no answering speed (%s): %s\n", p.Prompt, p.GenUnknown)
+		}
 		for _, n := range p.Notes {
 			fmt.Fprintf(w, "  note (%s): %s\n", p.Prompt, n)
 		}

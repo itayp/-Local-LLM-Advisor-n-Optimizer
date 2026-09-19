@@ -22,10 +22,14 @@
 #                      request differ from the one before within its first
 #                      tokens, so the runtime cannot reuse its cache of the
 #                      previous prompt and time only the difference.
-#   completion_tokens  The answer's budget (num_predict). The text ends
-#                      mid-essay and is sent without a chat template, so the
-#                      model continues the prose and nearly always uses all
-#                      of it.
+#   completion_tokens  The answer's budget (num_predict). Every prompt stops
+#                      mid-sentence and is sent without a chat template, so
+#                      the model has a sentence to finish before it can decide
+#                      the text is over; it may still stop on its own later,
+#                      and an answer shorter than bench.Config.MinAnswerTokens
+#                      times the reading but not the answering (version 1 cut
+#                      at paragraph ends and its long prompt was the whole
+#                      essay: models stopped after 1 to 46 tokens).
 #   temperature, seed  Deterministic sampling: the same answer every time.
 #   warmups            Untimed requests at the start of a run: they pay for
 #                      the load and anything else done once, and are
@@ -33,8 +37,10 @@
 #   repeats            Timed requests per prompt; each result is their median
 #                      and their spread.
 #   prompts            id          what the API and the UI call the prompt
-#                      paragraphs  the prompt is the first N paragraphs of
-#                                  the text
+#                      words       the prompt is the text's first N words,
+#                                  paragraph breaks kept; the N-th word
+#                                  must carry no punctuation (the loader
+#                                  refuses a prompt that ends a sentence)
 #                      tokens      its length with Llama 3's tokenizer
 #                                  (llama3-tokenizer-js, 2026-09-19), as a
 #                                  reference: each model's own tokenizer
@@ -43,7 +49,7 @@
 #                                  prompt stays under 8,192 − 256 so a
 #                                  context of 8,192 can hold it and its answer.
 
-version: "1"
+version: "2"
 reviewed_at: "2026-09-19"
 text: text.txt
 lead: "{n}."
@@ -54,11 +60,11 @@ warmups: 1
 repeats: 3
 prompts:
   - id: "500"
-    paragraphs: 4
-    tokens: 475
+    words: 420
+    tokens: 501
   - id: "2000"
-    paragraphs: 15
-    tokens: 2047
+    words: 1660
+    tokens: 1970
   - id: "8000"
-    paragraphs: 54
-    tokens: 7408
+    words: 6323
+    tokens: 7472

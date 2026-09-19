@@ -31,14 +31,21 @@ type Suite struct {
 	Repeats          int          `yaml:"repeats"`
 	Prompts          []PromptSpec `yaml:"prompts"`
 
-	paragraphs []string
+	paragraphs [][]string // the text: paragraphs, each its words
+	words      int        // in the whole text
 	digest     string
 }
 
 // PromptSpec is one prompt of the suite.
 type PromptSpec struct {
-	ID         string `yaml:"id"`
-	Paragraphs int    `yaml:"paragraphs"`
+	ID string `yaml:"id"`
+	// Words is the prompt's length: the text's first N words, its paragraph
+	// breaks kept. The N-th word must end mid-sentence (a word with no
+	// punctuation after it), so the model has a sentence to finish before it
+	// can decide the text is over and stop (suite version 2; version 1 cut
+	// at paragraph ends, and its longest prompt was the whole essay, which a
+	// model answered with an end-of-text after one token).
+	Words int `yaml:"words"`
 	// Tokens is the prompt's length with the reference tokenizer (Llama 3's):
 	// what decides, before a run, whether it fits a context. Each model's own
 	// count comes back from the runtime.
@@ -80,8 +87,9 @@ func LoadSuite(fsys fs.FS, suitePath string) (*Suite, error) {
 func (s *Suite) init(yamlBytes, text []byte) error {
 	norm := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")) }
 	for _, p := range strings.Split(strings.TrimSpace(string(norm(text))), "\n\n") {
-		if p = strings.TrimSpace(p); p != "" {
-			s.paragraphs = append(s.paragraphs, p)
+		if ws := strings.Fields(p); len(ws) > 0 {
+			s.paragraphs = append(s.paragraphs, ws)
+			s.words += len(ws)
 		}
 	}
 	h := sha256.New()
@@ -116,8 +124,10 @@ func (s *Suite) init(yamlBytes, text []byte) error {
 		switch {
 		case p.ID == "" || seen[p.ID]:
 			bad("prompt %q: ids must be present and unique", p.ID)
-		case p.Paragraphs < 1 || p.Paragraphs > len(s.paragraphs):
-			bad("prompt %q: paragraphs must be between 1 and %d", p.ID, len(s.paragraphs))
+		case p.Words < 1 || p.Words >= s.words:
+			bad("prompt %q: words must be between 1 and %d, short of the whole text", p.ID, s.words-1)
+		case !midSentence(s.lastWord(p)):
+			bad("prompt %q: its last word %q ends a clause or a sentence; cut the prompt mid-sentence, so the model has one to finish", p.ID, s.lastWord(p))
 		case p.Tokens <= prev:
 			bad("prompt %q: prompts are listed shortest first, and tokens must be counted", p.ID)
 		}
@@ -143,9 +153,48 @@ func (s *Suite) Prompt(id string) (PromptSpec, bool) {
 	return PromptSpec{}, false
 }
 
-// Body is a prompt's text: its first N paragraphs.
+// Body is a prompt's text: the text's first N words, paragraph breaks kept,
+// ending mid-sentence.
 func (s *Suite) Body(p PromptSpec) string {
-	return strings.Join(s.paragraphs[:p.Paragraphs], "\n\n")
+	var b strings.Builder
+	left := p.Words
+	for i, para := range s.paragraphs {
+		if left <= 0 {
+			break
+		}
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		n := min(left, len(para))
+		b.WriteString(strings.Join(para[:n], " "))
+		left -= n
+	}
+	return b.String()
+}
+
+// lastWord is the word a prompt ends on.
+func (s *Suite) lastWord(p PromptSpec) string {
+	left := p.Words
+	for _, para := range s.paragraphs {
+		if left <= len(para) {
+			if left < 1 {
+				return ""
+			}
+			return para[left-1]
+		}
+		left -= len(para)
+	}
+	return ""
+}
+
+// midSentence reports whether a word ends without punctuation: nothing
+// after it closes a clause, a sentence or a quotation.
+func midSentence(w string) bool {
+	if w == "" {
+		return false
+	}
+	r := w[len(w)-1]
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 // Words counts the words of what Request(p, n) sends, for the

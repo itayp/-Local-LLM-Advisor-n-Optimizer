@@ -54,6 +54,17 @@ type Config struct {
 	// fewer tokens than planned. CHOSEN: half.
 	ShortAnswerShare float64
 
+	// MinAnswerTokens is the shortest answer whose speed is kept: a shorter
+	// one still times the reading and the first token, but not the
+	// answering. MEASURED (fleet, 2026-09-19, suite 1): llama3.2:1b answers
+	// of 46 tokens on the M1 Pro spread 7–36% across three timed runs where
+	// its 256-token answers spread 2.5–3.4%, and the RTX 5070 Ti timed
+	// answers of 24 and 1 tokens — at 430 tok/s, 56 ms and nothing. CHOSEN
+	// at a quarter of the budget: 64 tokens is 150 ms at the fastest rate the
+	// fleet has seen, long enough for a few milliseconds of scheduling to
+	// move it under the gate's 5%.
+	MinAnswerTokens int
+
 	// LoadGBs is the range of speeds a model file loads at, for the planned
 	// duration only. CHOSEN (0.3–2 GB/s): a file in the operating system's
 	// cache loads at memory speed, one read from a hard disk at a fraction of
@@ -81,6 +92,7 @@ func DefaultConfig() Config {
 		MaxCachedShare:   0.02,
 		SpreadNote:       0.05,
 		ShortAnswerShare: 0.5,
+		MinAnswerTokens:  64,
 		LoadGBsLow:       0.3,
 		LoadGBsHigh:      2,
 		SampleBatch:      10,
