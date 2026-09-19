@@ -1,10 +1,11 @@
 #!/bin/bash
 # The CI sequence, run on the Mac: double-click this file in Finder, or run
 # `bash scripts/verify.command`. go mod tidy, make test, make build, then a
-# smoke test of the built binary, which also prints this Mac's hardware
-# profile (GET /api/hardware), then resolves the curated model catalogue
-# against Hugging Face (`advisor catalog refresh`, into a throwaway
-# folder). Everything it prints also goes to
+# resolves the curated model catalogue against Hugging Face (`advisor catalog
+# refresh`, into a throwaway folder), then a smoke test of the built binary
+# on that catalogue, which prints this Mac's hardware profile (GET
+# /api/hardware) and what the advisor recommends for it (`advisor
+# recommend`). Everything it prints also goes to
 # verify.log in the repo root so the result can be read back later.
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -24,11 +25,16 @@ LOG="verify.log"
   go test -tags noui ./... || exit 1
   echo; echo "== make build"
   make build || exit 1
-  echo; echo "== smoke test: start the darwin/arm64 binary, hit /api/health and the UI, stop it"
   BIN=dist/advisor-darwin-arm64
   [ "$(uname -m)" = x86_64 ] && BIN=dist/advisor-darwin-amd64
   "$BIN" -version
-  ADVISOR_DATA_DIR="$(mktemp -d)" "$BIN" -port 27183 -no-browser &
+  DATA="$(mktemp -d)"
+  echo; echo "== the curated catalogue against Hugging Face (build plan step 4's gate: does every size resolve, with no weights downloaded?)"
+  "$BIN" catalog check || exit 1
+  CATALOGUE=ok
+  "$BIN" catalog refresh -data-dir "$DATA" || CATALOGUE=failed
+  echo; echo "== smoke test: start the binary on that catalogue, hit /api/health and the UI"
+  ADVISOR_DATA_DIR="$DATA" "$BIN" -port 27183 -no-browser &
   PID=$!
   for i in $(seq 1 20); do curl -sf http://127.0.0.1:27183/api/health >/dev/null && break; sleep 0.5; done
   curl -sf http://127.0.0.1:27183/api/health; echo
@@ -38,11 +44,11 @@ LOG="verify.log"
   echo; echo "== this Mac, as GET /api/hardware reports it (build plan step 2's gate: is it right?)"
   curl -sf --max-time 120 http://127.0.0.1:27183/api/hardware || echo "GET /api/hardware FAILED"
   echo
+  echo; echo "== what the advisor recommends for this Mac (build plan step 5's gate: is the top pick one you would give it, with reasons you would say out loud?)"
+  for PURPOSES in chat coding long_context,vision; do
+    echo; "$BIN" recommend -port 27183 -purposes "$PURPOSES" || echo "advisor recommend -purposes $PURPOSES FAILED"
+  done
   kill $PID; wait $PID 2>/dev/null
-  echo; echo "== the curated catalogue against Hugging Face (build plan step 4's gate: does every size resolve, with no weights downloaded?)"
-  "$BIN" catalog check || exit 1
-  CATALOGUE=ok
-  "$BIN" catalog refresh -data-dir "$(mktemp -d)" || CATALOGUE=failed
   echo; echo "== git status"
   git status --short
   echo

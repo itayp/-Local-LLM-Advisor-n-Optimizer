@@ -1,7 +1,7 @@
 # Architecture decision record — Local LLM Advisor & Optimizer
 
 **Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2,
-D-27 to D-31 in step 3, D-32 to D-37 in step 4.
+D-27 to D-31 in step 3, D-32 to D-37 in step 4, D-38 to D-43 in step 5.
 Every later step inherits this shape. A change to a decision here is a new
 numbered entry that supersedes the old one — the old entry stays, marked
 superseded, so the reasoning survives.
@@ -422,6 +422,11 @@ with the same names.
   superseded with a generator — not silently.
 
 ## D-20. Constraints inherited from step 0 (the estimator experiment)
+
+*Generalised, not changed, by D-38: every step 0 row still computes to the
+byte. Finding 5's "excluded from recommendations until handled explicitly"
+is discharged there — mixture-of-experts, hybrid and vision models are
+handled explicitly, and marked as not yet measured.*
 
 **Decision.** The estimator (step 5) implements exactly the formula that
 passed the step 0 gate on three machines and three runtime backends, and the
@@ -944,6 +949,241 @@ valid. The name-versus-header warning now fires only for files that state
 their type early. The fixture whose writer puts the type last
 (`minicpm-v4.6`) is the test.
 
+---
+
+Step 5 (fit estimator + recommendation engine, 2026-09-19) adds D-38 to D-43.
+
+## D-38. The memory estimate is D-20's formula, generalised through a layer layout
+
+**Decision.** `estimate.Fit` computes `weights + KV + overhead` exactly as
+D-20 states it, and `internal/estimate/step0_test.go` replays every step 0
+row through it: the recorded result is pinned (27 of 28 dense rows within
+15%, worst row −20.8%), so a change to the formula is a change to D-20, not
+a refactor. What D-20 could not cover is most of the catalogue: models whose
+layers are not a plain stack of identical attention layers. `catalog.Layout`
+(`internal/catalog/layout.go`) describes what each layer keeps as the
+context grows, and the cache term sums over it:
+
+- hybrid models keep a cache on some layers and a small fixed state (kept in
+  32-bit floats) on the rest — `full_attention_interval`, a per-layer
+  `recurrent_layers` list, or per-layer `head_count_kv` with zeros;
+- sliding-window layers stop growing at `window + n_ubatch` cells, rounded up
+  to 256 — per-layer `sliding_window_pattern` where the header states one
+  (with `key_length_swa` for the shorter sliding heads), else the period
+  llama.cpp hard-codes for the architecture;
+- the last `shared_kv_layers` layers own no cache; `nextn_predict_layers`
+  appended to a file are not run and keep nothing (this is the "block_count
+  is one more than the model card" of step 4's gate);
+- multi-head latent attention (`key_length_mla` present) caches one
+  compressed key per token and no value;
+- keys and values may differ in length: the term is `key_length +
+  value_length`, which is D-20's `2 · head_dim` wherever they are equal.
+
+Every rule follows llama.cpp's own loader and cache code (checked against
+ggml-org/llama.cpp 5b59b83, 2026-09-19) — the runtime's arithmetic, not a
+guess at it. A Layout is **derived on every read** from the typed columns
+plus `header_json`, never stored, so a better reading of a header needs no
+catalogue refresh and the rows a step 4 build wrote serve as they are. Its
+`Basis` says how far it can be trusted: `uniform` (the shape step 0
+measured), `stated`, `architecture` (the header states a window and the
+pattern is the one llama.cpp hard-codes for the architecture), or
+`incomplete` (something the layout needs is missing; what could be read is
+used and the note says what could not). An architecture llama.cpp has no
+sliding-window pattern for is run with full attention whatever window its
+header mentions — step 0's phi3 rows — so the plain formula is exact there.
+
+Around the formula: a vision encoder's bytes are added to the weights (the
+runtime loads it beside them; step 0's one multimodal model had it
+resident); Gemma's per-layer-embedding sizes keep their lookup tables in
+system memory by design, so only `bytes × active ÷ total` counts against the
+graphics memory and the rest is reported as living off the card without
+making the model "split"; a mixture of experts needs every expert resident.
+A quantised cache uses GGML's block sizes (34/32 and 18/32 bytes an element).
+
+**The five categories, and the threshold that decided.** Against the
+placement's budget (D-39): at or under `HeadroomFraction` (80%) fits with
+headroom; at or under `FitsFraction` (92%) fits; over that, a shorter context
+from the ladder that fits makes it `reduced_context_only` (with
+`suggested_ctx`) — looked for *before* splitting, because a shorter context
+keeps the whole model where it runs fastest; otherwise whole layers go to the
+graphics until it is full and the rest must fit in RAM less the OS reserve
+(`needs_cpu_offload`), else `not_recommended`. `Estimate.Threshold` is the
+comparison in words. A sixth value, `unknown`, exists for a budget that
+could not be read (D-21): never a fit, never a misfit.
+
+**Every constant is in `estimate.Config`**, each marked MEASURED (fleet),
+MEASURED (public) or CHOSEN, with what would settle the chosen ones. The
+overheads are step 0's medians. The two fractions, the OS reserve and the
+processor's speed range are CHOSEN and say so.
+
+**Evidence beyond the gate.** Step 0 measured one hybrid model on Metal and
+Vulkan and excluded it as multimodal; with the layout its four rows land
+within 10% (with every layer counted the long-context rows over-predict by
+40%), and the test holds them to 15%. Its Gemma rows on CUDA grow by 17 KB
+per token of context, against 16 KB for a shared-cache, mostly-sliding
+layout. That is support, not validation: `Basis.MemoryModel` is `validated`
+only for the shape inside step 0's gate, `modelled` for everything above,
+and the confidence (D-42) follows it.
+
+## D-39. Placement: which memory, which path, and what the runtime was seen to do
+
+**Decision.** `Estimator.Place` decides once per machine where a model would
+run and what it is compared against, so Fit and the engine cannot disagree:
+Apple Silicon against `gpu_usable_bytes`, never RAM (D-25); a graphics card
+against the largest single device (D-20 finding 8); a machine whose models
+run on the processor against RAM less `Config.OSReserve`; graphics built
+into a processor against system memory too, at that memory's speed, and
+without being called "a graphics card that is not used". The runtime path is
+the one the backend **established** after a load (D-31) when there is one,
+else the rule-derived expectation (D-24), and the estimate says which
+(`Basis.PathSource`).
+
+When a graphics card exists and the plan is nevertheless for the processor,
+`Placement.Unused` says which of four things is true — seen running on the
+processor, cannot be used as set up, not known yet, memory unreadable — with
+the why as far as the facts go: the support rule's own sentence, Vulkan
+switched off when `OLLAMA_VULKAN` says so, otherwise the usual causes named
+as such. An operating system older than the runtime supports blocks
+everything and the result carries the profile's sentence.
+
+An observation outlives the load: most backend checks see no model loaded
+and record no path, so the engine plans against the **last check that saw
+one, on this hardware**. Migration 0004 adds `backends.hardware_fingerprint`
+for that — what Ollama did with the old graphics card says nothing about the
+new one, and timestamps at one-second resolution cannot tell a swap from a
+restart. `GET /api/recommend` and the fit endpoint re-check the runtimes
+first (Detect is cheap and starts nothing — D-30), so a model loaded a minute
+ago in the user's chat app is what the answer is built on.
+
+## D-40. Speed is a range, from memory bandwidth, and absent when the part is unknown
+
+**Decision.** `generation tok/s ≈ bandwidth ÷ bytes read per token ×
+efficiency`, both ends estimated: the high end reads only the weights a token
+uses (an empty context), the low end adds the whole cache at the context
+asked for (a full one). Prompt processing is estimated separately — it is
+bound by arithmetic, so it is the part's generation speed on the reference
+model scaled to this model's active parameters, times the path's measured
+prompt-to-generation ratio. `estimate.Speed` carries both as `*figure.Rate`
+with `Low < High`; when the part is not in the table they are **absent** and
+`Unknown` is the sentence — a missing number is a sentence, never a zero and
+never a default. `WithMeasurement` turns a rate into a measured point and
+flips its source: product rule 4's second sentence, ready for step 6.
+
+Bandwidth is data: `data/hardware/gpus.yaml`, embedded and strictly decoded
+like the other data files. Graphics rows carry vendor, name patterns,
+optional memory-size and GPU-core conditions (the same name ships with
+different memory), the vendor's bandwidth, and — for GDDR parts — the data
+rate and bus width it is derived from; the parser refuses a row whose
+bandwidth is not `rate × width ÷ 8`, so a typo cannot survive. Rows are
+ordered (laptop parts above desktop parts of the same name); a name that
+lists several cards, which is how Linux's pci.ids names a chip id, takes the
+slowest of every matching row and says so. `system_memory` rows give a
+processor family's supported memory as a **range** — one module of the
+slowest supported speed to every channel at the fastest — because the
+advisor does not read what is installed; that alone makes the processor's
+estimate the widest.
+
+Efficiency and prompt ratio are ranges keyed by the runtime path
+(`estimate.Config.Paths`), Vulkan refined by vendor because its three
+populations disagree. As shipped they come from llama.cpp's own llama-bench
+scoreboards (read 2026-09-19) and each entry's `Basis` lists the figures;
+parts a scoreboard shows outside their path's range get a per-row override
+in gpus.yaml with its source (the two-die Apple chips, the Max chips, an HBM
+card). Mixture-of-experts models read `bytes × active ÷ total` per token and
+are scaled by a measured factor. The processor's range is CHOSEN — nothing
+public covers it — and is the first thing `scripts/calibrate` exists to
+replace: it turns a llama-bench run on a fleet machine into the same two
+factors, says whether they fall inside the configured range, and writes a
+results file to commit. It is the dev-side instrument; the customer's
+measurement is step 6's benchmark of Ollama itself.
+
+## D-41. Recommendation is a product of four factors over the default download
+
+**Decision.** `score = purposeFit^wP × fitFactor^wF × speedFactor^wS ×
+sizeFactor^wZ`, every weight and threshold in `recommend.Config`. A product,
+so a zero anywhere is a veto.
+
+- *Purpose fit* reads the order of a family's `purposes` in families.yaml —
+  most credible first, a gentle step per rank (the file's header now says the
+  order is read) — averaged over the purposes asked for, zero for a purpose
+  the machine cannot serve (long documents at a short context, images without
+  an encoder), and scaled down when the context has to be shorter than the
+  purpose wants. The engine chooses the context: the longest on the ladder,
+  up to what the purposes want, that still fits wholly.
+- *Fit* is the category's worth. Models that only run split compete only
+  when nothing fits at all (or `allow_split` is asked for): a beginner is not
+  steered to a model several times slower while one that fits exists.
+- *Speed* is the geometric middle of the estimated range over a comfortable
+  reading speed, capped at 1, falling all the way down below it and weighted
+  1.5 — which is what sends small models to weak hardware (product rule 6)
+  instead of the largest model that happens to fit in RAM.
+- *Size* is the only quality proxy the catalogue carries until step 9b: log
+  of effective parameters (total; √(total × active) for experts; the model
+  card's effective count for per-layer-embedding sizes). It is what keeps a
+  24 GB card from being handed a 1B model.
+
+The engine recommends **one file per size: the one its Ollama tag pulls**
+(`DefaultQuants`). The Ollama adapter cannot pull another quant yet, and
+choosing quants automatically is PRD §18. At most three cards, one per
+family. Every sentence on a card is templated from the facts the rules used
+(`reasons.go`, D-8), in a fixed order — the graphics card that is not part of
+the numbers first, with its explainer id and the why; then fit, purpose,
+speed, cost, change — and a test holds the copy rule: none of the glossary's
+terms reaches a reason.
+
+If the user has a model, the one that serves the purposes best (or the one
+named) is assessed like a candidate, and a recommendation must name a
+noticeable change against it — size, speed, a purpose its family is not for,
+a context at least twice as long, fitting where it does not — or be dropped;
+the model itself is never recommended to its owner, and an installed model
+that is a real change costs "nothing to download". When the list is empty
+the result says why in words and as a code (`empty_code`); the UI offers the
+one action that fixes it — fetching the model list, with its cost on the
+button.
+
+**Consequences.** `internal/recommend/recommend_test.go` holds the outcomes
+the weights have to produce on the golden hardware profiles — the fleet's
+top picks among them. A change to a weight is judged by those outcomes, and
+by Itay reading `advisor recommend` on each machine.
+
+## D-42. Confidence is derived, three-valued, and says what limits it
+
+**Decision.** From `estimate.Basis`: **low** when something is unknown (no
+speed estimate; a model description the memory arithmetic could not read in
+full); **high** when the memory arithmetic has been measured
+(step 0's shape, or a benchmark of this configuration), the runtime has been
+seen taking this path, and the speed is measured or is an estimate on a path
+whose parts behave alike (cuda, metal); **medium** otherwise — all inputs
+known, at least one only expected, modelled or wide. `confidence_why` names
+the limiting inputs in plain words and the UI shows both on every card. Most
+of today's catalogue is therefore medium at best until step 6 measures it,
+which is the honest reading of PRD §21's last risk.
+
+## D-43. The API for step 5, and what is deliberately not stored yet
+
+**Decision.** `GET /api/recommend?purposes=a,b[&current=][&min_context=]
+[&gpu_only=1][&allow_split=1]` → `recommend.Result`; no purposes means
+everyday chat. `GET /api/models/{id}/fit[?ctx=][&kv=]` → one estimate per
+tracked weights file of a catalogue size, `{id}` being the size's id in
+`GET /api/catalog`; without `ctx` the context is what Ollama itself would
+use on this machine (4k, 32k or 256k by graphics memory — its
+`server/routes.go`), and the response says which. Both wait for hardware
+detection like `GET /api/hardware`. `advisor recommend` prints a running
+daemon's answer as text for the developer; `scripts/verify.command` and CI
+call it.
+
+Estimates are computed per request and **not written to `estimates`**: the
+table's rows exist to be flipped to `measured`, and writing on a GET would
+make every page view a write. Step 6 owns the row: it inserts or updates it
+when a benchmark completes, and passes what it measured to the engine through
+`Engine.Measurements` / `Estimate.WithMeasurement`.
+
+**Dependency direction** (D-11, made concrete): `estimate` imports `catalog`,
+`hardware`, `figure` and `data`; `recommend` imports `estimate`; `server`
+imports both; `scripts/calibrate` imports `estimate`. `hardware` gains exported
+helpers (`MatchName`, `HumanGB`, `PrimaryGPU`, `AppleGPUCores`) and no
+dependency.
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -957,22 +1197,27 @@ their type early. The fixture whose writer puts the type last
   the first time by whichever comes first.
 - **A UI for Install/Pull progress and the backends/models inventory**: step
   11; step 3 only adds a temporary shell status line.
-- **What step 5 must read from the catalogue** (step 4 stores it, D-32/33):
-  hybrid attention (`full_attention_interval`, per-layer `head_count_kv`
-  with zeros) keeps a KV cache on only some layers; multi-head latent
-  attention (`deepseek2`, e.g. GLM-4.7-Flash) sizes it by
-  `attention.kv_lora_rank`, not `head_count_kv` (in `header_json`); sliding
-  windows (`attention.sliding_window`, and the pattern keys in
-  `header_json`); `active_parameters` for speed; a projector file's bytes
-  when an image is read. From the gate's refresh (2026-09-19): Qwen3.5 /
-  3.6 / 3.8 and GLM-4.7-Flash state a `block_count` one higher than their
-  model cards' layer count (Qwen3.8 27B: 65 against 64) — most likely the
-  multi-token-prediction layer (look for `nextn_predict_layers` in
-  `header_json`), which should keep no KV cache; Gemma 4 states
-  `key_length` 512 (its global layers), and its sliding-window layers may
-  use a smaller head dimension stated separately (look for a `_swa` key);
-  GLM-4.7-Flash's stated head dimension 576 is MLA's `kv_lora_rank` (512)
-  plus its rope dimension (64), not a per-head size.
+- **What step 5 read from the catalogue** — closed by D-38. What stays open
+  is measurement: no model with a sliding window, shared layers, experts or
+  latent attention is inside a gate yet. `scripts/probe0` on the fleet with
+  the catalogue's sizes of those kinds is the check, and
+  `advisor recommend` prints each card's layout notes so a wrong reading of a
+  real header is visible.
+- **The constants that are CHOSEN** (estimate.Config says which): where
+  "fits" ends (92%), the OS reserve, the processor's efficiency range and the
+  no-AVX2 factor. Step 6 records size against size_vram and system memory for
+  every run; `scripts/calibrate` with `-ngl 0` on the Windows PC and the Mac
+  Pro settles the processor's. The Mac Pro's D700s on Vulkan are older than
+  anything in the public scoreboard — calibrate them first.
+- **llama.cpp is not Ollama.** The speed constants come from llama-bench;
+  a consistent gap to Ollama's own eval rate is a constant the model does not
+  have yet (scripts/calibrate/README.md says how to look for it).
+- **The quant an Ollama tag pulls.** The engine assumes the usual default;
+  at least one small size in Ollama's library defaults to a larger quant.
+  A per-size field in families.yaml is the fix when it matters.
+- **Quality beyond size.** Until step 9b brings public signals, a larger
+  model of an older family can out-rank a smaller one of a newer family;
+  the purposes order is the curator's only lever.
 - **The live gate** passed on the M1 Pro (2026-09-19, `verify.command`):
   every size resolved, no weights downloaded. `advisor catalog refresh` in
   `scripts/verify.command` stays the live check for catalogue edits.

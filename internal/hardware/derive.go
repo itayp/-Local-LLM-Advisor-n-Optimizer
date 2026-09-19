@@ -416,3 +416,41 @@ func Fingerprint(p Profile) string {
 func roundGiB(b uint64) uint64 {
 	return uint64(math.Round(float64(b) / (1 << 30)))
 }
+
+// MatchName is the form device and processor names are matched in by every
+// data file (runtime-support.yaml here, gpus.yaml in internal/estimate):
+// trademark marks removed, spaces collapsed.
+func MatchName(s string) string { return matchName(s) }
+
+// HumanGB rounds a byte count the way people say it ("16 GB" for a card
+// reporting 15.9 GiB, "11.8 GB" otherwise), so that a sentence built
+// elsewhere about this machine uses the same words as its Summary.
+func HumanGB(b uint64) string { return humanGB(b) }
+
+// PrimaryGPU is the device the advisor plans for — the first of GPUs, which
+// orderGPUs put there because it is the one the runtime can use best.
+func (p Profile) PrimaryGPU() (GPU, bool) {
+	if len(p.GPUs) == 0 {
+		return GPU{}, false
+	}
+	return p.GPUs[0], true
+}
+
+// AppleGPUCores is the GPU core count of an Apple Silicon chip as macOS
+// reports it (macprobe.go keeps it in Note as "16-core GPU"). The same chip
+// name ships with different core counts and, for some chips, different
+// memory bandwidth, which is why the speed estimate asks.
+func (g GPU) AppleGPUCores() (int, bool) {
+	if g.Vendor != VendorApple {
+		return 0, false
+	}
+	head, _, ok := strings.Cut(g.Note, "-core GPU")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(head))
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}

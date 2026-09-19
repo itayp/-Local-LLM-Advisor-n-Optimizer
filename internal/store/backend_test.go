@@ -101,3 +101,46 @@ func TestLatestBackendsListsOneRowPerName(t *testing.T) {
 		t.Fatalf("rows[1] = %+v", rows[1])
 	}
 }
+
+// What the runtime was seen to do is remembered per hardware: the last
+// check that caught a loaded model answers for this fingerprint, later
+// checks that saw nothing do not erase it, and another machine's — or an
+// unattributed row's — observation never counts.
+func TestLastObservedRuntimePathsIsPerHardware(t *testing.T) {
+	s := openTemp(t)
+	ctx := context.Background()
+	seen := func(p hardware.RuntimePath) backend.Status {
+		return backend.Status{State: backend.StateRunning, RuntimePaths: map[int]hardware.RuntimePath{0: p}}
+	}
+	idle := backend.Status{State: backend.StateRunning}
+
+	if _, err := s.LastObservedRuntimePaths(ctx, "ollama", "v1-new"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("nothing recorded: %v", err)
+	}
+	for _, rec := range []struct {
+		fingerprint string
+		status      backend.Status
+	}{
+		{"v1-old", seen(hardware.PathCPU)}, // another graphics card, before the swap
+		{"", seen(hardware.PathVulkan)},    // detection had not finished: counts for no hardware
+		{"v1-new", seen(hardware.PathCUDA)},
+		{"v1-new", idle}, // the model has been unloaded since
+	} {
+		if _, err := s.RecordBackendOn(ctx, rec.fingerprint, "ollama", rec.status, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row, err := s.LastObservedRuntimePaths(ctx, "ollama", "v1-new")
+	if err != nil || row.RuntimePaths[0] != hardware.PathCUDA || row.HardwareFingerprint != "v1-new" {
+		t.Errorf("this hardware: %+v %v", row, err)
+	}
+	if row, err := s.LastObservedRuntimePaths(ctx, "ollama", "v1-old"); err != nil || row.RuntimePaths[0] != hardware.PathCPU {
+		t.Errorf("the old hardware keeps its own observation: %+v %v", row, err)
+	}
+	if _, err := s.LastObservedRuntimePaths(ctx, "ollama", ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an unknown fingerprint matches nothing, got %v", err)
+	}
+	if _, err := s.LastObservedRuntimePaths(ctx, "llamacpp", "v1-new"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("another backend: %v", err)
+	}
+}

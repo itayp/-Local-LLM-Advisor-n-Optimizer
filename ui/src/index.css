@@ -285,3 +285,140 @@ body {
 .screen__advanced {
   overflow-x: auto;
 }
+
+/* Recommend: the question, then up to three cards. */
+.purposes {
+  border: none;
+  padding: 0;
+  margin: 0 0 24px;
+}
+
+.purposes ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 24px;
+}
+
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  counter-reset: card;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.card h3 {
+  margin: 16px 0 6px;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.card__figures {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 24px;
+  margin: 12px 0 0;
+}
+
+.card__figures dt {
+  color: var(--muted);
+}
+
+.card__figures dd {
+  margin: 0;
+}
+
+.card__unknown {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.card__reasons {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.card__reasons li + li {
+  margin-top: 4px;
+}
+
+.reason--warning {
+  color: var(--warn-fg);
+}
+
+.reason details,
+.notice details {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.card__confidence {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+
+/* Confidence: three looks, so that "low" is never mistaken for "high". */
+.confidence {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.confidence--high {
+  color: var(--measured);
+}
+
+.confidence--medium {
+  color: var(--estimated);
+}
+
+.confidence--low {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border-style: dashed;
+}
+
+.button {
+  font: inherit;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.notice p {
+  margin: 0 0 8px;
+}
+
+.notice p:last-child {
+  margin-bottom: 0;
+}

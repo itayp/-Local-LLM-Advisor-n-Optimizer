@@ -126,7 +126,18 @@ func (s *Server) recordOneBackend(ctx context.Context, b backend.Backend) Backen
 			Detail: status.Detail, CheckedAt: store.Now(),
 		}
 	}
-	row, rerr := s.store.RecordBackend(ctx, name, status, installedVersion)
+	// The check is attributed to the hardware it ran on, once that is known,
+	// so that a runtime path seen on this machine is never applied to a
+	// different graphics card later (migration 0004).
+	fingerprint := ""
+	select {
+	case <-s.hw.ready:
+		if s.hw.err == nil {
+			fingerprint = s.hw.resp.Fingerprint
+		}
+	default:
+	}
+	row, rerr := s.store.RecordBackendOn(ctx, fingerprint, name, status, installedVersion)
 	if rerr != nil {
 		// The check itself is still good; only its history row is missing
 		// (the same trade-off RecordHardware makes).

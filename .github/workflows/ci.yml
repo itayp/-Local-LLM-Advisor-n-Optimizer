@@ -98,7 +98,7 @@ jobs:
           done
           ls -la dist
 
-      - name: Smoke test — each binary starts, answers /api/health and /api/hardware, serves the UI
+      - name: Smoke test — each binary starts, answers /api/health, /api/hardware and /api/recommend, serves the UI
         shell: bash
         env:
           ADVISOR_DATA_DIR: ${{ runner.temp }}/advisor-smoke
@@ -128,6 +128,10 @@ jobs:
             # (step 2). The request waits while detection is still running.
             curl -sf --max-time 120 http://127.0.0.1:27182/api/hardware || { echo "GET /api/hardware failed"; kill $pid; exit 1; }
             echo
+            # What the advisor says to this runner (step 5). The model list has not
+            # been fetched here, so the honest answer is "nothing to recommend from
+            # yet" — the point is that the endpoint answers on every OS.
+            "$bin" recommend -port 27182 -purposes chat,coding || { echo "advisor recommend failed"; kill $pid; exit 1; }
             kill $pid || true
             wait $pid 2>/dev/null || true
           done

@@ -4,6 +4,7 @@
 //
 //	hardware/runtime-support.yaml   internal/hardware (build-plan step 2)
 //	catalog/families.yaml           internal/catalog  (build-plan step 4)
+//	hardware/gpus.yaml              internal/estimate (build-plan step 5)
 package data
 
 import "embed"
@@ -19,3 +20,7 @@ const RuntimeSupportPath = "hardware/runtime-support.yaml"
 
 // CatalogPath is where the curated model catalogue lives in Files.
 const CatalogPath = "catalog/families.yaml"
+
+// DevicesPath is where the memory-bandwidth table of graphics parts and
+// processor memory lives in Files.
+const DevicesPath = "hardware/gpus.yaml"

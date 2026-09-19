@@ -17,16 +17,20 @@ chats in the app they already use.
 | `ARCHITECTURE.md` | the decisions restated with their consequences (an ADR) |
 | `CLAUDE.md` | the product rules and the repo conventions — read first |
 | `scripts/probe0/README.md` | step 0: the estimator experiment and its result |
+| `scripts/calibrate/README.md` | the dev-side instrument that measures the speed model's constants on a fleet machine |
 
 ## Status
 
-Step 2 of the build plan: hardware detection. The daemon starts, reads the
-machine in the background (Windows, macOS and Linux; NVIDIA, Apple Silicon,
-AMD, Intel, integrated graphics and none), stores the profile on every start
-with its history, and answers `GET /api/hardware`; the "Your computer" screen
-shows it. What Ollama should be able to use per graphics card comes from
-`data/hardware/runtime-support.yaml`. No Ollama calls and no catalogue
-content yet — those are steps 3 and 4.
+Step 5 of the build plan: the fit estimator and the recommendation engine.
+The daemon reads the machine, finds Ollama and what it has installed, keeps
+the curated model list with each file's header metadata, and now answers the
+product's central question: `GET /api/models/{id}/fit` says how much memory a
+model needs here, where it would live and how fast it should run — a range,
+labelled as an estimate — and `GET /api/recommend?purposes=…` returns up to
+three models that fit, each with its reasons in plain words, what it costs to
+download, what it changes against the model you have, and how confident the
+advisor is. The Recommend screen shows it. Benchmarks that replace the
+estimates with measurements are step 6.
 
 ## Run it
 

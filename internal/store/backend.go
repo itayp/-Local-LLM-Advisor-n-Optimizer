@@ -26,6 +26,10 @@ type BackendRow struct {
 	RuntimePaths     map[int]hardware.RuntimePath
 	Env              map[string]string
 	Detail           string
+	// HardwareFingerprint is hardware.Fingerprint of the machine the check
+	// ran on; "" when detection had not finished (or the row predates
+	// migration 0004).
+	HardwareFingerprint string
 }
 
 // RecordBackend stores one Detect() result as a new row — an insert-only
@@ -33,6 +37,13 @@ type BackendRow struct {
 // exactly as it was, so nothing about what a runtime path used to be gets
 // silently rewritten out from under a stored benchmark or estimate.
 func (s *Store) RecordBackend(ctx context.Context, name string, status backend.Status, installedVersion string) (BackendRow, error) {
+	return s.RecordBackendOn(ctx, "", name, status, installedVersion)
+}
+
+// RecordBackendOn is RecordBackend with the fingerprint of the hardware the
+// check ran on, which is what lets LastObservedRuntimePaths answer for this
+// hardware and no other.
+func (s *Store) RecordBackendOn(ctx context.Context, fingerprint, name string, status backend.Status, installedVersion string) (BackendRow, error) {
 	paths, err := json.Marshal(nonNilRuntimePaths(status.RuntimePaths))
 	if err != nil {
 		return BackendRow{}, fmt.Errorf("store: encoding runtime paths for %s: %w", name, err)
@@ -51,12 +62,14 @@ func (s *Store) RecordBackend(ctx context.Context, name string, status backend.S
 		RuntimePaths:     status.RuntimePaths,
 		Env:              status.Env,
 		Detail:           status.Detail,
+
+		HardwareFingerprint: fingerprint,
 	}
 	res, err := s.db.ExecContext(ctx, `INSERT INTO backends
-		(created_at, name, state, version, host, installed_version, runtime_paths_json, env_json, detail)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(created_at, name, state, version, host, installed_version, runtime_paths_json, env_json, detail, hardware_fingerprint)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		row.CreatedAt, name, string(status.State), status.Version, status.Host, installedVersion,
-		string(paths), string(env), status.Detail)
+		string(paths), string(env), status.Detail, fingerprint)
 	if err != nil {
 		return BackendRow{}, fmt.Errorf("store: inserting backend row for %s: %w", name, err)
 	}
@@ -82,13 +95,13 @@ func nonNilEnv(m map[string]string) map[string]string {
 	return m
 }
 
-const backendColumns = `id, created_at, name, state, version, host, installed_version, runtime_paths_json, env_json, detail`
+const backendColumns = `id, created_at, name, state, version, host, installed_version, runtime_paths_json, env_json, detail, hardware_fingerprint`
 
 func scanBackend(sc interface{ Scan(...any) error }) (BackendRow, error) {
 	var r BackendRow
 	var state, paths, env string
 	if err := sc.Scan(&r.ID, &r.CreatedAt, &r.Name, &state, &r.Version, &r.Host,
-		&r.InstalledVersion, &paths, &env, &r.Detail); err != nil {
+		&r.InstalledVersion, &paths, &env, &r.Detail, &r.HardwareFingerprint); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return r, ErrNotFound
 		}
@@ -131,4 +144,22 @@ func (s *Store) LatestBackends(ctx context.Context) ([]BackendRow, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// LastObservedRuntimePaths returns the most recent check of backend name
+// on the hardware with this fingerprint that recorded which path the runtime
+// took (D-31: that is only known while a model is loaded, so most checks
+// record none). ErrNotFound when no check on this hardware has seen a load.
+//
+// The recommendation engine plans against this: a runtime seen running on
+// the processor last week is still the best evidence about today — as long
+// as the hardware is the same, which is what the fingerprint says.
+func (s *Store) LastObservedRuntimePaths(ctx context.Context, name, fingerprint string) (BackendRow, error) {
+	if fingerprint == "" {
+		return BackendRow{}, ErrNotFound
+	}
+	return scanBackend(s.db.QueryRowContext(ctx,
+		`SELECT `+backendColumns+` FROM backends
+		 WHERE name = ? AND hardware_fingerprint = ? AND runtime_paths_json NOT IN ('', '{}', 'null')
+		 ORDER BY id DESC LIMIT 1`, name, fingerprint))
 }

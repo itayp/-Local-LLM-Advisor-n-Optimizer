@@ -33,6 +33,9 @@ func main() {
 	if isCatalogCommand(os.Args) {
 		os.Exit(runCatalog(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if isRecommendCommand(os.Args) {
+		os.Exit(runRecommend(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	os.Exit(run())
 }
 

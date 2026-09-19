@@ -266,7 +266,7 @@ func (s *Store) catalogFiles(ctx context.Context, includeAbsent bool) ([]catalog
 	q := `SELECT id, catalog_model_id, filename, role, quant, sha, parts, bytes, bits_per_weight, present,
 		architecture, gguf_version, tensor_count, block_count, head_count, head_count_kv, head_count_kv_stated,
 		key_length, value_length, embedding_length, context_length, sliding_window, full_attention_interval,
-		file_type, expert_count, expert_used_count, has_vision, header_complete, fetched_at
+		file_type, expert_count, expert_used_count, has_vision, header_complete, fetched_at, header_json
 		FROM catalog_files`
 	if !includeAbsent {
 		q += ` WHERE present = 1`
@@ -280,7 +280,7 @@ func (s *Store) catalogFiles(ctx context.Context, includeAbsent bool) ([]catalog
 	var out []catalog.File
 	for rows.Next() {
 		var f catalog.File
-		var role, fetched string
+		var role, fetched, headerJSON string
 		var bytes int64
 		var present int
 		h := &f.Header
@@ -288,7 +288,7 @@ func (s *Store) catalogFiles(ctx context.Context, includeAbsent bool) ([]catalog
 			&f.BitsPerWeight, &present, &h.Architecture, &h.GGUFVersion, &h.TensorCount, &h.BlockCount,
 			&h.HeadCount, &h.HeadCountKV, &h.HeadCountKVStated, &h.KeyLength, &h.ValueLength,
 			&h.EmbeddingLength, &h.ContextLength, &h.SlidingWindow, &h.FullAttentionInterval, &h.FileType,
-			&h.ExpertCount, &h.ExpertUsedCount, &h.HasVision, &h.Complete, &fetched); err != nil {
+			&h.ExpertCount, &h.ExpertUsedCount, &h.HasVision, &h.Complete, &fetched, &headerJSON); err != nil {
 			return nil, fmt.Errorf("store: catalogue files: %w", err)
 		}
 		f.Role, f.Bytes, f.Present = catalog.FileRole(role), uint64(bytes), present != 0
@@ -296,6 +296,15 @@ func (s *Store) catalogFiles(ctx context.Context, includeAbsent bool) ([]catalog
 			h.FileTypeName = fileTypeName(h.FileType)
 		}
 		f.FetchedAt, _ = time.Parse(time.RFC3339, fetched)
+		if f.Role == catalog.RoleModel {
+			// The layout is derived on every read, never stored: a better
+			// reading of the same header then needs no catalogue refresh.
+			var raw struct {
+				KV map[string]any `json:"kv"`
+			}
+			_ = json.Unmarshal([]byte(headerJSON), &raw) // an unreadable header_json leaves the typed columns, which NewLayout accepts
+			f.Layout = catalog.NewLayout(f.Header, raw.KV)
+		}
 		out = append(out, f)
 	}
 	return out, rows.Err()

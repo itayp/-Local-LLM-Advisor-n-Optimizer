@@ -139,8 +139,13 @@ type File struct {
 	// from the tracked list); the row stays for history.
 	Present bool `json:"present"`
 
-	Header    GGUFHeader `json:"header"`
-	FetchedAt time.Time  `json:"fetched_at"`
+	Header GGUFHeader `json:"header"`
+	// Layout is what each layer keeps in memory as the context grows, derived
+	// from the header (layout.go) whenever a file is read from the store — it
+	// is never stored, so a better reading needs no refresh. Empty for a
+	// projector, and for a File built by hand; estimate derives it then.
+	Layout    Layout    `json:"layout"`
+	FetchedAt time.Time `json:"fetched_at"`
 }
 
 // GGUFHeader carries the metadata fields the estimator needs. Step 0's

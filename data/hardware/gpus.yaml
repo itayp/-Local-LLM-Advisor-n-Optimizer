@@ -1,0 +1,268 @@
+# Memory bandwidth of consumer graphics parts and of the memory consumer
+# processors use — the one hardware number the speed estimate turns on
+# (internal/estimate/speed.go):
+#
+#   generation tok/s  ≈  memory bandwidth ÷ bytes read per token  × efficiency
+#
+# A part that is not in this file gets NO speed estimate, and the UI says so
+# in words; the advisor never invents a number (ARCHITECTURE.md D-21). Adding
+# a row is the fix.
+#
+# This file is DATA. It is embedded in the binary (package advisor/data) and
+# read by internal/estimate/devices.go, whose DeviceFile type mirrors it;
+# unknown keys are errors. devices_test.go is its contract: every row that
+# states a memory configuration must satisfy
+#
+#   bandwidth_gbs = data_rate_gbps × bus_width_bits ÷ 8        (within 1%)
+#
+# which is how the vendors' own figures are derived, so a typo in either
+# cannot survive; and a list of real device names must land on the rows they
+# should (the order of the rows matters, see below).
+#
+# Schema:
+#
+#   sources:                       # where rows were taken from; a row names one
+#     some-id: citation, URL
+#
+#   gpus:                          # ORDERED. For an ordinary name the first row
+#     - id: rtx-4090               # whose conditions all hold decides — so a
+#       vendor: nvidia             # laptop part sits above the desktop part of
+#       name: ['RTX 4090']         # the same name, "Ti SUPER" above "Ti" above
+#       min_vram_gib: 11           # the plain model. For a name that lists
+#       max_vram_gib: 13           # several cards (Linux's pci.ids writes "RX
+#       gpu_cores: [30]            # 7900 XT/7900 XTX/7900 GRE" for one chip
+#       bandwidth_gbs: 1008        # id), every matching row is considered and
+#       data_rate_gbps: 21         # the slowest wins, with a note.
+#       bus_width_bits: 384        #   vendor        nvidia | amd | intel | apple
+#       efficiency: [0.42, 0.55]   #   name          Go regexp, case-insensitive, any match
+#       efficiency_source: ...     #   min/max_vram_gib  the card's own memory, when several
+#       prompt_ratio: [20, 28]     #                 cards share a name (unknown memory fails it)
+#       prompt_ratio_source: ...   #   gpu_cores     Apple: the chip's GPU core count, when
+#       source: nvidia-geforce     #                 bandwidth differs by it (unknown fails it)
+#       checked: YYYY-MM-DD        #   bandwidth_gbs GB/s (decimal), the vendor's figure
+#       note: ...                  #   data_rate_gbps, bus_width_bits  the memory configuration
+#                                  #                 the figure is derived from (GDDR parts)
+#                                  #   efficiency, prompt_ratio  ONLY where a published
+#                                  #                 measurement puts this part outside its
+#                                  #                 runtime path's range (estimate.Config);
+#                                  #                 each needs its *_source
+#
+#   system_memory:                 # ORDERED, first match wins. The memory a
+#     - id: intel-core-12-14       # processor family supports, for models that
+#       cpu: ['regexp']            # run on the processor. What is installed is
+#       low_gbs: 25.6              # not read by the advisor, so a row is a
+#       high_gbs: 89.6             # RANGE: low is one module of the slowest
+#       memory: in words           # supported speed (many laptops ship that
+#       source: intel-ark          # way), high is every channel at the fastest.
+#       checked: YYYY-MM-DD        # One channel moves MT/s × 8 ÷ 1000 GB/s.
+#
+# Names are matched after removing (R), (TM), ® and ™ and collapsing spaces
+# (hardware.MatchName), the same way runtime-support.yaml's are.
+
+sources:
+  nvidia-geforce: "NVIDIA GeForce product specifications — memory configuration and bandwidth per card, https://www.nvidia.com/en-us/geforce/graphics-cards/compare/ (laptop parts: https://www.nvidia.com/en-us/geforce/laptops/compare/)"
+  amd-radeon: "AMD Radeon product specifications — memory speed, interface and bandwidth per card, https://www.amd.com/en/products/specifications/graphics.html"
+  intel-ark: "Intel ARK product specifications — graphics memory bandwidth for Arc cards, memory types and channels for processors, https://ark.intel.com/"
+  amd-processors: "AMD processor specifications — system memory type, speed and channels, https://www.amd.com/en/products/specifications/processors.html"
+  apple-specs: "Apple technical specifications and chip announcements — unified memory bandwidth per chip, https://support.apple.com/specs and https://www.apple.com/newsroom/; the same figures head llama.cpp's Apple Silicon table, https://github.com/ggml-org/llama.cpp/discussions/4167 (read 2026-09-19)"
+  llamacpp-apple: "llama.cpp, Performance of llama.cpp on Apple Silicon M-series (LLaMA 7B, llama-bench), https://github.com/ggml-org/llama.cpp/discussions/4167, read 2026-09-19"
+  llamacpp-vulkan: "llama.cpp, Performance of llama.cpp with Vulkan (Llama 2 7B Q4_0, llama-bench), https://github.com/ggml-org/llama.cpp/discussions/10879, read 2026-09-19"
+
+gpus:
+  # --- NVIDIA laptop parts (above the desktop parts of the same name) --------
+  - {id: rtx-5090-laptop, vendor: nvidia, name: ['RTX 5090.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 896, data_rate_gbps: 28, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5080-laptop, vendor: nvidia, name: ['RTX 5080.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 896, data_rate_gbps: 28, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5070-ti-laptop, vendor: nvidia, name: ['RTX 5070 Ti.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 672, data_rate_gbps: 28, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5070-laptop, vendor: nvidia, name: ['RTX 5070.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 384, data_rate_gbps: 24, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5060-laptop, vendor: nvidia, name: ['RTX 5060.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 384, data_rate_gbps: 24, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5050-laptop, vendor: nvidia, name: ['RTX 5050.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 384, data_rate_gbps: 24, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4090-laptop, vendor: nvidia, name: ['RTX 4090.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 576, data_rate_gbps: 18, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4080-laptop, vendor: nvidia, name: ['RTX 4080.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 432, data_rate_gbps: 18, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4070-laptop, vendor: nvidia, name: ['RTX 4070.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 256, data_rate_gbps: 16, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4060-laptop, vendor: nvidia, name: ['RTX 4060.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 256, data_rate_gbps: 16, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4050-laptop, vendor: nvidia, name: ['RTX 4050'], bandwidth_gbs: 192, data_rate_gbps: 16, bus_width_bits: 96, source: nvidia-geforce, checked: 2026-09-19, note: "a laptop part only"}
+  - {id: rtx-3080-ti-laptop, vendor: nvidia, name: ['RTX 3080 Ti.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 512, data_rate_gbps: 16, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3080-laptop, vendor: nvidia, name: ['RTX 3080.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3070-laptop, vendor: nvidia, name: ['RTX 3070( Ti)?.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3060-laptop, vendor: nvidia, name: ['RTX 3060.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 336, data_rate_gbps: 14, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3050-laptop, vendor: nvidia, name: ['RTX 3050( Ti)?.*(Laptop|Mobile|Max-Q)'], bandwidth_gbs: 192, data_rate_gbps: 12, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19, note: "some laptops ship this part with 14 Gbps memory (224 GB/s); the slower configuration is assumed"}
+
+  # --- NVIDIA desktop: RTX 50 -------------------------------------------------
+  - {id: rtx-5090, vendor: nvidia, name: ['RTX 5090'], bandwidth_gbs: 1792, data_rate_gbps: 28, bus_width_bits: 512, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5080, vendor: nvidia, name: ['RTX 5080'], bandwidth_gbs: 960, data_rate_gbps: 30, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5070-ti, vendor: nvidia, name: ['RTX 5070 Ti'], bandwidth_gbs: 896, data_rate_gbps: 28, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5070, vendor: nvidia, name: ['RTX 5070'], bandwidth_gbs: 672, data_rate_gbps: 28, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5060-ti, vendor: nvidia, name: ['RTX 5060 Ti'], bandwidth_gbs: 448, data_rate_gbps: 28, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5060, vendor: nvidia, name: ['RTX 5060'], bandwidth_gbs: 448, data_rate_gbps: 28, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-5050, vendor: nvidia, name: ['RTX 5050'], bandwidth_gbs: 320, data_rate_gbps: 20, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+
+  # --- NVIDIA desktop: RTX 40 -------------------------------------------------
+  - {id: rtx-4090, vendor: nvidia, name: ['RTX 4090'], bandwidth_gbs: 1008, data_rate_gbps: 21, bus_width_bits: 384, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4080-super, vendor: nvidia, name: ['RTX 4080 SUPER'], bandwidth_gbs: 736, data_rate_gbps: 23, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4080, vendor: nvidia, name: ['RTX 4080'], bandwidth_gbs: 716.8, data_rate_gbps: 22.4, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4070-ti-super, vendor: nvidia, name: ['RTX 4070 Ti SUPER'], bandwidth_gbs: 672, data_rate_gbps: 21, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4070-family, vendor: nvidia, name: ['RTX 4070'], bandwidth_gbs: 504, data_rate_gbps: 21, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19, note: "RTX 4070, 4070 SUPER and 4070 Ti share one memory configuration"}
+  - {id: rtx-4060-ti, vendor: nvidia, name: ['RTX 4060 Ti'], bandwidth_gbs: 288, data_rate_gbps: 18, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-4060, vendor: nvidia, name: ['RTX 4060'], bandwidth_gbs: 272, data_rate_gbps: 17, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+
+  # --- NVIDIA desktop: RTX 30 -------------------------------------------------
+  - {id: rtx-3090-ti, vendor: nvidia, name: ['RTX 3090 Ti'], bandwidth_gbs: 1008, data_rate_gbps: 21, bus_width_bits: 384, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3090, vendor: nvidia, name: ['RTX 3090'], bandwidth_gbs: 936, data_rate_gbps: 19.5, bus_width_bits: 384, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3080-ti, vendor: nvidia, name: ['RTX 3080 Ti'], bandwidth_gbs: 912, data_rate_gbps: 19, bus_width_bits: 384, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3080-12gb, vendor: nvidia, name: ['RTX 3080'], min_vram_gib: 11, bandwidth_gbs: 912, data_rate_gbps: 19, bus_width_bits: 384, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3080-10gb, vendor: nvidia, name: ['RTX 3080'], max_vram_gib: 11, bandwidth_gbs: 760, data_rate_gbps: 19, bus_width_bits: 320, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3070-ti, vendor: nvidia, name: ['RTX 3070 Ti'], bandwidth_gbs: 608, data_rate_gbps: 19, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3070, vendor: nvidia, name: ['RTX 3070'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3060-ti, vendor: nvidia, name: ['RTX 3060 Ti'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19, note: "the GDDR6 card; the later GDDR6X variant is faster (608 GB/s) and reports the same name"}
+  - {id: rtx-3060-12gb, vendor: nvidia, name: ['RTX 3060'], min_vram_gib: 10, bandwidth_gbs: 360, data_rate_gbps: 15, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3060-8gb, vendor: nvidia, name: ['RTX 3060'], max_vram_gib: 10, bandwidth_gbs: 240, data_rate_gbps: 15, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3050-8gb, vendor: nvidia, name: ['RTX 3050'], min_vram_gib: 7, bandwidth_gbs: 224, data_rate_gbps: 14, bus_width_bits: 128, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-3050-6gb, vendor: nvidia, name: ['RTX 3050'], max_vram_gib: 7, bandwidth_gbs: 168, data_rate_gbps: 14, bus_width_bits: 96, source: nvidia-geforce, checked: 2026-09-19}
+
+  # --- NVIDIA desktop: RTX 20, GTX 16, GTX 10 ---------------------------------
+  - {id: rtx-2080-ti, vendor: nvidia, name: ['RTX 2080 Ti'], bandwidth_gbs: 616, data_rate_gbps: 14, bus_width_bits: 352, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-2080-super, vendor: nvidia, name: ['RTX 2080 SUPER'], bandwidth_gbs: 496, data_rate_gbps: 15.5, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-2060-12-and-6gb, vendor: nvidia, name: ['RTX 2060$', 'RTX 2060 12GB'], bandwidth_gbs: 336, data_rate_gbps: 14, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: rtx-20-256bit, vendor: nvidia, name: ['RTX 2080', 'RTX 2070', 'RTX 2060 SUPER'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19, note: "RTX 2080, 2070 SUPER, 2070 and 2060 SUPER share one memory configuration"}
+  - {id: gtx-1660-ti, vendor: nvidia, name: ['GTX 1660 Ti'], bandwidth_gbs: 288, data_rate_gbps: 12, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: gtx-1660-super, vendor: nvidia, name: ['GTX 1660 SUPER'], bandwidth_gbs: 336, data_rate_gbps: 14, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: gtx-1660, vendor: nvidia, name: ['GTX 1660'], bandwidth_gbs: 192, data_rate_gbps: 8, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: gtx-1080-ti, vendor: nvidia, name: ['GTX 1080 Ti'], bandwidth_gbs: 484, data_rate_gbps: 11, bus_width_bits: 352, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: gtx-1080, vendor: nvidia, name: ['GTX 1080'], bandwidth_gbs: 320, data_rate_gbps: 10, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19}
+  - {id: gtx-1070, vendor: nvidia, name: ['GTX 1070'], bandwidth_gbs: 256, data_rate_gbps: 8, bus_width_bits: 256, source: nvidia-geforce, checked: 2026-09-19, note: "GTX 1070 and 1070 Ti share one memory configuration"}
+  - {id: gtx-1060-6gb, vendor: nvidia, name: ['GTX 1060'], min_vram_gib: 5, bandwidth_gbs: 192, data_rate_gbps: 8, bus_width_bits: 192, source: nvidia-geforce, checked: 2026-09-19}
+
+  # --- AMD Radeon ---------------------------------------------------------------
+  # The names carry no "RX" on purpose: Linux's pci.ids writes one chip id as
+  # "Radeon RX 7900 XT/7900 XTX/7900 GRE", and the memory sizes tell them apart.
+  - {id: rx-9070-xt, vendor: amd, name: ['9070 XT'], bandwidth_gbs: 640, data_rate_gbps: 20, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-9070, vendor: amd, name: ['RX 9070', '\b9070\b'], bandwidth_gbs: 640, data_rate_gbps: 20, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-9060-xt, vendor: amd, name: ['9060 XT'], bandwidth_gbs: 320, data_rate_gbps: 20, bus_width_bits: 128, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7900-xtx, vendor: amd, name: ['7900 XTX'], min_vram_gib: 22, bandwidth_gbs: 960, data_rate_gbps: 20, bus_width_bits: 384, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7900-xt, vendor: amd, name: ['7900 XT\b'], min_vram_gib: 18, max_vram_gib: 22, bandwidth_gbs: 800, data_rate_gbps: 20, bus_width_bits: 320, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7900-gre, vendor: amd, name: ['7900 GRE'], max_vram_gib: 18, bandwidth_gbs: 576, data_rate_gbps: 18, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7800-xt, vendor: amd, name: ['7800 XT'], min_vram_gib: 14, bandwidth_gbs: 624, data_rate_gbps: 19.5, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7700-xt, vendor: amd, name: ['7700 XT'], max_vram_gib: 14, bandwidth_gbs: 432, data_rate_gbps: 18, bus_width_bits: 192, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-7600-family, vendor: amd, name: ['RX 7600', '\b7600 XT'], bandwidth_gbs: 288, data_rate_gbps: 18, bus_width_bits: 128, source: amd-radeon, checked: 2026-09-19, note: "RX 7600 and 7600 XT share one memory configuration"}
+  - {id: rx-6950-xt, vendor: amd, name: ['6950 XT'], bandwidth_gbs: 576, data_rate_gbps: 18, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-6800-6900, vendor: amd, name: ['6900 XT', '6800 XT', 'RX 6800'], bandwidth_gbs: 512, data_rate_gbps: 16, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19, note: "RX 6800, 6800 XT and 6900 XT share one memory configuration"}
+  - {id: rx-6750-xt, vendor: amd, name: ['6750 XT'], bandwidth_gbs: 432, data_rate_gbps: 18, bus_width_bits: 192, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-6700-xt, vendor: amd, name: ['6700 XT'], bandwidth_gbs: 384, data_rate_gbps: 16, bus_width_bits: 192, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-6650-xt, vendor: amd, name: ['6650 XT'], bandwidth_gbs: 280, data_rate_gbps: 17.5, bus_width_bits: 128, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-6600-xt, vendor: amd, name: ['6600 XT'], bandwidth_gbs: 256, data_rate_gbps: 16, bus_width_bits: 128, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-6600, vendor: amd, name: ['RX 6600', '\b6600\b'], bandwidth_gbs: 224, data_rate_gbps: 14, bus_width_bits: 128, source: amd-radeon, checked: 2026-09-19}
+  - {id: rx-5700, vendor: amd, name: ['RX 5700'], bandwidth_gbs: 448, data_rate_gbps: 14, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19, note: "RX 5700 and 5700 XT share one memory configuration"}
+  - id: radeon-vii
+    vendor: amd
+    name: ['Radeon VII']
+    bandwidth_gbs: 1024
+    efficiency: [0.33, 0.45]
+    efficiency_source: "llamacpp-vulkan: 101–111 tok/s on a 3.82 GB model = 0.38–0.41 of the card's HBM2 bandwidth; its compute, not its memory, is the limit"
+    source: amd-radeon
+    checked: 2026-09-19
+    note: "HBM2, so no data rate × bus width derivation"
+  - {id: rx-580, vendor: amd, name: ['RX 580', 'RX 570', 'RX 480', 'RX 470'], bandwidth_gbs: 256, data_rate_gbps: 8, bus_width_bits: 256, source: amd-radeon, checked: 2026-09-19, note: "the 8 Gbps configuration these cards mostly shipped with; some RX 570/470 boards use 7 Gbps (224 GB/s)"}
+  - {id: firepro-d700, vendor: amd, name: ['FirePro D700'], bandwidth_gbs: 264, data_rate_gbps: 5.5, bus_width_bits: 384, source: amd-radeon, checked: 2026-09-19, note: "the 2013 Mac Pro's card (Tahiti XT, 6 GB GDDR5) — the fleet's AMD test box"}
+
+  # --- Intel Arc ------------------------------------------------------------------
+  - {id: arc-b580, vendor: intel, name: ['Arc B580'], bandwidth_gbs: 456, data_rate_gbps: 19, bus_width_bits: 192, source: intel-ark, checked: 2026-09-19}
+  - {id: arc-b570, vendor: intel, name: ['Arc B570'], bandwidth_gbs: 380, data_rate_gbps: 19, bus_width_bits: 160, source: intel-ark, checked: 2026-09-19}
+  - {id: arc-a770, vendor: intel, name: ['Arc A770'], bandwidth_gbs: 560, data_rate_gbps: 17.5, bus_width_bits: 256, source: intel-ark, checked: 2026-09-19}
+  - {id: arc-a750, vendor: intel, name: ['Arc A750'], bandwidth_gbs: 512, data_rate_gbps: 16, bus_width_bits: 256, source: intel-ark, checked: 2026-09-19}
+  - {id: arc-a580, vendor: intel, name: ['Arc A580'], bandwidth_gbs: 512, data_rate_gbps: 16, bus_width_bits: 256, source: intel-ark, checked: 2026-09-19}
+  - {id: arc-a380, vendor: intel, name: ['Arc A380'], bandwidth_gbs: 186, data_rate_gbps: 15.5, bus_width_bits: 96, source: intel-ark, checked: 2026-09-19}
+
+  # --- Apple Silicon (unified memory; the figure is Apple's) ---------------------
+  # Rows with gpu_cores sit above the chip's fallback row, which takes the
+  # slower variant when the core count could not be read.
+  - id: apple-ultra-m3
+    vendor: apple
+    name: ['M3 Ultra']
+    bandwidth_gbs: 819
+    efficiency: [0.40, 0.55]
+    efficiency_source: "llamacpp-apple: M3 Ultra 88–92 tok/s on a 3.82 GB model = 0.41–0.43; the two-die Ultra chips sit below the other M-series parts"
+    source: apple-specs
+    checked: 2026-09-19
+  - id: apple-ultra-m1-m2
+    vendor: apple
+    name: ['M[12] Ultra']
+    bandwidth_gbs: 800
+    efficiency: [0.33, 0.50]
+    efficiency_source: "llamacpp-apple: M1 Ultra 75–84 and M2 Ultra 89–94 tok/s on a 3.82 GB model = 0.36–0.45"
+    source: apple-specs
+    checked: 2026-09-19
+  - id: apple-m5-max-40
+    vendor: apple
+    name: ['M5 Max']
+    gpu_cores: [40]
+    bandwidth_gbs: 614
+    efficiency: [0.65, 0.82]
+    efficiency_source: "llamacpp-apple: M5 Max 40-core 120 tok/s on a 3.82 GB model = 0.75"
+    prompt_ratio: [20, 30]
+    prompt_ratio_source: "llamacpp-apple: M5 Max prompt 3220 against 120 tok/s generation = 27; the M5 generation's GPU neural accelerators roughly double the prompt ratio of M1–M4"
+    source: apple-specs
+    checked: 2026-09-19
+  - id: apple-m5-max
+    vendor: apple
+    name: ['M5 Max']
+    bandwidth_gbs: 460
+    prompt_ratio: [20, 30]
+    prompt_ratio_source: "llamacpp-apple: the M5 generation (M5 23, M5 Pro 24, M5 Max 27)"
+    source: apple-specs
+    checked: 2026-09-19
+    note: "the 32-core-GPU variant; also assumed when the core count could not be read"
+  - id: apple-m5-pro
+    vendor: apple
+    name: ['M5 Pro']
+    bandwidth_gbs: 307
+    prompt_ratio: [20, 30]
+    prompt_ratio_source: "llamacpp-apple: M5 Pro prompt 1621 against 66 tok/s generation = 24"
+    source: apple-specs
+    checked: 2026-09-19
+  - id: apple-m5
+    vendor: apple
+    name: ['M5\b']
+    bandwidth_gbs: 153.6
+    prompt_ratio: [20, 30]
+    prompt_ratio_source: "llamacpp-apple: M5 prompt 723 against 32 tok/s generation = 23"
+    source: apple-specs
+    checked: 2026-09-19
+  - {id: apple-m4-max-40, vendor: apple, name: ['M4 Max'], gpu_cores: [40], bandwidth_gbs: 546, efficiency: [0.52, 0.66], efficiency_source: "llamacpp-apple: M4 Max 40-core 83 tok/s on a 3.82 GB model = 0.58", source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m4-max, vendor: apple, name: ['M4 Max'], bandwidth_gbs: 410, efficiency: [0.58, 0.72], efficiency_source: "llamacpp-apple: M4 Max 32-core 70 tok/s on a 3.82 GB model = 0.65", source: apple-specs, checked: 2026-09-19, note: "the 32-core-GPU variant; also assumed when the core count could not be read"}
+  - {id: apple-m4-pro, vendor: apple, name: ['M4 Pro'], bandwidth_gbs: 273, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m4, vendor: apple, name: ['M4\b'], bandwidth_gbs: 120, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m3-max-40, vendor: apple, name: ['M3 Max'], gpu_cores: [40], bandwidth_gbs: 400, efficiency: [0.56, 0.70], efficiency_source: "llamacpp-apple: M3 Max 40-core 66 tok/s on a 3.82 GB model = 0.63", source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m3-max, vendor: apple, name: ['M3 Max'], bandwidth_gbs: 300, efficiency: [0.64, 0.80], efficiency_source: "llamacpp-apple: M3 Max 30-core 57 tok/s on a 3.82 GB model = 0.72", source: apple-specs, checked: 2026-09-19, note: "the 30-core-GPU variant; also assumed when the core count could not be read"}
+  - {id: apple-m3-pro, vendor: apple, name: ['M3 Pro'], bandwidth_gbs: 150, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m3, vendor: apple, name: ['M3\b'], bandwidth_gbs: 100, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m2-max, vendor: apple, name: ['M2 Max'], bandwidth_gbs: 400, efficiency: [0.52, 0.68], efficiency_source: "llamacpp-apple: M2 Max 61–66 tok/s on a 3.82 GB model = 0.58–0.63", source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m2-pro, vendor: apple, name: ['M2 Pro'], bandwidth_gbs: 200, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m2, vendor: apple, name: ['M2\b'], bandwidth_gbs: 100, source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m1-max, vendor: apple, name: ['M1 Max'], bandwidth_gbs: 400, efficiency: [0.48, 0.64], efficiency_source: "llamacpp-apple: M1 Max 55–61 tok/s on a 3.82 GB model = 0.52–0.58", source: apple-specs, checked: 2026-09-19}
+  - {id: apple-m1-pro, vendor: apple, name: ['M1 Pro'], bandwidth_gbs: 200, source: apple-specs, checked: 2026-09-19, note: "the fleet's Mac"}
+  - {id: apple-m1, vendor: apple, name: ['M1\b'], bandwidth_gbs: 68.25, source: apple-specs, checked: 2026-09-19}
+
+system_memory:
+  # --- Laptop and handheld parts with memory on the package or the board -------
+  - {id: amd-strix-halo, cpu: ['Ryzen AI Max'], low_gbs: 256, high_gbs: 256, memory: "LPDDR5X-8000, 256-bit, soldered", source: amd-processors, checked: 2026-09-19}
+  - {id: intel-lunar-lake, cpu: ['Core Ultra [579] 2\d\dV'], low_gbs: 136.5, high_gbs: 136.5, memory: "LPDDR5X-8533, two channels, on the package", source: intel-ark, checked: 2026-09-19}
+  - {id: amd-ryzen-ai-300, cpu: ['Ryzen AI [579] (HX )?3\d\d'], low_gbs: 44.8, high_gbs: 120, memory: "one DDR5-5600 module up to two channels of LPDDR5X-7500", source: amd-processors, checked: 2026-09-19}
+  - {id: amd-ryzen-mobile-6000-8000, cpu: ['Ryzen [3579] (PRO )?[678]\d{3}(U|H|HS|HX)\b'], low_gbs: 38.4, high_gbs: 120, memory: "one DDR5-4800 module up to two channels of LPDDR5X-7500", source: amd-processors, checked: 2026-09-19}
+  - {id: amd-ryzen-mobile-4000-5000, cpu: ['Ryzen [3579] (PRO )?[45]\d{3}(U|H|HS|HX)\b'], low_gbs: 25.6, high_gbs: 68.3, memory: "one DDR4-3200 module up to two channels of LPDDR4X-4266", source: amd-processors, checked: 2026-09-19}
+  - {id: intel-core-ultra-mobile, cpu: ['Core Ultra [579] [12]\d\d(U|H|HX)\b'], low_gbs: 44.8, high_gbs: 119.5, memory: "one DDR5-5600 module up to two channels of LPDDR5X-7467", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-12-14-mobile, cpu: ['Core i[3579]-1[234]\d{2,3}(U|P|H|HX|HK)\b'], low_gbs: 25.6, high_gbs: 102.4, memory: "one DDR4-3200 module up to two channels of LPDDR5-6400", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-10-11-mobile, cpu: ['Core i[3579]-1[01]\d{2}G\d', 'Core i[3579]-1[01]\d{3}(U|H|HK)\b'], low_gbs: 21.3, high_gbs: 68.3, memory: "one DDR4-2666 module up to two channels of LPDDR4X-4266", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-6-9-mobile, cpu: ['Core i[3579]-[6789]\d{3}(U|H|HQ|HK)\b'], low_gbs: 17.1, high_gbs: 42.7, memory: "one DDR4-2133 module up to two channels of DDR4-2666", source: intel-ark, checked: 2026-09-19}
+
+  # --- Desktop parts -------------------------------------------------------------
+  - {id: intel-core-ultra-desktop, cpu: ['Core Ultra [579] 2\d\d(K|KF|F|T)?\b'], low_gbs: 44.8, high_gbs: 102.4, memory: "one DDR5-5600 module up to two channels of DDR5-6400", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-12-14-desktop, cpu: ['Core i[3579]-1[234]\d{3}(K|KF|KS|F|T)?\b'], low_gbs: 25.6, high_gbs: 89.6, memory: "one DDR4-3200 module up to two channels of DDR5-5600", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-10-11-desktop, cpu: ['Core i[3579]-1[01]\d{3}(K|KF|F|T)?\b'], low_gbs: 21.3, high_gbs: 51.2, memory: "one DDR4-2666 module up to two channels of DDR4-3200", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-core-6-9-desktop, cpu: ['Core i[3579]-[6789]\d{3}(K|KF|F|T)?\b'], low_gbs: 17.1, high_gbs: 42.7, memory: "one DDR4-2133 module up to two channels of DDR4-2666", source: intel-ark, checked: 2026-09-19}
+  - {id: amd-ryzen-am5, cpu: ['Ryzen [3579] (PRO )?[789]\d{3}(X3D|X|G|GE|F)?\b'], low_gbs: 41.6, high_gbs: 89.6, memory: "one DDR5-5200 module up to two channels of DDR5-5600", source: amd-processors, checked: 2026-09-19}
+  - {id: amd-ryzen-am4, cpu: ['Ryzen [3579] (PRO )?[1-5]\d{3}(X3D|XT|X|G|GE)?\b'], low_gbs: 21.3, high_gbs: 51.2, memory: "one DDR4-2666 module up to two channels of DDR4-3200", source: amd-processors, checked: 2026-09-19}
+
+  # --- Workstations and servers people do run this on ---------------------------
+  - {id: amd-threadripper-pro-wx, cpu: ['Threadripper PRO [35]9\d{2}WX'], low_gbs: 102.4, high_gbs: 204.8, memory: "four to eight channels of DDR4-3200", source: amd-processors, checked: 2026-09-19}
+  - {id: intel-xeon-scalable-3, cpu: ['Xeon (Silver|Gold|Platinum) [4568]3\d{2}'], low_gbs: 85.3, high_gbs: 204.8, memory: "four to eight channels of DDR4-2666 to DDR4-3200, per processor", source: intel-ark, checked: 2026-09-19}
+  - {id: intel-xeon-e5-v2, cpu: ['Xeon (CPU )?E5-[12]6\d{2} v2'], low_gbs: 21.3, high_gbs: 59.7, memory: "two channels of DDR3-1333 up to four channels of DDR3-1866", source: intel-ark, checked: 2026-09-19, note: "the fleet's 2013 Mac Pro"}

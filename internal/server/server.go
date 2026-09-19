@@ -113,6 +113,8 @@ func (s *Server) routes() {
 	s.api("GET /api/catalog", s.handleCatalog)
 	s.api("POST /api/catalog/refresh", s.handleCatalogRefresh)
 	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
+	s.api("GET /api/recommend", s.handleRecommend)
+	s.api("GET /api/models/{id}/fit", s.handleModelFit)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

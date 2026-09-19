@@ -229,7 +229,32 @@ export interface CatalogFile {
   bits_per_weight: number
   present: boolean
   header: GGUFHeader
+  /** What each layer keeps in memory as the context grows; derived, never stored. */
+  layout: Layout
   fetched_at: string
+}
+
+/** Go: catalog.LayerGroup — a run of layers with the same cache shape. */
+export interface LayerGroup {
+  kind: 'full' | 'sliding'
+  layers: number
+  kv_heads: number
+  key_length: number
+  /** 0: no value cache (multi-head latent attention). */
+  value_length: number
+  /** Sliding layers only, in tokens. */
+  window: number
+}
+
+/** Go: catalog.Layout. */
+export interface Layout {
+  groups: LayerGroup[] | null
+  recurrent_layers: number
+  recurrent_state_elements: number
+  stateless_layers: number
+  /** How the layout was established; feeds a recommendation's confidence. */
+  basis: 'uniform' | 'stated' | 'architecture' | 'incomplete' | ''
+  notes?: string[]
 }
 
 /** One catalogue size with what the last refresh learned (Go: catalog.Model). */
@@ -316,4 +341,173 @@ export interface UnknownInstalledModel {
 /** GET /api/catalog/unknown (Go: server.UnknownInstalledResponse). */
 export interface UnknownInstalledResponse {
   models: UnknownInstalledModel[]
+}
+
+// --- Fit and speed (Go: internal/estimate) ---------------------------------
+//
+// Every number here is an estimate until a benchmark measures it, and says
+// so: memory terms are Bytes, speeds are Rates — a RANGE (low < high) while
+// estimated, a point once measured. Render them with <Figure> and nothing
+// else. When there is no speed estimate the rates are absent and `unknown`
+// is the sentence to show; never a number.
+
+export type FitCategory =
+  | 'fits_with_headroom'
+  | 'fits'
+  | 'needs_cpu_offload'
+  | 'reduced_context_only'
+  | 'not_recommended'
+  | 'unknown'
+
+export type KVCacheType = 'f16' | 'q8_0' | 'q4_0'
+
+/** Go: estimate.Request. */
+export interface EstimateRequest {
+  catalog_file_id: number
+  num_ctx: number
+  kv_cache_type: KVCacheType
+  runtime_path: RuntimePath
+}
+
+/** Go: estimate.Memory. */
+export interface EstimateMemory {
+  weights: Bytes
+  kv_cache: Bytes
+  overhead: Bytes
+  total: Bytes
+  gpu_resident: Bytes
+  cpu_offload: Bytes
+  effective_ctx: number
+}
+
+/** Go: estimate.Speed. */
+export interface EstimateSpeed {
+  known: boolean
+  generation?: Rate
+  prompt?: Rate
+  /** Why there is no estimate, in words, when known is false. */
+  unknown?: string
+  basis?: string
+}
+
+/** Go: estimate.Basis — which inputs were measured, estimated or unknown. */
+export interface EstimateBasis {
+  memory_model: 'validated' | 'modelled' | 'incomplete' | 'measured'
+  path_source: 'established' | 'expected'
+  budget_known: boolean
+  speed_source: 'measured' | 'estimated' | 'unknown'
+}
+
+/** Go: estimate.Estimate. */
+export interface Estimate {
+  request: EstimateRequest
+  memory: EstimateMemory
+  speed: EstimateSpeed
+  category: FitCategory
+  /** The comparison that decided the category, in words. */
+  threshold: string
+  /** Read from the machine (less a configured reserve): plain text, not a Figure. */
+  budget_bytes: number
+  budget_known: boolean
+  budget_kind: 'graphics_memory' | 'unified_memory' | 'system_memory'
+  suggested_ctx?: number
+  basis: EstimateBasis
+  notes?: string[]
+}
+
+/** Go: estimate.UnusedGPU — a graphics card the numbers are without, and why. */
+export interface UnusedGPU {
+  name: string
+  kind: 'not_used' | 'cannot_use' | 'not_known' | 'memory_unknown'
+  why: string
+}
+
+// --- Recommendations (Go: internal/recommend) -------------------------------
+
+export type Confidence = 'high' | 'medium' | 'low'
+
+/** Go: recommend.Reason. */
+export interface Reason {
+  text: string
+  kind: 'warning' | 'fit' | 'purpose' | 'speed' | 'size' | 'change'
+  /** The explainer this reason links to ("gpu_not_used"), when it has one. */
+  explainer?: string
+  /** What that explainer says about this machine. */
+  detail?: string
+}
+
+/** Go: recommend.Factors — internal ranking material, Advanced only. */
+export interface ScoreFactors {
+  purpose: number
+  fit: number
+  speed: number
+  size: number
+}
+
+/** Go: recommend.Recommendation — one card. */
+export interface Recommendation {
+  family_id: string
+  display_name: string
+  model: CatalogModel
+  file: CatalogFile
+  /** The exact name to give Ollama. */
+  pull_name: string
+  num_ctx: number
+  estimate: Estimate
+  /** A fact from the catalogue's listing; 0 when already installed. */
+  download_bytes: number
+  installed: boolean
+  /** The headline speed; absent when there is no estimate. */
+  speed?: Rate
+  reasons: Reason[]
+  confidence: Confidence
+  confidence_why: string
+  score: number
+  factors: ScoreFactors
+  versus_current?: string
+}
+
+/** Go: recommend.Current. */
+export interface CurrentModel {
+  name: string
+  in_catalogue: boolean
+  estimate?: Estimate
+  verdict: string
+}
+
+/** GET /api/recommend?purposes=… (Go: recommend.Result). */
+export interface RecommendResult {
+  purposes: Purpose[]
+  /** At most three, best first. */
+  recommendations: Recommendation[]
+  warning?: string
+  gpu_not_used?: UnusedGPU
+  current?: CurrentModel
+  /** Why the list is empty, when it is — in words, and as a code for the UI's logic. */
+  empty?: string
+  empty_code?: 'blocked' | 'budget_unknown' | 'catalogue_empty' | 'nothing_fits' | 'nothing_changes'
+  runtime_path: RuntimePath
+  path_source: 'established' | 'expected'
+}
+
+/** Go: server.FileFit. */
+export interface FileFit {
+  file: CatalogFile
+  /** The file the size's Ollama tag pulls. */
+  default: boolean
+  estimate: Estimate
+}
+
+/** GET /api/models/{id}/fit (Go: server.ModelFitResponse). */
+export interface ModelFitResponse {
+  family_id: string
+  display_name: string
+  model: CatalogModel
+  num_ctx: number
+  num_ctx_source: 'requested' | 'ollama_default'
+  kv_cache_type: KVCacheType
+  runtime_path: RuntimePath
+  path_source: 'established' | 'expected'
+  gpu_not_used?: UnusedGPU
+  fits: FileFit[]
 }

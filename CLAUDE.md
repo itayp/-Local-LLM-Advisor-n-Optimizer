@@ -61,8 +61,8 @@ internal/catalog/       curated families: YAML loader + validation, repo-file gr
 internal/catalog/gguf/  the GGUF header parser (stops at the tokenizer; real header fixtures in testdata/)
 internal/catalog/hf/    the Hugging Face client: listings with ETags, header range reads, rate limits
 internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files) and MapInstalled
-internal/estimate/      fit + speed types; the step 0 formula (step 5)
-internal/recommend/     recommendations with reasons and confidence (step 5)
+internal/estimate/      Fit (memory terms, split, category + the threshold that decided), the speed range, placement, gpus.yaml loader; Config holds every constant
+internal/recommend/     Recommend: at most three cards with templated reasons, versus-current, confidence; Config holds every weight
 internal/bench/         benchmark runs, results, samples (step 6)
 internal/watch/         new-model watch state, notifications, log (step 10)
 internal/figure/        Source, Bytes, Rate, and Check — product rule 4
@@ -70,8 +70,9 @@ internal/version/       Version (set by -ldflags), GoVersion
 ui/                     Vite + React + TypeScript; builds into internal/server/ui/dist
 data/                   data.go embeds the data files (package advisor/data)
 data/catalog/           families.yaml — the curated catalogue (data, never counted in prose)
-data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card, with sources and dates
-scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/
+data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card; gpus.yaml — memory bandwidth per graphics part and processor family; both with sources and dates
+scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/ (internal/estimate's tests replay them)
+scripts/calibrate/      the dev-side speed instrument: llama-bench JSON → the speed model's factors, results/ to commit; README says how
 .github/workflows/      CI: ubuntu, macos, windows
 ```
 
@@ -109,6 +110,11 @@ a session cannot run Go itself.
   no weights), stores it, and lists installed models the catalogue does not
   know; it exits 1 if a size did not resolve. The daemon's
   `POST /api/catalog/refresh` runs the same thing.
+- The developer's view of a running daemon's recommendations, as text:
+  `advisor recommend [-port N] [-purposes chat,coding] [-current NAME]` —
+  what `scripts/verify.command` prints for build-plan step 5's gate.
+- `go run ./scripts/calibrate -label NAME bench.json` scores a llama-bench
+  run against the speed model (scripts/calibrate/README.md).
 - UI alone: `cd ui && npm run dev | build | test | check`.
 - This machine's hardware profile, as the daemon would read it:
   `ADVISOR_PRINT_PROFILE=1 go test ./internal/hardware -run TestDetectOnThisMachine -v`,
@@ -147,7 +153,23 @@ methods on `*store.Store`, not ad-hoc SQL in other packages.
 
 **Unknown is unknown.** A value the code cannot read is `"unknown"` / `0`
 with `*_known: false` / `NULL` — never a default, never a guess. The UI turns
-it into a sentence, never `0 GB`.
+it into a sentence, never `0 GB`. A speed the advisor cannot estimate is an
+absent `Rate` and a sentence (`estimate.Speed.Unknown`); a memory budget it
+cannot read is category `unknown`.
+
+**Constants live in two configs.** Every number the estimator uses is in
+`estimate.Config` (`internal/estimate/config.go`), marked MEASURED (fleet),
+MEASURED (public) or CHOSEN with what would settle it; every weight and
+threshold of the recommendation engine is in `recommend.Config`. No magic
+number anywhere else in those packages. The memory formula is pinned by
+`step0_test.go` — a change that moves a step 0 row is a change to
+ARCHITECTURE.md D-20, not a refactor — and the outcomes the weights must
+produce are pinned by `recommend_test.go` on the golden hardware profiles.
+
+**What the customer reads is templated.** Reasons, warnings and the
+confidence sentence are built in `internal/recommend/reasons.go` from the
+facts the rules used, and arrive at the UI as sentences; the screen adds
+labels, not claims. A test holds the copy rule over every reason.
 
 **UI.** Every string in `ui/src/copy/en.ts` (i18n-ready, English only);
 screens carry no prose of their own. Every screen is in `ui/src/screens/
@@ -167,6 +189,13 @@ them and where they came from. They are embedded through `data/data.go` and
 decoded strictly (`goccy/go-yaml`, unknown keys are errors).
 `runtime-support.yaml` is checked against the Ollama release it names — its
 build presets, not only its docs; `support_test.go` is its contract.
+`gpus.yaml` rows state the memory configuration their bandwidth derives
+from (the parser refuses one that does not equal rate × width ÷ 8), are
+ORDERED (laptop parts above desktop parts of the same name), and carry an
+efficiency or prompt-ratio override only with the measurement behind it;
+`devices_test.go` lists real device names and the rows they must land on —
+add the name when you add a row. A part that is not in the file gets no
+speed estimate, by design.
 
 **Dependencies.** Go: stdlib + `modernc.org/sqlite`, `github.com/goccy/go-yaml`
 (data files) and `golang.org/x/sys` (CPUID) — ARCHITECTURE.md D-26. UI:

@@ -284,6 +284,7 @@ func refreshSize(ctx context.Context, o Options, fam catalog.Family, size catalo
 		}
 		f.Header.HasVision = hasVision
 		if g.Role == catalog.RoleModel {
+			f.Layout = catalog.NewLayout(f.Header, ph.KV)
 			f.BitsPerWeight = float64(g.Bytes) * 8 / float64(params)
 			res.warnings = append(res.warnings, checkModelFile(where, g, ph, size)...)
 		} else if !ph.Projector {

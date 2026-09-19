@@ -5,6 +5,9 @@ import type {
   HardwareHistory,
   HardwareResponse,
   Health,
+  ModelFitResponse,
+  Purpose,
+  RecommendResult,
   UnknownInstalledResponse,
 } from './types'
 
@@ -56,4 +59,10 @@ export const api = {
   catalogUnknown: (signal?: AbortSignal) => get<UnknownInstalledResponse>('/catalog/unknown', signal),
   /** Resolve the catalogue against Hugging Face (metadata only, no weights). 409 while one runs. */
   refreshCatalog: (signal?: AbortSignal) => send<CatalogRefreshReport>('POST', '/catalog/refresh', signal),
+  /** At most three recommendations for this machine and these purposes (none = everyday chat). */
+  recommend: (purposes: Purpose[], signal?: AbortSignal) =>
+    get<RecommendResult>(`/recommend?purposes=${encodeURIComponent(purposes.join(','))}`, signal),
+  /** How every tracked variant of one catalogue size fits; without ctx, at Ollama's own default context. */
+  modelFit: (modelId: number, ctx?: number, signal?: AbortSignal) =>
+    get<ModelFitResponse>(`/models/${modelId}/fit${ctx ? `?ctx=${ctx}` : ''}`, signal),
 }

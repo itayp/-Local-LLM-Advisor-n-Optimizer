@@ -23,7 +23,11 @@
 #         spdx: Apache-2.0         # the SPDX id where one exists...
 #         name: Llama 3.1 Community License Agreement  # ...otherwise the name
 #         url: https://...         # and where to read it (url is required with name)
-#       purposes: [chat, writing]  # what it is credible for. The enum is
+#       purposes: [chat, writing]  # what it is credible for, MOST CREDIBLE
+#                                  # FIRST: the recommendation engine scores
+#                                  # the first-listed purpose highest and each
+#                                  # later one a little less (recommend.Config,
+#                                  # PurposeRankStep). The enum is
 #                                  # catalog.Purpose, shared with the UI:
 #                                  # coding, chat, reasoning, long_context,
 #                                  # vision, agentic, writing
@@ -47,8 +51,10 @@
 # guesses a substitute.
 #
 # Mixture-of-experts sizes (active_parameters set) and multimodal families
-# (purpose vision) are in the catalogue. How the estimator treats them is
-# step 5's decision (ARCHITECTURE.md D-20, finding 5; D-32 here).
+# (purpose vision) are in the catalogue, and recommended: the estimator reads
+# their layer layout from the header, counts the vision encoder, and uses
+# active_parameters for speed (ARCHITECTURE.md D-38, D-40). active_parameters
+# therefore matters twice — keep it to the model card's figure.
 
 quants: [Q3_K_M, IQ4_XS, Q4_K_M, Q5_K_M, Q6_K, Q8_0, MXFP4]
 

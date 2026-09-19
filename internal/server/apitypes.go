@@ -36,6 +36,8 @@ func APITypes() []any {
 		catalog.External{},
 		estimate.Estimate{},
 		recommend.Result{},
+		recommend.Preferences{},
+		ModelFitResponse{},
 		bench.Request{},
 		bench.Run{},
 		bench.Sample{},
