@@ -149,9 +149,10 @@ func (e *FormatError) Unwrap() error { return ErrMalformed }
 type Options struct {
 	// StopAtTokenizer ends the parse just before the first "tokenizer." key,
 	// provided every key RequiredKeys names for this file's architecture has
-	// been read by then. If one has not (some writers put general.file_type
-	// last), the parse skips the tokenizer and carries on to the end, so the
-	// answer is the same either way — only the bytes read differ.
+	// been read by then. If one has not, the parse skips the tokenizer and
+	// carries on to the end, so the required fields are the same either way —
+	// only the bytes read differ. Optional keys written after the tokenizer
+	// (general.file_type in current llama.cpp output) are then not read.
 	StopAtTokenizer bool
 }
 

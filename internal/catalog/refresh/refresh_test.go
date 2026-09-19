@@ -269,8 +269,8 @@ func TestRefreshResolvesEverySizeWithoutDownloadingWeights(t *testing.T) {
 
 	// Only the tracked quants' first parts and one projector were read —
 	// never an untracked quant, a second part, the imatrix, or the bf16
-	// projector — and each read stopped at the tokenizer except the one
-	// whose file_type comes after it.
+	// projector — and every read stopped at the tokenizer, including the one
+	// whose file_type comes after it (D-37).
 	got := slices.Clone(h.content)
 	slices.Sort(got)
 	got = slices.Compact(got)
@@ -289,11 +289,10 @@ func TestRefreshResolvesEverySizeWithoutDownloadingWeights(t *testing.T) {
 	if rep.HeaderReads != 5 || rep.CacheHits != 0 {
 		t.Errorf("header reads %d, cache hits %d", rep.HeaderReads, rep.CacheHits)
 	}
-	// The llama headers stop at the tokenizer (64 KiB each); the vision
-	// model's is read to the end (~11 MB of tokenizer, because its writer put
-	// general.file_type last).
-	if rep.BytesRead > 12<<20 {
-		t.Errorf("read %d bytes in all", rep.BytesRead)
+	// Every header read stops at the tokenizer: one 64 KiB range each (the
+	// projector is smaller), against 6–11 MB each for a full header.
+	if rep.BytesRead > 6*64<<10+64<<10 {
+		t.Errorf("read %d bytes in all; want one 64 KiB range per file", rep.BytesRead)
 	}
 
 	rows, err := st.CatalogModels(ctx, false)
@@ -338,8 +337,10 @@ func TestRefreshResolvesEverySizeWithoutDownloadingWeights(t *testing.T) {
 	for _, f := range vis.Files {
 		switch f.Role {
 		case catalog.RoleModel:
+			// Its writer put general.file_type after the tokenizer, so the
+			// read stopped without it: not stated (-1), never guessed.
 			if f.Header.Architecture != "qwen35" || f.Header.FullAttentionInterval != 4 || !f.Header.HasVision ||
-				!f.Header.Complete || f.Header.KeyLength != 256 || f.Header.FileTypeName != "Q4_K_M" {
+				f.Header.Complete || f.Header.KeyLength != 256 || f.Header.FileType != -1 || f.Header.FileTypeName != "" {
 				t.Errorf("vision weights: %+v", f.Header)
 			}
 			if f.BitsPerWeight == 0 {

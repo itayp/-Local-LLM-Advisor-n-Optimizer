@@ -135,7 +135,10 @@ families:
       E2B and E4B use per-layer embeddings: parameters is the total with
       embeddings, active_parameters the "effective" count the model card
       gives. 26B is mixture-of-experts (3.8B active). Sliding-window attention
-      on most layers (attention.sliding_window). All sizes read images.
+      on most layers (attention.sliding_window). All sizes read images. The
+      model card gives 12B a 256K context, but its GGUF files state 131072,
+      which is what runtimes clamp to; the catalogue follows the files
+      (refresh of 2026-09-19).
     sizes:
       - parameters: 5100000000
         active_parameters: 2300000000
@@ -148,7 +151,7 @@ families:
         ollama_tag: gemma4:e4b
         hf_repo: bartowski/google_gemma-4-E4B-it-GGUF
       - parameters: 11950000000
-        context_length: 262144
+        context_length: 131072
         ollama_tag: gemma4:12b
         hf_repo: bartowski/gemma-4-12B-it-GGUF
       - parameters: 25200000000

@@ -1,7 +1,7 @@
 # Architecture decision record — Local LLM Advisor & Optimizer
 
 **Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2,
-D-27 to D-31 in step 3, D-32 to D-36 in step 4.
+D-27 to D-31 in step 3, D-32 to D-37 in step 4.
 Every later step inherits this shape. A change to a decision here is a new
 numbered entry that supersedes the old one — the old entry stays, marked
 superseded, so the reasoning survives.
@@ -768,7 +768,7 @@ ported from `scripts/probe0/main.go`'s validated detector, not re-derived.
 
 ---
 
-Step 4 (the model catalogue, 2026-09-19) adds D-32 to D-36.
+Step 4 (the model catalogue, 2026-09-19) adds D-32 to D-37.
 
 ## D-32. The catalogue's schema: sizes carry what the estimator cannot guess
 
@@ -809,6 +809,9 @@ refresh`. The purpose enum is checked against `ui/src/api/types.ts` by a
 test, and a test fails if any of the docs counts the catalogue (rule 8).
 
 ## D-33. A header read stops at the tokenizer
+
+*Superseded in part by D-37: `general.file_type` is no longer a required
+key, because the live gate showed current quantizers write it last.*
 
 **Decision.** `internal/catalog/gguf` parses a GGUF header from any
 `io.Reader`: magic, version (2 and 3; version 1 and big-endian files are
@@ -918,6 +921,29 @@ inventory refresh and every catalogue refresh, costs no network, and
 never an error (D-7).
 
 
+## D-37. The file type is not worth the tokenizer (the gate's finding)
+
+**Decision.** `general.file_type` leaves `gguf.RequiredKeys`. The first live
+refresh (the M1 Pro, 2026-09-19: 22 of 22 sizes resolved, 139 files) read
+1.5 GB of headers instead of the ~10 MB D-33 predicted: current llama.cpp
+quantizers write `general.file_type` and `general.quantization_version`
+after the tokenizer (setting a key removes it and appends it at the end), so
+nearly every file failed D-33's early-stop condition and was read through
+6–11 MB of vocabulary. The file type is a cross-check, not an estimator
+input: the quant a user sees and pulls is the one in the file name, and the
+bytes come from the listing. A read now stops at the tokenizer once the
+structural keys are in (architecture, block count, context length,
+embedding length, head count, KV head count — all written before the
+tokenizer); a file type stated earlier is kept and checked against the name,
+one stated later is not read and is `file_type = -1` ("not stated", D-21).
+A required key after the tokenizer still makes the read go on.
+
+**Consequences.** A first refresh of the whole catalogue is one 64 KiB range
+per file again (about 10 MB); headers already cached by a full read stay
+valid. The name-versus-header warning now fires only for files that state
+their type early. The fixture whose writer puts the type last
+(`minicpm-v4.6`) is the test.
+
 ## Open items, for the steps that own them
 
 - **Port.** `server.DefaultPort = 27182` with fallback to an OS-chosen port.
@@ -938,8 +964,15 @@ never an error (D-7).
   `attention.kv_lora_rank`, not `head_count_kv` (in `header_json`); sliding
   windows (`attention.sliding_window`, and the pattern keys in
   `header_json`); `active_parameters` for speed; a projector file's bytes
-  when an image is read.
-- **The live gate**: every size resolving against the real Hub is checked
-  by `advisor catalog refresh` on a machine that can reach Hugging Face
-  (`scripts/verify.command` runs it); the session that wrote step 4 could
-  not reach the Hub.
+  when an image is read. From the gate's refresh (2026-09-19): Qwen3.5 /
+  3.6 / 3.8 and GLM-4.7-Flash state a `block_count` one higher than their
+  model cards' layer count (Qwen3.8 27B: 65 against 64) — most likely the
+  multi-token-prediction layer (look for `nextn_predict_layers` in
+  `header_json`), which should keep no KV cache; Gemma 4 states
+  `key_length` 512 (its global layers), and its sliding-window layers may
+  use a smaller head dimension stated separately (look for a `_swa` key);
+  GLM-4.7-Flash's stated head dimension 576 is MLA's `kv_lora_rank` (512)
+  plus its rope dimension (64), not a per-head size.
+- **The live gate** passed on the M1 Pro (2026-09-19, `verify.command`):
+  every size resolved, no weights downloaded. `advisor catalog refresh` in
+  `scripts/verify.command` stays the live check for catalogue edits.

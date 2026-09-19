@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -44,7 +45,10 @@ type realCase struct {
 	kvCount     uint64
 	headerBytes int64 // end of the metadata section, as a Python walk of the same bytes found it
 	want        Metadata
-	stopsAt     string // with StopAtTokenizer; "" = cannot stop early (a required key comes after the tokenizer)
+	stopsAt     string // with StopAtTokenizer; "" = nothing to stop at (no tokenizer)
+	// fileTypeLate: the writer put general.file_type after the tokenizer, so
+	// a parse that stops there does not see it.
+	fileTypeLate bool
 }
 
 var realCases = []realCase{
@@ -76,9 +80,10 @@ var realCases = []realCase{
 	},
 	{
 		// A hybrid (Gated DeltaNet + attention every 4th layer) model whose
-		// writer put general.file_type after the tokenizer: the
-		// StopAtTokenizer parse must read on rather than stop without it.
-		name: "minicpm-v4.6", tensors: 320, kvCount: 39, headerBytes: 10936740,
+		// writer put general.file_type after the tokenizer, as current
+		// llama.cpp quantizers do: a StopAtTokenizer parse stops without it.
+		name: "minicpm-v4.6", tensors: 320, kvCount: 39, headerBytes: 10936740, fileTypeLate: true,
+		stopsAt: "tokenizer.ggml.model",
 		want: Metadata{
 			Architecture: "qwen35", Type: "model", Name: "MiniCPM V 4_6", SizeLabel: "752M",
 			FileType: 15, FileTypeStated: true,
@@ -159,8 +164,15 @@ func TestStopAtTokenizerReadsOnlyWhatItNeeds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := h.Metadata(), full.Metadata(); !metadataEqual(got, want) {
+			want := full.Metadata()
+			if tc.fileTypeLate {
+				want.FileType, want.FileTypeStated = 0, false
+			}
+			if got := h.Metadata(); !metadataEqual(got, want) {
 				t.Errorf("stopping early changed the answer:\n got  %+v\n want %+v", got, want)
+			}
+			if miss := h.Missing(); len(miss) != 0 {
+				t.Errorf("stopped early without %v", miss)
 			}
 			if tc.stopsAt == "" {
 				if !h.Complete {
@@ -385,7 +397,7 @@ func TestPerLayerAndMissingFields(t *testing.T) {
 			!slices.Equal(m.KVHeadsPerLayer, []uint64{0, 0, 8, 0}) || m.ExpertCount != 128 || m.ExpertUsedCount != 6 {
 			t.Errorf("metadata = %+v", m)
 		}
-		if miss := h.Missing(); !slices.Equal(miss, []string{"general.file_type", "nemotron_h.context_length", "nemotron_h.embedding_length"}) {
+		if miss := h.Missing(); !slices.Equal(miss, []string{"nemotron_h.context_length", "nemotron_h.embedding_length"}) {
 			t.Errorf("Missing() = %v", miss)
 		}
 	})
@@ -461,6 +473,49 @@ func TestPerLayerAndMissingFields(t *testing.T) {
 			t.Errorf("complete=%v read=%d", h.Complete, h.KVRead)
 		}
 	})
+}
+
+// Current llama.cpp quantizers write general.file_type (and
+// general.quantization_version) after the tokenizer. The early stop must not
+// wait for it; a required key after the tokenizer still makes it read on.
+func TestStopAtTokenizerWithLateKeys(t *testing.T) {
+	vocab := make([]any, 5000)
+	for i := range vocab {
+		vocab[i] = fmt.Sprintf("token-%d", i)
+	}
+	build := func(lateKey string) []byte {
+		b := head(8)
+		b.kv("general.architecture", TypeString, "llama")
+		b.kv("llama.block_count", TypeUint32, uint32(32))
+		b.kv("llama.context_length", TypeUint32, uint32(8192))
+		b.kv("llama.embedding_length", TypeUint32, uint32(4096))
+		b.kv("llama.attention.head_count", TypeUint32, uint32(32))
+		if lateKey != "llama.attention.head_count_kv" {
+			b.kv("llama.attention.head_count_kv", TypeUint32, uint32(8))
+		}
+		b.arr("tokenizer.ggml.tokens", TypeString, vocab...)
+		b.kv(lateKey, TypeUint32, uint32(15))
+		if lateKey != "general.file_type" {
+			b.kv("general.file_type", TypeUint32, uint32(15))
+		}
+		return b.Bytes()
+	}
+
+	h, err := Parse(bytes.NewReader(build("general.file_type")), Options{StopAtTokenizer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Complete || h.StoppedAt != "tokenizer.ggml.tokens" || h.Metadata().FileTypeStated || h.Metadata().HeadCountKV != 8 {
+		t.Errorf("file type last: complete=%v stopped=%q metadata=%+v", h.Complete, h.StoppedAt, h.Metadata())
+	}
+
+	h, err = Parse(bytes.NewReader(build("llama.attention.head_count_kv")), Options{StopAtTokenizer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.Complete || h.Metadata().HeadCountKV != 15 || !h.Metadata().HeadCountKVStated {
+		t.Errorf("head_count_kv last: complete=%v metadata=%+v", h.Complete, h.Metadata())
+	}
 }
 
 func TestFileTypeNames(t *testing.T) {

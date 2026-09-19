@@ -12,9 +12,14 @@ import (
 // because a file that states it after the tokenizer must not be read as one
 // that leaves it out (llama.cpp then uses head_count, which would make the
 // KV-cache estimate wrong by the grouped-query factor).
+//
+// general.file_type is not on the list (ARCHITECTURE.md D-37). Current
+// llama.cpp quantizers write it last, after the tokenizer, so requiring it
+// meant reading 6–11 MB of vocabulary per file to learn what the file name
+// already says; it is kept when it comes before the tokenizer and is a
+// cross-check, not an input.
 var RequiredKeys = []string{
 	"general.architecture",
-	"general.file_type",
 	"{arch}.block_count",
 	"{arch}.context_length",
 	"{arch}.embedding_length",
