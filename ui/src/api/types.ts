@@ -833,3 +833,26 @@ export interface ChatApp {
 export interface ChatAppsResponse {
   apps: ChatApp[]
 }
+
+// --- Settings (Go: internal/server/settings.go) -----------------------------
+//
+// Advanced (product rule 2's toggle) is the only durable, machine-wide
+// setting the MVP has. state/settings.tsx keeps a localStorage copy for a
+// snappy first paint and reconciles it with this endpoint; this table is
+// what survives a cleared browser profile or a second window.
+
+/** GET and PUT /api/settings (Go: server.SettingsResponse). DataDir is a fact from the OS, not a Figure. */
+export interface SettingsResponse {
+  advanced: boolean
+  data_dir: string
+}
+
+/** PUT /api/settings (Go: server.SettingsUpdate). */
+export interface SettingsUpdate {
+  advanced: boolean
+}
+
+/** POST /api/backends/{name}/models/remove (Go: server.ModelRemoveRequest). The response is InstalledModelsResponse: the inventory as it now stands. */
+export interface ModelRemoveRequest {
+  name: string
+}

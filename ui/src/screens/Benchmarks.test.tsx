@@ -269,6 +269,52 @@ describe('Benchmarks', () => {
     expect(rows.some((r) => r.textContent?.startsWith('481—'))).toBe(true)
   })
 
+  it('compares two history runs side by side, and keeps their configuration under Advanced', async () => {
+    serve({
+      history: [
+        run({ id: 7, generation_tps: measured(41.3) }),
+        run({ id: 6, config: { ...run().config, model: 'llama3.1:8b', quantization: 'Q8_0' }, generation_tps: measured(20.0), comparison: undefined }),
+      ],
+    })
+    open(true)
+    const table = await screen.findByTestId('bench-history')
+    const boxes = within(table).getAllByRole('checkbox')
+    expect(boxes).toHaveLength(2)
+
+    await userEvent.click(boxes[0])
+    expect(screen.getByText(c.comparePick)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: c.compareButton })).not.toBeInTheDocument()
+
+    await userEvent.click(boxes[1])
+    await userEvent.click(screen.getByRole('button', { name: c.compareButton }))
+
+    const compare = await screen.findByTestId('bench-compare')
+    expect(within(compare).getByText(c.compareDiff('llama3.2:3b', '+107%', 'llama3.1:8b'))).toBeInTheDocument()
+    expect(within(compare).getAllByText('41.3 tok/s').length).toBeGreaterThan(0)
+    expect(within(compare).getAllByText('20.0 tok/s').length).toBeGreaterThan(0)
+
+    const tech = await screen.findByTestId('bench-compare-advanced')
+    expect(within(tech).getByText('Q4_K_M')).toBeInTheDocument()
+    expect(within(tech).getByText('Q8_0')).toBeInTheDocument()
+
+    await userEvent.click(within(compare).getByRole('button', { name: c.compareClose }))
+    expect(screen.queryByTestId('bench-compare')).not.toBeInTheDocument()
+  })
+
+  it('caps the comparison picker at two, and keeps the technical configuration out of it when Advanced is off', async () => {
+    serve({ history: [run({ id: 7 }), run({ id: 6, comparison: undefined }), run({ id: 5, comparison: undefined })] })
+    open()
+    const table = await screen.findByTestId('bench-history')
+    const boxes = within(table).getAllByRole('checkbox')
+    await userEvent.click(boxes[0])
+    await userEvent.click(boxes[1])
+    expect(boxes[2]).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: c.compareButton }))
+    const compare = await screen.findByTestId('bench-compare')
+    expect(within(compare).queryByTestId('bench-compare-advanced')).not.toBeInTheDocument()
+  })
+
   it('says so when nothing is installed', async () => {
     serve()
     vi.stubGlobal(

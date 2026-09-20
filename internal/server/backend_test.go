@@ -22,6 +22,14 @@ type fakeBackend struct {
 	models     []backend.Installed
 	modelsErr  error
 	detectHits int
+
+	// deleteErr, when set, is what Delete returns instead of succeeding.
+	// deleted records every name Delete was asked to remove, in order —
+	// remove_test.go's way of checking the right model was named. A
+	// successful Delete also drops the model from models, the same as a
+	// real runtime no longer listing it on the next Models() call.
+	deleteErr error
+	deleted   []string
 }
 
 func (f *fakeBackend) Name() string { return f.name }
@@ -42,7 +50,21 @@ func (f *fakeBackend) Pull(context.Context, backend.ModelSource, func(backend.Pu
 func (f *fakeBackend) Generate(context.Context, backend.GenerateRequest, func(backend.GenerateEvent) error) error {
 	return nil
 }
-func (f *fakeBackend) Unload(context.Context, string) error                         { return nil }
+func (f *fakeBackend) Unload(context.Context, string) error { return nil }
+func (f *fakeBackend) Delete(_ context.Context, name string) error {
+	f.deleted = append(f.deleted, name)
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	var keep []backend.Installed
+	for _, m := range f.models {
+		if m.Name != name {
+			keep = append(keep, m)
+		}
+	}
+	f.models = keep
+	return nil
+}
 func (f *fakeBackend) Install(context.Context, func(backend.InstallProgress)) error { return nil }
 func (f *fakeBackend) Start(context.Context) error                                  { return nil }
 

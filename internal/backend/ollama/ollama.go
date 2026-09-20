@@ -267,6 +267,19 @@ func (b *Backend) Unload(ctx context.Context, name string) error {
 	return nil
 }
 
+// Delete removes a downloaded model, freeing the disk space it took (the
+// Models screen's "Remove" button, build-plan step 8).
+func (b *Backend) Delete(ctx context.Context, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("ollama: Delete: name is required")
+	}
+	c := b.client(30 * time.Second)
+	if err := c.delete(ctx, name); err != nil {
+		return fmt.Errorf("ollama: removing %s: %w", name, err)
+	}
+	return nil
+}
+
 // setSupervisedLog records where Start wrote this Ollama process's output,
 // for runtimePaths to read in preference to guessing at a default log
 // location. Exported to the package only (install_*.go calls it).

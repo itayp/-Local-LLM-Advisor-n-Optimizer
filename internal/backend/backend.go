@@ -379,6 +379,12 @@ type Backend interface {
 	// Unload asks the runtime to free a model's memory now.
 	Unload(ctx context.Context, name string) error
 
+	// Delete removes an installed model from the runtime's own storage,
+	// freeing the disk space it took (the Models screen's "Remove" button,
+	// build-plan step 8). The runtime is the one place that model's files
+	// live (D-16); the advisor never touches a model file directly.
+	Delete(ctx context.Context, name string) error
+
 	// Install downloads and sets up the runtime itself. progress may be
 	// nil. Product rule 5: this only ever runs from a UI button that says
 	// what it will do before it is clicked; Install itself changes nothing

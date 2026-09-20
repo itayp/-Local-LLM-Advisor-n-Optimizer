@@ -17,7 +17,11 @@ import { Watch } from './Watch'
  *
  * Both the navigation and the routes are generated from this list, so a
  * screen exists in exactly one place. Step 7 adds the first-run onboarding
- * flow in front of it; step 8 fills the screens in.
+ * flow in front of it; step 8 fills in Home, Models and Settings (Recommend
+ * and Benchmarks were already built, in steps 5 and 6, to give those
+ * steps' own gates something to run on a machine without a terminal).
+ * Ollama and New models stay placeholders — the first was never assigned
+ * its own screen, the second is step 10's.
  */
 export interface Screen {
   path: string

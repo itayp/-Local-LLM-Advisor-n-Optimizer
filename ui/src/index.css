@@ -464,7 +464,8 @@ body {
 
 .bench-plan,
 .bench-running,
-.bench-run {
+.bench-run,
+.bench-compare {
   margin: 16px 0;
 }
 
@@ -591,4 +592,122 @@ body {
   margin-left: 6px;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* Home (build-plan step 8): the machine's own sentence, the model you've
+   measured (if any), and one card for the single most useful next step. */
+.home__lead {
+  font-size: 17px;
+  margin: 0 0 24px;
+}
+
+.next-card {
+  border: 1px solid var(--accent);
+  background: var(--accent-bg);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 0 0 24px;
+}
+
+.next-card h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.next-card p {
+  margin: 0 0 12px;
+}
+
+.next-card p:last-child {
+  margin-bottom: 0;
+}
+
+.next-card .button {
+  margin-top: 4px;
+}
+
+/* Models: an installed model's fit, in words, colour-coded the way
+   .confidence is (never the same look for a good fit and a bad one). */
+.fit {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.fit--fits_with_headroom {
+  color: var(--measured);
+}
+
+.fit--fits {
+  color: var(--accent);
+}
+
+.fit--needs_cpu_offload,
+.fit--reduced_context_only {
+  color: var(--estimated);
+}
+
+.fit--not_recommended {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border-style: dashed;
+}
+
+.fit--unknown {
+  color: var(--muted);
+  border-style: dotted;
+}
+
+.models-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.models-table th,
+.models-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.models-table__remove {
+  margin-top: 24px;
+}
+
+/* Settings: read-only facts about where things live, each with a button
+   that opens it (D-16), and stub sections for the steps still to come. */
+.settings-section {
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-section h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.settings-row dt {
+  color: var(--muted);
+}
+
+.settings-row dd {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }

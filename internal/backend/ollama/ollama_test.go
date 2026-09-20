@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -400,6 +401,47 @@ func TestUnloadSendsKeepAliveZero(t *testing.T) {
 	}
 	if ka, ok := gotBody["keep_alive"].(float64); !ok || ka != 0 {
 		t.Fatalf("keep_alive = %v, want 0", gotBody["keep_alive"])
+	}
+}
+
+func TestDeleteSendsModelNameAndMethod(t *testing.T) {
+	var gotMethod string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	b := newTestBackend(t, srv)
+	if err := b.Delete(context.Background(), "llama3.1:8b"); err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("method = %s, want DELETE", gotMethod)
+	}
+	if gotBody["model"] != "llama3.1:8b" {
+		t.Fatalf("model = %v", gotBody["model"])
+	}
+}
+
+func TestDeleteRequiresName(t *testing.T) {
+	b := newTestBackend(t, httptest.NewServer(http.NotFoundHandler()))
+	if err := b.Delete(context.Background(), "  "); err == nil {
+		t.Fatal("Delete with a blank name should error")
+	}
+}
+
+func TestDeleteReportsOllamasError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error": "model 'nope' not found"}`))
+	}))
+	defer srv.Close()
+	b := newTestBackend(t, srv)
+	err := b.Delete(context.Background(), "nope")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("Delete error = %v, want it to carry Ollama's own message", err)
 	}
 }
 

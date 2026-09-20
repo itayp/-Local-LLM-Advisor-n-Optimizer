@@ -42,7 +42,7 @@ describe('the shell', () => {
       }),
     )
     renderAt('/')
-    expect(await screen.findByRole('status')).toHaveTextContent(en.app.daemonUnreachable)
+    expect(await screen.findByText(en.app.daemonUnreachable)).toBeInTheDocument()
   })
 })
 
@@ -54,6 +54,22 @@ describe('the Advanced toggle', () => {
   })
 
   it('flips the settings state for every screen and persists it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/models/installed') {
+          return new Response(
+            JSON.stringify({
+              models: [
+                { backend_name: 'ollama', name: 'llama3:8b', size_bytes: 1e9, quantization: 'Q4_K_M', last_seen_at: '2026-01-01T00:00:00Z', catalog_match: '' },
+              ],
+            }),
+            { status: 200 },
+          )
+        }
+        return new Response(JSON.stringify({ version: 'test', os: 'testos', arch: 'testarch', go_version: 'go' }), { status: 200 })
+      }),
+    )
     const user = userEvent.setup()
     renderAt('/settings')
     await user.click(screen.getByRole('checkbox', { name: en.screens.settings.advancedLabel }))
@@ -61,7 +77,7 @@ describe('the Advanced toggle', () => {
 
     await user.click(screen.getByRole('link', { name: en.nav.models }))
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(en.nav.models)
-    expect(screen.getByTestId('advanced-note')).toBeInTheDocument()
+    expect(await screen.findByTestId('models-advanced')).toBeInTheDocument()
 
     expect(JSON.parse(localStorage.getItem('advisor.settings.v1') ?? '{}')).toEqual({ advanced: true })
   })

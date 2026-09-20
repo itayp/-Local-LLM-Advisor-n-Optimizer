@@ -21,6 +21,8 @@ import type {
   PullStatus,
   Purpose,
   RecommendResult,
+  SettingsResponse,
+  SettingsUpdate,
   UnknownInstalledResponse,
 } from './types'
 
@@ -43,7 +45,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return send<T>('GET', path, signal)
 }
 
-async function send<T>(method: 'GET' | 'POST', path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
+async function send<T>(method: 'GET' | 'POST' | 'PUT', path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   const res = await fetch(base + path, { method, signal, headers, body: body === undefined ? undefined : JSON.stringify(body) })
@@ -136,6 +138,17 @@ export const api = {
   pullCancel: (signal?: AbortSignal) => send<PullStatus>('POST', '/models/pull/cancel', signal),
   /** Chat apps already on this machine, detected fresh on every call. The advisor never installs or drives one (D-4). */
   chatApps: (signal?: AbortSignal) => get<ChatAppsResponse>('/chatapps', signal),
+  /** The durable, machine-wide settings (build-plan step 8). */
+  settings: (signal?: AbortSignal) => get<SettingsResponse>('/settings', signal),
+  /** Change them. */
+  updateSettings: (update: SettingsUpdate, signal?: AbortSignal) => send<SettingsResponse>('PUT', '/settings', signal, update),
+  /** Open the daemon's own data folder in the OS file manager. */
+  openDataDir: (signal?: AbortSignal) => send<object>('POST', '/settings/open-data-dir', signal),
+  /** Open the folder the runtime keeps its models in. */
+  openModelsDir: (signal?: AbortSignal) => send<object>('POST', '/settings/open-models-dir', signal),
+  /** Remove an installed model from backendName; answers with the inventory as it now stands. */
+  removeModel: (backendName: string, name: string, signal?: AbortSignal) =>
+    send<InstalledModelsResponse>('POST', `/backends/${encodeURIComponent(backendName)}/models/remove`, signal, { name }),
 }
 
 function benchQuery(req: BenchRequest): string {

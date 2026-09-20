@@ -57,5 +57,8 @@ func APITypes() []any {
 		PullStatus{},
 		chatapps.App{},
 		ChatAppsResponse{},
+		SettingsResponse{},
+		SettingsUpdate{},
+		ModelRemoveRequest{},
 	}
 }

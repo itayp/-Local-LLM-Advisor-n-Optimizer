@@ -184,13 +184,7 @@ func (s *Server) handleModelsInstalled(w http.ResponseWriter, r *http.Request) {
 	}
 	out := InstalledModelsResponse{Models: make([]InstalledModelInfo, 0, len(rows))}
 	for _, row := range rows {
-		out.Models = append(out.Models, InstalledModelInfo{
-			BackendName: row.BackendName, Name: row.Name, Digest: row.Digest, SizeBytes: row.SizeBytes,
-			Quantization: row.Quantization, Family: row.Family, ParameterSize: row.ParameterSize,
-			ModifiedAt: row.ModifiedAt, LastSeenAt: row.LastSeenAt,
-			CatalogMatch: row.CatalogMatch, CatalogModelID: row.CatalogModelID,
-			CatalogFileID: row.CatalogFileID, CatalogNote: row.CatalogNote,
-		})
+		out.Models = append(out.Models, installedModelInfoFromRow(row))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

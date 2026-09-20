@@ -25,8 +25,9 @@ const words = (tokens: number) => (Math.round((tokens * 0.75) / 100) * 100).toLo
  * the model's memory. Every number with provenance goes through <Figure>:
  * results are measured, the duration and the estimate before are estimated.
  *
- * Step 8 builds the full Benchmarks screen (compare two runs side by side);
- * this is what the step 6 gate needs on a machine without a terminal.
+ * Step 6 built the single-run flow above, enough for its own gate on a
+ * machine without a terminal; step 8 adds the history's "Compare" picker
+ * and the side-by-side view it opens.
  */
 export function Benchmarks() {
   const advanced = useAdvanced()
@@ -39,6 +40,8 @@ export function Benchmarks() {
   const [progress, setProgress] = useState<BenchProgress | null>(null)
   const [shown, setShown] = useState<BenchRun | null>(null)
   const [history, setHistory] = useState<BenchRun[]>([])
+  const [compareSelected, setCompareSelected] = useState<number[]>([])
+  const [comparing, setComparing] = useState<[BenchRun, BenchRun] | null>(null)
   const [busy, setBusy] = useState<'starting' | 'cancelling' | null>(null)
   // Bumped when a run ends, so the plan is asked for again: a finished run
   // replaces the estimate the plan showed (product rule 4).
@@ -173,6 +176,23 @@ export function Benchmarks() {
 
   const running = progress !== null
 
+  const toggleCompare = (id: number) => {
+    setCompareSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < 2 ? [...cur, id] : cur))
+  }
+
+  const openCompare = () => {
+    const [idA, idB] = compareSelected
+    const a = history.find((r) => r.id === idA)
+    const b = history.find((r) => r.id === idB)
+    if (a && b) setComparing([a, b])
+  }
+
+  const show = (r: BenchRun) => {
+    setComparing(null)
+    if (r.status === 'running') follow(r.id)
+    else setShown(r)
+  }
+
   return (
     <section className="screen" aria-labelledby="screen-title">
       <h1 id="screen-title">{c.title}</h1>
@@ -227,9 +247,20 @@ export function Benchmarks() {
 
       {progress ? <Running p={progress} cancelling={busy === 'cancelling'} onCancel={cancel} /> : null}
 
-      {shown ? <RunView run={shown} advanced={advanced} /> : null}
+      {comparing ? (
+        <Compare a={comparing[0]} b={comparing[1]} advanced={advanced} onClose={() => setComparing(null)} />
+      ) : shown ? (
+        <RunView run={shown} advanced={advanced} />
+      ) : null}
 
-      <History runs={history} onShow={(r) => (r.status === 'running' ? follow(r.id) : setShown(r))} />
+      <History runs={history} onShow={show} selected={compareSelected} onToggleSelect={toggleCompare} />
+      {compareSelected.length === 2 ? (
+        <button type="button" className="button button--secondary" onClick={openCompare}>
+          {c.compareButton}
+        </button>
+      ) : compareSelected.length === 1 ? (
+        <p className="screen__note">{c.comparePick}</p>
+      ) : null}
     </section>
   )
 }
@@ -485,7 +516,17 @@ function Technical({ run }: { run: BenchRun }) {
   )
 }
 
-function History({ runs, onShow }: { runs: BenchRun[]; onShow: (r: BenchRun) => void }) {
+function History({
+  runs,
+  onShow,
+  selected,
+  onToggleSelect,
+}: {
+  runs: BenchRun[]
+  onShow: (r: BenchRun) => void
+  selected: number[]
+  onToggleSelect: (id: number) => void
+}) {
   return (
     <>
       <h2 className="bench-history__title">{c.history}</h2>
@@ -495,6 +536,7 @@ function History({ runs, onShow }: { runs: BenchRun[]; onShow: (r: BenchRun) => 
         <table className="tech" data-testid="bench-history">
           <thead>
             <tr>
+              <th>{c.compareSelect}</th>
               <th>{c.when}</th>
               <th>{c.model}</th>
               <th>{c.context}</th>
@@ -503,22 +545,133 @@ function History({ runs, onShow }: { runs: BenchRun[]; onShow: (r: BenchRun) => 
             </tr>
           </thead>
           <tbody>
-            {runs.map((r) => (
-              <tr key={r.id}>
-                <td>{new Date(r.started_at).toLocaleString()}</td>
-                <td>{r.config.model}</td>
-                <td>{c.contextOption(words(r.config.num_ctx))}</td>
-                <td>{r.generation_tps ? <Figure rate={r.generation_tps} /> : c.status[r.status]}</td>
-                <td>
-                  <button type="button" className="link-button" onClick={() => onShow(r)}>
-                    {c.show}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {runs.map((r) => {
+              const when = new Date(r.started_at).toLocaleString()
+              const checked = selected.includes(r.id)
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={c.compareRowLabel(r.config.model, when)}
+                      checked={checked}
+                      disabled={!checked && selected.length >= 2}
+                      onChange={() => onToggleSelect(r.id)}
+                    />
+                  </td>
+                  <td>{when}</td>
+                  <td>{r.config.model}</td>
+                  <td>{c.contextOption(words(r.config.num_ctx))}</td>
+                  <td>{r.generation_tps ? <Figure rate={r.generation_tps} /> : c.status[r.status]}</td>
+                  <td>
+                    <button type="button" className="link-button" onClick={() => onShow(r)}>
+                      {c.show}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       )}
     </>
+  )
+}
+
+/**
+ * Compare (build-plan step 8): two history runs side by side — whichever
+ * two the "Compare" checkboxes picked, not necessarily the same
+ * configuration (that automatic check is run.comparison, above). Figures
+ * keep their own provenance through <Figure>; the technical configuration
+ * only appears under Advanced, like everywhere else (product rule 2).
+ */
+function Compare({ a, b, advanced, onClose }: { a: BenchRun; b: BenchRun; advanced: boolean; onClose: () => void }) {
+  const headlineOf = (r: BenchRun) => r.results.find((x) => x.prompt === r.headline) ?? r.results[0]
+  const diffPct =
+    a.generation_tps && b.generation_tps && b.generation_tps.value !== 0
+      ? Math.round(((a.generation_tps.value - b.generation_tps.value) / b.generation_tps.value) * 100)
+      : null
+  const rows: [string, (r: BenchRun) => React.ReactNode][] = [
+    [c.compareRows.model, (r) => r.config.model],
+    [c.compareRows.when, (r) => new Date(r.started_at).toLocaleString()],
+    [c.compareRows.context, (r) => c.contextOption(words(r.config.num_ctx))],
+    [c.answering, (r) => (r.generation_tps ? <Figure rate={r.generation_tps} /> : '—')],
+    [c.reading, (r) => (headlineOf(r)?.prompt_tps ? <Figure rate={headlineOf(r)!.prompt_tps!} /> : '—')],
+    [c.firstWord, (r) => (headlineOf(r)?.ttft ? <Figure rate={headlineOf(r)!.ttft!} /> : '—')],
+    [c.memoryTaken, (r) => (r.peak_vram ? <Figure bytes={r.peak_vram} /> : '—')],
+    [c.loadTime, (r) => (r.load ? <Figure rate={r.load} /> : '—')],
+    [c.compareRows.resident, (r) => c.compareRows.residentValue[r.resident]],
+  ]
+  return (
+    <article className="card bench-compare" aria-label={c.compareTitle} data-testid="bench-compare">
+      <header className="card__head">
+        <h2>{c.compareTitle}</h2>
+        <button type="button" className="button button--secondary" onClick={onClose}>
+          {c.compareClose}
+        </button>
+      </header>
+      {diffPct !== null ? (
+        <p className="screen__note">{c.compareDiff(a.config.model, `${diffPct > 0 ? '+' : ''}${diffPct}%`, b.config.model)}</p>
+      ) : null}
+      <table className="tech" data-testid="bench-compare-table">
+        <thead>
+          <tr>
+            <th>{c.compareRows.metric}</th>
+            <th>{a.config.model}</th>
+            <th>{b.config.model}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label}>
+              <th scope="row">{label}</th>
+              <td>{value(a)}</td>
+              <td>{value(b)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {advanced ? (
+        <div className="screen__advanced" data-testid="bench-compare-advanced">
+          <h3>{c.advanced.config.label}</h3>
+          <table className="tech">
+            <thead>
+              <tr>
+                <th>{c.compareRows.metric}</th>
+                <th>{a.config.model}</th>
+                <th>{b.config.model}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">{c.advanced.path.label}</th>
+                <td>{a.config.runtime_path}</td>
+                <td>{b.config.runtime_path}</td>
+              </tr>
+              <tr>
+                <th scope="row">{c.advanced.kvCache.label}</th>
+                <td>{a.config.kv_cache_type}</td>
+                <td>{b.config.kv_cache_type}</td>
+              </tr>
+              <tr>
+                <th scope="row">{c.advanced.quantization.label}</th>
+                <td>{a.config.quantization}</td>
+                <td>{b.config.quantization}</td>
+              </tr>
+              <tr>
+                <th scope="row">{c.advanced.context.label}</th>
+                <td>{a.config.effective_ctx.toLocaleString('en-US')}</td>
+                <td>{b.config.effective_ctx.toLocaleString('en-US')}</td>
+              </tr>
+              <tr>
+                <th scope="row">{c.advanced.suite.label}</th>
+                <td>{a.config.suite_version}</td>
+                <td>{b.config.suite_version}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </article>
   )
 }

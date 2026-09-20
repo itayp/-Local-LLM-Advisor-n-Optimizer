@@ -96,6 +96,11 @@ type Server struct {
 	// comments for why.
 	installs installTracker
 	pulls    pullTracker
+
+	// open asks the OS to open a folder in its file manager (settings.go's
+	// two "open" buttons). Defaults to openInFileManager; tests set it to
+	// a fake so they never launch a real file manager.
+	open func(dir string) error
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -105,7 +110,7 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All}
+	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All, open: openInFileManager}
 	s.hw.ready = make(chan struct{})
 	s.cat.init()
 	if st != nil {
@@ -159,6 +164,16 @@ func (s *Server) routes() {
 	// Chat apps already on this machine (build-plan step 7, D-4): the
 	// advisor only detects and hands off, never installs one.
 	s.api("GET /api/chatapps", s.handleChatApps)
+	// Settings (build-plan step 8): the durable, machine-wide Advanced
+	// toggle, and a button that opens each of the two folders D-16 names.
+	s.api("GET /api/settings", s.handleSettingsGet)
+	s.api("PUT /api/settings", s.handleSettingsPut)
+	s.api("POST /api/settings/open-data-dir", s.handleOpenDataDir)
+	s.api("POST /api/settings/open-models-dir", s.handleOpenModelsDir)
+	// Removing an installed model (the Models screen's "Remove" button,
+	// build-plan step 8): the backend deletes it, then its inventory is
+	// re-read the same way RecordBackends does after every check.
+	s.api("POST /api/backends/{name}/models/remove", s.handleModelRemove)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

@@ -18,6 +18,7 @@ import { Onboarding } from './Onboarding'
 import { OnboardingGate } from './OnboardingGate'
 import { OllamaStep } from './OllamaStep'
 import { Purposes } from './Purposes'
+import { Recommendations } from './Recommendations'
 
 function health() {
   return { version: 'test', os: 'darwin', arch: 'arm64', go_version: 'go1.27.1' }
@@ -388,6 +389,83 @@ describe('Purposes', () => {
     expect(purposes).toEqual(['chat', 'coding'])
     rerender(<Purposes purposes={purposes} onChange={(p) => (purposes = p)} onNext={() => undefined} />)
     expect(screen.getByRole('checkbox', { name: en.onboarding.purposes.labels.coding })).toBeChecked()
+  })
+})
+
+describe('Recommendations', () => {
+  it('offers to fetch the model list when the catalogue is empty, then asks again (no dead end on first run)', async () => {
+    const user = userEvent.setup()
+    const calls: { url: string; method: string }[] = []
+    let refreshed = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        calls.push({ url, method })
+        if (url.startsWith('/api/recommend')) {
+          return refreshed
+            ? json(recommendResult())
+            : json(
+                recommendResult({
+                  recommendations: [],
+                  empty: 'Nothing in the catalogue fits this computer yet.',
+                  empty_code: 'catalogue_empty',
+                }),
+              )
+        }
+        if (url === '/api/catalog/refresh' && method === 'POST') {
+          refreshed = true
+          return json({ added: 3, updated: 0, removed: 0 })
+        }
+        return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
+      }),
+    )
+    render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
+
+    expect(await screen.findByText('Nothing in the catalogue fits this computer yet.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: en.onboarding.recommend.fetchList }))
+
+    expect(await screen.findByRole('heading', { name: 'Qwen3.5 9B' })).toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/catalog/refresh' && c.method === 'POST')).toBe(true)
+  })
+
+  it('reports a failed fetch in words and leaves the button there to try again', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url.startsWith('/api/recommend'))
+          return json(
+            recommendResult({
+              recommendations: [],
+              empty: 'Nothing in the catalogue fits this computer yet.',
+              empty_code: 'catalogue_empty',
+            }),
+          )
+        if (url === '/api/catalog/refresh' && method === 'POST') return json({ error: { code: 'internal', message: 'no network' } }, 500)
+        return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
+      }),
+    )
+    render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
+
+    await user.click(await screen.findByRole('button', { name: en.onboarding.recommend.fetchList }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('no network')
+    expect(screen.getByRole('button', { name: en.onboarding.recommend.fetchList })).toBeInTheDocument()
+  })
+
+  it('does not offer a fetch button for an empty result that is not the catalogue being empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.startsWith('/api/recommend'))
+          return json(recommendResult({ recommendations: [], empty: 'Nothing fits this computer.', empty_code: 'nothing_fits' }))
+        return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
+      }),
+    )
+    render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
+    expect(await screen.findByText('Nothing fits this computer.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: en.onboarding.recommend.fetchList })).not.toBeInTheDocument()
   })
 })
 

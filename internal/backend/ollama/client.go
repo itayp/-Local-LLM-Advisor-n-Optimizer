@@ -314,6 +314,12 @@ func (c *httpClient) unload(ctx context.Context, model string) error {
 	return c.do(ctx, http.MethodPost, "/api/generate", body, nil)
 }
 
+// delete removes a downloaded model: DELETE /api/delete, exactly as
+// Ollama's own docs describe it (docs/api.md).
+func (c *httpClient) delete(ctx context.Context, model string) error {
+	return c.do(ctx, http.MethodDelete, "/api/delete", map[string]any{"model": model}, nil)
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

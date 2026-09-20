@@ -25,6 +25,7 @@ func (f fake) Generate(context.Context, GenerateRequest, func(GenerateEvent) err
 	return nil
 }
 func (f fake) Unload(context.Context, string) error                 { return nil }
+func (f fake) Delete(context.Context, string) error                 { return nil }
 func (f fake) Install(context.Context, func(InstallProgress)) error { return nil }
 func (f fake) Start(context.Context) error                          { return nil }
 
