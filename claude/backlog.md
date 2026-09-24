@@ -167,3 +167,77 @@ whatever the catalogue holds.
    Gemma 4 E4B), which goes against product rule 6.
 5. Read pull-request eval results labelled "unreviewed" (gate item 3). This
    adds shown values for Gemma 4 E4B/12B and Qwen3.5 4B, but nothing scored.
+
+## g. How to run: UI guidance after model selection, or button to start Ollama
+
+**From:** Itay, in-app onboarding feedback (2026-09-25).
+
+When the user selects a model on the Recommend or Models screen, they need
+to know the next step: is Ollama running? If not, how do they start it?
+Once it runs, what command or button launches the model?
+
+Product rule 1: the user never needs a terminal. Today, there's no in-app
+path — they get a recommendation and are left to figure out Ollama on their
+own. Options:
+
+1. A button on Recommend/Models that says what it does: "Start Ollama and
+   load [Model Name]" — pre-fills the URL in Ollama's CLI or (better) calls
+   the Ollama HTTP API to load the model directly if Ollama is already
+   running. A check on page load (`GET /api/backend/status`) sees whether
+   Ollama is listening.
+2. A "How to run" explainer on the Benchmarks and Models screens showing
+   the exact incantation the user needs, in plain language (e.g. "Run
+   `ollama pull mistral` and then `ollama run mistral`") tailored to the
+   selected model name — pull from the model's card (step 4's catalogue) or
+   generate it dynamically.
+3. Both: a button as primary (faster, one click), the explainer as fallback
+   or "next step" guidance.
+
+Needs product scope before building: how much automation is safe (Ollama CLI
+call vs. HTTP request vs. just instructions), and what happens when Ollama
+is not installed or the load fails. Flag for step assignment: this connects
+recommendation to actually running a model — early UX gain and a blocker on
+the "I got a recommendation, now what?" question.
+
+## h. Support for other inference backends (llama.cpp, LM Studio, etc.)
+
+**From:** Itay, in-app onboarding feedback (2026-09-25).
+
+PRD §15 already lists llama.cpp and other backends as future phases, but
+the question is coming up from testing: "I don't want to use Ollama, I have
+llama.cpp / LM Studio / [other tool] set up already — can the advisor work
+with that?"
+
+Today only Ollama is supported (`internal/backend/ollama`); the backend
+registry lives in `internal/backend/registry.go` (step 3) and a new backend
+takes `Load()`, `Unload()` and `PS()` methods.
+
+Related backlog items that affect scope:
+
+- **(c)**: Multiple GPUs — llama.cpp can pool them on the Mac Pro, making
+  it a priority backend for that use case sooner than a general "other
+  backends" phase.
+- **(d)**: Documents this capability for Mac Pro multi-GPU.
+
+Outline for step assignment (not a full scope, just what it unlocks):
+
+1. **llama.cpp backend**: matches the priority of (c)/(d). It reads a Unix
+   socket or HTTP endpoint, runs on macOS, Linux, Windows. Exists at
+   `~/.local/share/llama.cpp/llama-server` or a configured path; check for
+   it on startup, or let the user configure the endpoint. Port it uses is
+   typically 8000 (user-configurable). The load and PS calls parse llama.cpp's
+   HTTP API (different from Ollama's). Real machine for testing: Itay's Mac
+   Pro with both GPUs via llama.cpp.
+2. **LM Studio backend**: reads the HTTP API at `localhost:1234`
+   (default), similar to Ollama. Simpler to add second, since both expose
+   HTTP. Tested against LM Studio on Windows/Mac, not Itay's current fleet.
+3. **Detection**: on startup, Ollama responds at `localhost:11434` by default
+   (also configurable); llama.cpp at 8000, LM Studio at 1234. If more than
+   one is listening, the UI needs to let the user pick which one (step 8, the
+   Settings screen already has a backend picker drafted in backlog but not
+   wired up). If none is listening, a clear message saying so, with links to
+   install guides.
+
+Worth a dedicated build-plan step once product prioritizes multi-GPU support
+or the number of "can I use [tool] instead?" questions hits a threshold.
+For now, scoped as a backlog idea and a feeder to (c) and (d)'s scope.
