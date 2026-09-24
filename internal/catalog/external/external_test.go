@@ -70,6 +70,47 @@ families:
         ollama_tag: llama3.1:8b
         hf_repo: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
         hf_base_repo: meta-llama/Llama-3.1-8B-Instruct
+  - id: glm-4.7-flash
+    display_name: GLM-4.7-Flash
+    maintainer: Z.ai
+    license: {spdx: MIT}
+    purposes: [coding, chat, reasoning]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/zai-org/GLM-4.7-Flash
+    sizes:
+      - parameters: 31000000000
+        active_parameters: 3000000000
+        context_length: 202752
+        ollama_tag: glm-4.7-flash
+        hf_repo: bartowski/zai-org_GLM-4.7-Flash-GGUF
+        hf_base_repo: zai-org/GLM-4.7-Flash
+  - id: nemotron-3-nano
+    display_name: Nemotron 3 Nano
+    maintainer: NVIDIA
+    license: {name: NVIDIA Open Model License, url: "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/"}
+    purposes: [chat, reasoning]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    sizes:
+      - parameters: 30000000000
+        active_parameters: 3500000000
+        context_length: 1048576
+        ollama_tag: nemotron-3-nano:30b
+        hf_repo: bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF
+        hf_base_repo: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+  - id: gemma4
+    display_name: Gemma 4
+    maintainer: Google DeepMind
+    license: {spdx: Apache-2.0}
+    purposes: [chat, vision, writing]
+    reviewed_at: 2026-09-18
+    source: https://huggingface.co/google/gemma-4-31B-it
+    sizes:
+      - parameters: 30700000000
+        context_length: 262144
+        ollama_tag: gemma4:31b
+        hf_repo: bartowski/google_gemma-4-31B-it-GGUF
+        hf_base_repo: google/gemma-4-31B-it
   - id: llama3.3
     display_name: Llama 3.3
     maintainer: Meta
@@ -89,10 +130,12 @@ const testAliases = `
 arena:
   - {name: llama-3.3-70b-instruct, family: llama3.3, parameters: 70600000000, reviewed_at: 2026-09-24}
   - {name: llama-3.1-8b-instruct, family: llama3.1, parameters: 8030000000, reviewed_at: 2026-09-24}
-  - {name: llama-3.2-3b-instruct, family: llama3.2, parameters: 3210000000, reviewed_at: 2026-09-24}
-  - {name: qwen3.5-9b, family: qwen3.5, parameters: 9000000000, reviewed_at: 2026-09-24}
+  - {name: gemma-4-31b, family: gemma4, parameters: 30700000000, reviewed_at: 2026-09-24}
+  - {name: glm-4.7-flash, family: glm-4.7-flash, parameters: 31000000000, reviewed_at: 2026-09-24}
+  - {name: nvidia-nemotron-3-nano-30b-a3b-bf16, family: nemotron-3-nano, parameters: 30000000000, reviewed_at: 2026-09-24}
 epoch:
   - {name: Llama-3.3-70B-Instruct, family: llama3.3, parameters: 70600000000, reviewed_at: 2026-09-24}
+  - {name: glm-4.7-flash, family: glm-4.7-flash, parameters: 31000000000, reviewed_at: 2026-09-24}
   - {name: Llama-3.2-3B-Instruct, family: llama3.2, parameters: 3210000000, reviewed_at: 2026-09-24}
 `
 
@@ -369,49 +412,81 @@ func TestHuggingFaceEvalResults(t *testing.T) {
 		t.Fatalf("status %s, error %q", sr.Status, sr.Error)
 	}
 	vals := f.values()
-	byMetric := map[string]catalog.External{}
+	bySize := map[int64]map[string]catalog.External{}
 	for _, v := range vals {
-		if v.ModelID != f.id("qwen3.5", 9_000_000_000) {
-			t.Errorf("a value landed on another size: %+v", v)
+		if bySize[v.ModelID] == nil {
+			bySize[v.ModelID] = map[string]catalog.External{}
 		}
-		byMetric[v.Metric] = v
+		bySize[v.ModelID][v.Metric] = v
 	}
-	gpqa, ok := byMetric["hf:Idavidrein/gpqa/gpqa_diamond"]
+
+	// The shaped Qwen3.5 9B answer: the cases real answers have not shown yet.
+	q9 := bySize[f.id("qwen3.5", 9_000_000_000)]
+	gpqa, ok := q9["hf:Idavidrein/gpqa/diamond"]
 	if !ok || gpqa.Value != 81.7 || gpqa.Provenance != "maker" || gpqa.SourceDate != "2026-03-02" ||
 		gpqa.Attribution != "Reported by Qwen (Alibaba Cloud) on Hugging Face" || gpqa.License != "HF-ToS; repo:apache-2.0" {
 		t.Errorf("the maker's merged result: %+v", gpqa)
 	}
-	if hle := byMetric["hf:cais/hle/default"]; hle.Provenance != "verified" || hle.Attribution != "Verified on Hugging Face" || hle.SourceDate != "2026-04-18" {
+	if hle := q9["hf:cais/hle/hle"]; hle.Provenance != "verified" || hle.Attribution != "Verified on Hugging Face" || hle.SourceDate != "2026-04-18" {
 		t.Errorf("the verified result: %+v", hle)
 	}
-	if _, ok := byMetric["hf:TIGER-Lab/MMLU-Pro/mmlu_pro"]; ok || sr.Pending != 1 {
-		t.Errorf("a result in an open pull request must be counted (%d), not stored", sr.Pending)
+	if _, ok := q9["hf:TIGER-Lab/MMLU-Pro/mmlu_pro"]; ok {
+		t.Error("a result in an open pull request must be counted, not stored")
 	}
-	if _, ok := byMetric["hf:SWE-bench/SWE-bench_Verified/default"]; ok || len(sr.Dropped) != 1 || !strings.Contains(sr.Dropped[0], "artificialanalysis.ai") {
+	if _, ok := q9["hf:SWE-bench/SWE-bench_Verified/swe_bench_%_resolved"]; ok || len(sr.Dropped) != 1 || !strings.Contains(sr.Dropped[0], "artificialanalysis.ai") {
 		t.Errorf("a result sourced from an excluded publisher must be dropped: %v", sr.Dropped)
+	}
+
+	// Real answers (captured 2026-09-24): GLM-4.7-Flash's two merged results,
+	// its SWE-bench one still in a pull request; Gemma 4 31B's one merged
+	// vision result among twelve pending.
+	glm := bySize[f.id("glm-4.7-flash", 31_000_000_000)]
+	if g := glm["hf:Idavidrein/gpqa/diamond"]; g.Value != 75.2 || g.SourceDate != "2026-01-27" || g.Provenance != "maker" || g.Attribution != "Reported by Z.ai on Hugging Face" || g.License != "HF-ToS; repo:mit" {
+		t.Errorf("GLM-4.7-Flash GPQA: %+v", g)
+	}
+	if h := glm["hf:cais/hle/hle"]; h.Value != 14.4 || h.SourceDate != "2026-01-28" {
+		t.Errorf("GLM-4.7-Flash HLE: %+v", h)
+	}
+	if len(glm) != 2 {
+		t.Errorf("GLM-4.7-Flash stored %d values, want 2 (SWE-bench is in a pull request)", len(glm))
+	}
+	if m := bySize[f.id("gemma4", 30_700_000_000)]["hf:MMMU/MMMU_Pro/mmmu_pro_vision"]; m.Value != 76.9 || m.SourceDate != "2026-05-12" {
+		t.Errorf("Gemma 4 31B MMMU-Pro: %+v", m)
+	}
+	if len(vals) != 5 {
+		t.Errorf("stored %d values, want 5", len(vals))
+	}
+	// Pending: the shaped one, and every real result still in a pull request
+	// (Qwen3.5 4B 15, GLM 1, Gemma 31B 12, Llama 3.1 8B 11 — one of them a
+	// file the Hub could not read — Llama 3.3 12, Nemotron 1).
+	if sr.Pending != 53 {
+		t.Errorf("pending = %d, want 53", sr.Pending)
 	}
 	if len(sr.UnknownMetrics) != 1 || sr.UnknownMetrics[0] != "hf:openai/gsm8k/main" {
 		t.Errorf("unknown metrics = %v", sr.UnknownMetrics)
 	}
-	if len(sr.Unreadable) != 1 {
+	// The shaped "not a number", and Nemotron's three files the Hub itself
+	// could not parse — said in the Hub's words, on one line.
+	hubErr := 0
+	for _, u := range sr.Unreadable {
+		if strings.Contains(u, "Hugging Face could not read the repo's own .eval_results/") && strings.Contains(u, "expected string, received undefined at [0].dataset.task_id") {
+			hubErr++
+		}
+	}
+	if len(sr.Unreadable) != 4 || hubErr != 3 {
 		t.Errorf("unreadable = %v", sr.Unreadable)
 	}
-	if len(vals) != 2 {
-		t.Errorf("stored %d values, want 2", len(vals))
-	}
-	// Qwen3.5 4B's repo (and the fake hub's other missing ones) do not
-	// exist: a failure in words per size, naming the field to check.
-	if len(sr.Failures) != 3 || !strings.Contains(sr.Failures[0], "hf_base_repo") || !strings.Contains(sr.Failures[0], "qwen3.5:4b") {
+	if len(sr.Failures) != 0 {
 		t.Errorf("failures = %v", sr.Failures)
 	}
 	rows, _ := f.st.CatalogModels(context.Background(), false)
 	for _, r := range rows {
-		want := map[string]string{"qwen3.5:9b": "2026-03-02", "llama3.2:3b": "2024-09-18"}[r.Model.Size.OllamaTag]
-		if r.Model.ReleasedAt != want {
+		want := map[string]string{"qwen3.5:9b": "2026-03-02", "llama3.2:3b": "2024-09-18", "glm-4.7-flash": "2026-01-19"}[r.Model.Size.OllamaTag]
+		if want != "" && r.Model.ReleasedAt != want {
 			t.Errorf("%s released_at = %q, want %q", r.Model.Size.OllamaTag, r.Model.ReleasedAt, want)
 		}
 	}
-	if !contains(sr.Hits, "qwen3.5:9b") || !contains(sr.Misses, "llama3.2:3b") {
+	if !contains(sr.Hits, "qwen3.5:9b") || !contains(sr.Hits, "glm-4.7-flash") || !contains(sr.Misses, "llama3.2:3b") {
 		t.Errorf("hits %v, misses %v", sr.Hits, sr.Misses)
 	}
 
@@ -423,8 +498,36 @@ func TestHuggingFaceEvalResults(t *testing.T) {
 	// Forced, an unchanged repo is a 304 and its values stay.
 	f.clock = f.clock.Add(time.Hour)
 	got := source(f.run(true), SourceHFEvals)
-	if got.Stats.NotModified < 2 || len(f.values()) != 2 {
+	if got.Stats.NotModified < 2 || len(f.values()) != 5 {
 		t.Errorf("forced re-read: %+v; values %d", got.Stats, len(f.values()))
+	}
+}
+
+// A repo that could not be read is a failure in words naming the field to
+// check — and the source is due again at the next refresh, not after its
+// cadence: a gap is not left for a day.
+func TestAFailedPartMakesTheSourceDueAgain(t *testing.T) {
+	f := newFixture(t, SourceHFEvals)
+	missing := true
+	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
+		if missing && strings.HasSuffix(r.URL.Path, "/Qwen3.5-4B") {
+			http.Error(w, `{"error":"Repository not found"}`, http.StatusNotFound)
+			return true
+		}
+		return false
+	}
+	sr := source(f.run(false), SourceHFEvals)
+	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], "hf_base_repo") || !strings.Contains(sr.Failures[0], "qwen3.5:4b") {
+		t.Fatalf("failures = %v", sr.Failures)
+	}
+	missing = false
+	f.clock = f.clock.Add(time.Minute)
+	if sr = source(f.run(false), SourceHFEvals); sr.Status == StatusSkipped || len(sr.Failures) != 0 {
+		t.Errorf("a source read in part must be read again at once: %+v", sr)
+	}
+	f.clock = f.clock.Add(time.Minute)
+	if sr = source(f.run(false), SourceHFEvals); sr.Status != StatusSkipped {
+		t.Errorf("once whole, the cadence holds again: %s", sr.Status)
 	}
 }
 
@@ -442,40 +545,69 @@ func TestArena(t *testing.T) {
 	if sr.Error != "" {
 		t.Fatal(sr.Error)
 	}
+	// Real rows (the text board, 13 September 2026): three aliased sizes.
 	vals := f.values()
 	if len(vals) != 3 {
 		t.Fatalf("stored %d values, want the three aliased rows: %+v", len(vals), vals)
 	}
 	for _, v := range vals {
-		if v.Provenance != "crowd" || v.SourceDate != "2026-09-15" || v.License != "CC-BY-4.0" ||
-			!strings.Contains(v.Attribution, "2026-09-15") || v.Detail["board_rows"] != 5.0 {
+		if v.Provenance != "crowd" || v.SourceDate != "2026-09-13" || v.License != "CC-BY-4.0" ||
+			!strings.Contains(v.Attribution, "2026-09-13") || v.Detail["board_rows"] != 6.0 {
 			t.Errorf("row %+v", v)
 		}
-		if v.SourceModel == "llama-3.3-70b-instruct" && (v.Value != 1318.6 || v.ModelID != f.id("llama3.3", 70_600_000_000) || v.Detail["votes"] != 51876.0) {
-			t.Errorf("llama 3.3: %+v", v)
+		if v.SourceModel == "gemma-4-31b" && (v.Value != 1441.680670089327 || v.ModelID != f.id("gemma4", 30_700_000_000) || v.Detail["votes"] != 5894.0 || v.Detail["rank"] != 64.0) {
+			t.Errorf("gemma 4 31b: %+v", v)
 		}
 	}
-	// qwen3.8-27b is open-licence and unmapped: a candidate, with its family
-	// suggested; frontier-hosted-1 is proprietary: not listed.
-	if len(sr.Candidates) != 1 || sr.Candidates[0].Name != "qwen3.8-27b" {
+	// Open-licence names nothing maps are candidates, with the family they
+	// look like when there is one; the proprietary row is not listed.
+	want := map[string]string{"qwen3.5-35b-a3b": "qwen3.5", "qwen3.8-27b": ""}
+	if len(sr.Candidates) != len(want) {
 		t.Errorf("candidates = %+v", sr.Candidates)
 	}
-	// coding has no rows: a failure in words; the aliases are then not judged.
+	for _, c := range sr.Candidates {
+		if s, ok := want[c.Name]; !ok || c.Suggest != s {
+			t.Errorf("candidate %+v", c)
+		}
+	}
+	// coding has no rows here: a failure in words; the aliases are then not judged.
 	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], `category "coding"`) {
 		t.Errorf("failures = %v", sr.Failures)
 	}
 
-	// With only the overall board, the alias the board never lists is reported.
+	// With only the overall board, the aliases the board never lists are reported.
 	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
 	f.clock = f.clock.Add(25 * time.Hour)
 	sr = source(f.run(false), SourceArena)
-	if len(sr.AliasesNotSeen) != 1 || sr.AliasesNotSeen[0] != "qwen3.5-9b" {
+	if strings.Join(sr.AliasesNotSeen, ",") != "llama-3.1-8b-instruct,llama-3.3-70b-instruct" {
 		t.Errorf("aliases not seen = %v", sr.AliasesNotSeen)
 	}
 	// Same config, same board date: the board is not re-stored.
 	f.clock = f.clock.Add(25 * time.Hour)
 	if sr = source(f.run(false), SourceArena); sr.Status != StatusUnchanged || sr.Stored != 0 || len(f.values()) != 3 {
 		t.Errorf("unchanged board: %+v", sr)
+	}
+}
+
+// The dataset viewer answers HTTP 500 "the dataset index is loading" while
+// it rebuilds (the first coverage report, 2026-09-24): the fetcher waits and
+// asks again rather than failing the board.
+func TestArenaWaitsOutALoadingIndex(t *testing.T) {
+	f := newFixture(t, SourceArena)
+	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
+	failures := 2
+	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == "/filter" && failures > 0 {
+			failures--
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"the dataset index is loading, this may take longer than usual"}`))
+			return true
+		}
+		return false
+	}
+	sr := source(f.run(false), SourceArena)
+	if len(sr.Failures) != 0 || len(f.values()) != 3 || sr.Stats.Retries != 2 {
+		t.Errorf("a loading index must be waited out: %+v, %d values", sr, len(f.values()))
 	}
 }
 
@@ -524,21 +656,32 @@ func TestEpochReadsOnlyEpochsOwnRuns(t *testing.T) {
 	if sr.Error != "" {
 		t.Fatal(sr.Error)
 	}
+	// Real rows of gpqa_diamond.csv (captured 2026-09-24), a few of them.
 	vals := f.values()
 	got := map[string]catalog.External{}
 	for _, v := range vals {
 		got[v.SourceModel] = v
 	}
 	l33 := got["Llama-3.3-70B-Instruct"]
-	if len(vals) != 2 || l33.Value != 0.497 || l33.SourceDate != "2025-06-02" || l33.Provenance != "independent" ||
+	if len(vals) != 2 || l33.Value != 0.4744318181818182 || l33.SourceDate != "2025-01-27" || l33.Provenance != "independent" ||
 		!strings.Contains(l33.Attribution, "accessed 24 September 2026") || l33.Metric != "epoch:gpqa_diamond" {
-		t.Errorf("the later of two runs, from Epoch's own file only: %+v (all %+v)", l33, vals)
+		t.Errorf("Epoch's own file only: %+v (all %+v)", l33, vals)
 	}
-	// math_level_5.csv and swe_bench_verified.csv are not in the ZIP.
-	if len(sr.Failures) != 2 || !strings.Contains(sr.Failures[0], "the ZIP has no") {
+	// glm-4.7-flash is aliased; its "_none" run (thinking off) is not.
+	if g := got["glm-4.7-flash"]; g.Value != 0.6054292929292929 || g.ModelID != f.id("glm-4.7-flash", 31_000_000_000) {
+		t.Errorf("glm-4.7-flash: %+v", g)
+	}
+	// math_level_5.csv, otis_mock_aime_2024_2025.csv and swe_bench_verified.csv are not in the ZIP.
+	if len(sr.Failures) != 3 || !strings.Contains(sr.Failures[0], "the ZIP has no") {
 		t.Errorf("failures = %v", sr.Failures)
 	}
-	if len(sr.Candidates) != 1 || sr.Candidates[0].Name != "Qwen3.5-27B" || sr.Candidates[0].Suggest != "qwen3.5" {
+	// A name that only looks like a catalogue family is a candidate with a
+	// suggestion for the curator — never a match.
+	cands := map[string]string{}
+	for _, c := range sr.Candidates {
+		cands[c.Name] = c.Suggest
+	}
+	if cands["glm-4.7-flash_none"] != "glm-4.7-flash" {
 		t.Errorf("candidates = %+v", sr.Candidates)
 	}
 	// A forced re-read of an unchanged ZIP is a 304.
@@ -559,6 +702,30 @@ func TestEpochReadsOnlyEpochsOwnRuns(t *testing.T) {
 	sr = source(f.run(false), SourceEpoch)
 	if sr.Status != StatusFailed || !strings.Contains(sr.Error, "no longer marks") || len(f.values()) != 2 {
 		t.Errorf("refusal: %+v, values %d", sr, len(f.values()))
+	}
+}
+
+// Several runs of one model in one file: the latest stands. (Shaped: the
+// real file has one run per name today.)
+func TestEpochKeepsTheLatestRun(t *testing.T) {
+	f := newFixture(t, SourceEpoch)
+	csv := "Model version,Best score (across scorers),Started at\n" +
+		"Llama-3.3-70B-Instruct,0.482,2025-01-10T10:00:00Z\n" +
+		"Llama-3.3-70B-Instruct,0.497,2025-06-02T08:30:00Z\n"
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range map[string]string{"gpqa_diamond.csv": csv, "x_external.csv": "Model version\nx\n"} {
+		w, _ := zw.Create("benchmark_data/" + name)
+		_, _ = w.Write([]byte(body))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.hub.zip = buf.Bytes()
+	f.run(false)
+	vals := f.values()
+	if len(vals) != 1 || vals[0].Value != 0.497 || vals[0].SourceDate != "2025-06-02" {
+		t.Errorf("the later of two runs: %+v", vals)
 	}
 }
 
@@ -644,27 +811,34 @@ func TestTheViewNeverCrossesSizesAndAlwaysSaysWhose(t *testing.T) {
 			t.Errorf("hf entry %s: publisher %q scored %v", e.Metric, e.Value.Origin.Publisher, e.Scored)
 		}
 	}
-	l33 := v.Entries(f.id("llama3.3", 70_600_000_000))
-	if len(l33) != 2 {
-		t.Fatalf("llama3.3 entries = %+v", l33)
+	// Gemma 4 31B: Arena's text board, where it leads the three rated sizes
+	// here, and its maker's one merged result, shown but never scored.
+	g31 := v.Entries(f.id("gemma4", 30_700_000_000))
+	if len(g31) != 2 {
+		t.Fatalf("gemma4:31b entries = %+v", g31)
 	}
-	for _, e := range l33 {
+	for _, e := range g31 {
 		switch e.SourceID {
 		case SourceArena:
 			if e.Position != "1st for everyday chat of the 3 models here that Arena has rated." || e.ProvenanceWords != "rated by people comparing answers on Arena" || !e.Scored {
 				t.Errorf("arena entry: %+v", e)
 			}
-		case SourceEpoch:
-			if e.Position != "1st for reasoning of the 2 models here that Epoch AI has tested." || e.Value.Origin.Publisher != "Epoch AI" {
-				t.Errorf("epoch entry: %+v", e)
+		case SourceHFEvals:
+			if e.Scored || e.Value.Origin.Publisher != "Google DeepMind on Hugging Face" {
+				t.Errorf("maker entry: %+v", e)
 			}
 		}
+	}
+	// Llama 3.3 70B: Epoch alone, second of the two sizes Epoch tested here.
+	l33 := v.Entries(f.id("llama3.3", 70_600_000_000))
+	if len(l33) != 1 || l33[0].Position != "2nd for reasoning of the 2 models here that Epoch AI has tested." || l33[0].Value.Origin.Publisher != "Epoch AI" {
+		t.Errorf("llama3.3 entries = %+v", l33)
 	}
 	// The maker's own numbers are shown, never scored.
 	scoring := v.Scoring()
 	for _, pms := range scoring {
 		for _, pm := range pms {
-			if pm.Source == SourceHFEvals && pm.Metric == "hf:Idavidrein/gpqa/gpqa_diamond" {
+			if pm.Source == SourceHFEvals && pm.Metric == "hf:Idavidrein/gpqa/diamond" {
 				t.Errorf("a maker's self-report reached the engine: %+v", pm)
 			}
 		}
@@ -675,7 +849,7 @@ func TestTheViewNeverCrossesSizesAndAlwaysSaysWhose(t *testing.T) {
 	}
 	// Epoch's GPQA is a percent metric published as fractions: compared as percent.
 	for _, pm := range scoring[catalog.PurposeReasoning] {
-		if pm.Metric == "epoch:gpqa_diamond" && pm.Values[f.id("llama3.3", 70_600_000_000)] != 49.7 {
+		if pm.Metric == "epoch:gpqa_diamond" && pm.Values[f.id("llama3.3", 70_600_000_000)] != 47.44318181818182 {
 			t.Errorf("epoch values = %+v", pm.Values)
 		}
 	}
@@ -690,7 +864,7 @@ func TestTheViewNeverCrossesSizesAndAlwaysSaysWhose(t *testing.T) {
 		f.cfg.Sources[i].Enabled = f.cfg.Sources[i].ID != SourceArena
 	}
 	v = NewView(f.cfg, f.values(), f.present(), states)
-	for _, e := range v.Entries(f.id("llama3.3", 70_600_000_000)) {
+	for _, e := range v.Entries(f.id("gemma4", 30_700_000_000)) {
 		if e.SourceID == SourceArena {
 			t.Error("a switched-off source is still shown")
 		}

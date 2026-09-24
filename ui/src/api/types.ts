@@ -188,6 +188,8 @@ export interface CatalogSize {
   hf_repo: string
   /** The original model's repo, where its public scores live (step 9b). */
   hf_base_repo: string
+  /** Other names a GGUF card may give for the same original weights (a renamed repo, a BF16 copy). */
+  hf_base_same_as?: string[]
   /** The quant ollama_tag pulls, read by hand from the Ollama library; absent = the usual default. */
   ollama_quant?: string
 }
@@ -316,6 +318,30 @@ export interface CatalogSizeFailure {
 }
 
 /** POST /api/catalog/refresh (Go: refresh.Report). */
+/** Where a running model-list fetch is (Go: server.CatalogProgress). */
+export interface CatalogProgress {
+  /** "models": the list's descriptions; "public": the public scores. */
+  phase: 'models' | 'public'
+  /** What is being read now, in words. */
+  message: string
+  done: number
+  total: number
+  started_at: string
+}
+
+/** GET /api/catalog/status (Go: server.CatalogStatus). */
+export interface CatalogStatus {
+  /** At least one size of the list has been resolved: the list can recommend. */
+  fetched: boolean
+  last_refresh?: CatalogRefreshInfo
+  running: boolean
+  progress?: CatalogProgress
+  /** A public benchmark source has been read at least once. */
+  public_fetched: boolean
+  /** The detail view's sentence about the public scores' last update. */
+  public_updated: string
+}
+
 export interface CatalogRefreshReport {
   started_at: string
   finished_at: string
@@ -563,6 +589,30 @@ export interface InstalledModel {
 /** GET /api/models/installed (Go: server.InstalledModelsResponse). */
 export interface InstalledModelsResponse {
   models: InstalledModel[]
+}
+
+/** One model the Benchmarks screen can offer (Go: server.BenchModel). */
+export interface BenchModel {
+  /** An installed model's name, or the Ollama tag a download fetches. */
+  name: string
+  /** "Qwen3.5 9B"; absent for an installed model the list does not know. */
+  display_name?: string
+  model_id?: number
+  installed: boolean
+  /** Not installed: what it costs to get, from the list's own listing (a fact). */
+  download_bytes?: number
+  /** Not installed: how it is expected to fit at Ollama's default context. */
+  fit?: FitCategory
+}
+
+/** GET /api/bench/models (Go: server.BenchModelsResponse). */
+export interface BenchModelsResponse {
+  installed: BenchModel[]
+  /** In the list, not installed, and would run here — smallest download first. */
+  available: BenchModel[]
+  catalogue_fetched: boolean
+  /** Sizes in the list left out because they would not fit this computer. */
+  too_big: number
 }
 
 // --- Benchmarks (Go: internal/bench) ----------------------------------------------

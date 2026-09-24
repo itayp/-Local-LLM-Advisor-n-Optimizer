@@ -29,34 +29,50 @@
 #       reviewed_at: 2026-09-24        # when a person last checked the pairing
 #       note: ...                      # optional: why, and anything unconfirmed
 #
-# The entries below were written on 2026-09-24 without a live response from
-# either source (the session that wrote them had no network to them). They
-# follow the names these sources used for these models in the past; the
-# first coverage report (scripts/verify.command) confirms each one — an
-# alias the source never answers with is listed there as "not seen" — and
-# lists the candidates for the sizes that have none yet.
+# The arena entries marked "Unconfirmed" were written on 2026-09-24 before
+# any live response had been read. The first coverage report
+# (scripts/verify.command, 2026-09-24 20:58, the M1 Pro) read Arena's text
+# and vision boards down to row 200 before the dataset viewer answered HTTP
+# 500 ("the dataset index is loading"), and Epoch's whole ZIP; the entries
+# marked "Seen" are names those answers contained, checked by hand against
+# the catalogue size. A row below 200 of Arena's boards (the Llama and
+# gpt-oss names) is still unconfirmed until a full read.
+#
+# Names deliberately NOT mapped (a curator's "looks like" is not a match):
+#   - Epoch "qwen3-8b", "deepseek-r1-0528-qwen3-8b": Qwen3 8B (2025), not
+#     Qwen3.8 — the report's suggestion squashes "qwen3-8b" into "qwen38".
+#   - Epoch "ministral-3b-2410", "ministral-8b-2410": the October 2024
+#     Ministral, not Ministral 3 (2512).
+#   - Epoch "qwen3.6-27b": the catalogue's 27B is Qwen3.8, not Qwen3.6.
+#   - Epoch "qwen3.5-2b_none", "qwen3.5-4b_none" and every other "_none"
+#     run: thinking switched off; Ollama runs these families with thinking
+#     on, and Epoch lists no thinking-on run of those two sizes.
+#   - Epoch "gpt-oss-20b_low" / "_high": gpt-oss:20b runs at medium effort
+#     in Ollama unless told otherwise; "_medium" is the one mapped.
+#   - Arena "qwen3.5-35b-a3b", "qwen3.5-27b": sizes the catalogue does not
+#     list (its 35B-A3B is Qwen3.6, its 27B Qwen3.8).
 
 arena:
   - name: llama-3.3-70b-instruct
     family: llama3.3
     parameters: 70600000000
     reviewed_at: 2026-09-24
-    note: Unconfirmed against a live response.
+    note: Unconfirmed against a live response (below row 200 of the board, not yet read).
   - name: llama-3.1-8b-instruct
     family: llama3.1
     parameters: 8030000000
     reviewed_at: 2026-09-24
-    note: Unconfirmed against a live response.
+    note: Unconfirmed against a live response (below row 200 of the board, not yet read).
   - name: llama-3.2-3b-instruct
     family: llama3.2
     parameters: 3210000000
     reviewed_at: 2026-09-24
-    note: Unconfirmed against a live response.
+    note: Unconfirmed against a live response (below row 200 of the board, not yet read).
   - name: llama-3.2-1b-instruct
     family: llama3.2
     parameters: 1230000000
     reviewed_at: 2026-09-24
-    note: Unconfirmed against a live response.
+    note: Unconfirmed against a live response (below row 200 of the board, not yet read).
   - name: gpt-oss-20b
     family: gpt-oss
     parameters: 21000000000
@@ -65,5 +81,78 @@ arena:
       Unconfirmed against a live response. The plain name, without an effort
       suffix: Ollama runs gpt-oss at its default (medium) reasoning effort; if
       Arena lists only "(High)" variants, this alias should be removed.
+  - name: gemma-4-31b
+    family: gemma4
+    parameters: 30700000000
+    reviewed_at: 2026-09-24
+    note: Seen on the text (overall, creative writing) and vision boards, open licence (Apache 2.0).
+  - name: gemma-4-26b-a4b
+    family: gemma4
+    parameters: 25200000000
+    reviewed_at: 2026-09-24
+    note: Seen on the text and vision boards; the 26B mixture-of-experts size (about 4B active).
+  - name: qwen3.8-27b
+    family: qwen3.8
+    parameters: 27000000000
+    reviewed_at: 2026-09-24
+    note: Seen on the text and vision boards, open licence (Apache 2.0).
+  - name: glm-4.7-flash
+    family: glm-4.7-flash
+    parameters: 31000000000
+    reviewed_at: 2026-09-24
+    note: Seen on the text overall board (MIT); not the larger "glm-4.7".
+  - name: nvidia-nemotron-3-nano-30b-a3b-bf16
+    family: nemotron-3-nano
+    parameters: 30000000000
+    reviewed_at: 2026-09-24
+    note: Seen on the text overall board; the BF16 release of the same weights Ollama quantizes.
 
-epoch: []
+epoch:
+  - name: Llama-3.3-70B-Instruct
+    family: llama3.3
+    parameters: 70600000000
+    reviewed_at: 2026-09-24
+    note: Seen in gpqa_diamond.csv, math_level_5.csv and otis_mock_aime_2024_2025.csv.
+  - name: Llama-3.1-8B-Instruct
+    family: llama3.1
+    parameters: 8030000000
+    reviewed_at: 2026-09-24
+    note: Seen in gpqa_diamond.csv, math_level_5.csv and otis_mock_aime_2024_2025.csv.
+  - name: Llama-3.2-1B-Instruct
+    family: llama3.2
+    parameters: 1230000000
+    reviewed_at: 2026-09-24
+    note: Seen in gpqa_diamond.csv and otis_mock_aime_2024_2025.csv.
+  - name: qwen3.5-9B
+    family: qwen3.5
+    parameters: 9000000000
+    reviewed_at: 2026-09-24
+    note: Seen; the thinking-on run (Ollama's default for Qwen3.5), not "qwen3.5-9B_none".
+  - name: qwen3.6-35b-a3b
+    family: qwen3.6
+    parameters: 35000000000
+    reviewed_at: 2026-09-24
+    note: Seen; the thinking-on run, not "qwen3.6-35b-a3b_none".
+  - name: glm-4.7-flash
+    family: glm-4.7-flash
+    parameters: 31000000000
+    reviewed_at: 2026-09-24
+    note: Seen; the thinking-on run (Ollama's default), not "glm-4.7-flash_none".
+  - name: gpt-oss-20b_medium
+    family: gpt-oss
+    parameters: 21000000000
+    reviewed_at: 2026-09-24
+    note: Seen; medium is the reasoning effort Ollama runs gpt-oss at by default.
+  - name: gemma-4-31b-it_minimal
+    family: gemma4
+    parameters: 30700000000
+    reviewed_at: 2026-09-24
+    note: >-
+      Seen; the only Gemma 4 31B variant in Epoch's reasoning benchmarks.
+      Minimal thinking is the closest to Ollama's default, where Gemma 4's
+      thinking is off unless asked for.
+  - name: gemma-4-26b-a4b-it_minimal
+    family: gemma4
+    parameters: 25200000000
+    reviewed_at: 2026-09-24
+    note: Seen; as for the 31B, the minimal-thinking run.

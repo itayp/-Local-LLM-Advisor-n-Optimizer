@@ -77,6 +77,8 @@ type catalogState struct {
 	// it at a fake.
 	externalFetcher func(*external.Config) *external.Fetcher
 	running         sync.Mutex
+	// progress is the running refresh's progress (GET /api/catalog/status).
+	progress refreshProgress
 }
 
 func (c *catalogState) init() {
@@ -107,6 +109,8 @@ func (s *Server) RefreshCatalog(ctx context.Context, trigger string) (refresh.Re
 		return refresh.Report{}, ErrRefreshRunning
 	}
 	defer s.cat.running.Unlock()
+	s.cat.progress.begin()
+	defer s.cat.progress.end()
 	cat, err := s.cat.load()
 	if err != nil {
 		return refresh.Report{}, err
@@ -116,6 +120,7 @@ func (s *Server) RefreshCatalog(ctx context.Context, trigger string) (refresh.Re
 	return refresh.Run(ctx, refresh.Options{
 		Catalogue: cat, Store: s.store, HF: client, Log: s.log, Trigger: trigger,
 		External: s.externalOptions(cat),
+		Progress: s.cat.progress.update,
 	})
 }
 

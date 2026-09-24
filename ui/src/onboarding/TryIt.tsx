@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { BenchProgress, BenchRun, Rate } from '../api/types'
 import { Figure } from '../components/Figure'
 import { Term } from '../components/Term'
+import { TestProgress } from '../components/TestProgress'
 import { en } from '../copy/en'
 
 const c = en.onboarding.tryit
@@ -17,18 +18,24 @@ export function TryIt({ modelName, priorEstimate, onNext }: { modelName: string;
   const [progress, setProgress] = useState<BenchProgress | null>(null)
   const [run, setRun] = useState<BenchRun | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
+  // From the click until the run ends: the button is gone and the progress
+  // shows, so there is never a moment where nothing seems to happen.
+  const [testing, setTesting] = useState(false)
   const stop = useRef<(() => void) | null>(null)
 
   useEffect(() => () => stop.current?.(), [])
 
   const start = () => {
-    setStarting(true)
+    setTesting(true)
     setError(null)
+    const end = (r: BenchRun) => {
+      setProgress(null)
+      setTesting(false)
+      setRun(r)
+    }
     api
       .benchStart({ model: modelName, prompts: ['500'] })
       .then((r) => {
-        setStarting(false)
         stop.current = api.followBench(
           r.id,
           (p) => {
@@ -36,23 +43,20 @@ export function TryIt({ modelName, priorEstimate, onNext }: { modelName: string;
               setProgress(p)
               return
             }
-            setProgress(null)
-            setRun(p.run)
+            end(p.run)
           },
           () => {
             api
               .benchRun(r.id)
               .then((rr) => {
-                if (rr.status === 'running') return
-                setProgress(null)
-                setRun(rr)
+                if (rr.status !== 'running') end(rr)
               })
               .catch(() => undefined)
           },
         )
       })
       .catch((err: unknown) => {
-        setStarting(false)
+        setTesting(false)
         setError(err instanceof Error ? err.message : String(err))
       })
   }
@@ -70,16 +74,12 @@ export function TryIt({ modelName, priorEstimate, onNext }: { modelName: string;
           {c.failed(error)}
         </p>
       ) : null}
-      {!run && !progress ? (
-        <button type="button" className="button" disabled={starting} onClick={start}>
-          {starting ? c.starting : c.run}
+      {!run && !testing ? (
+        <button type="button" className="button" onClick={start}>
+          {c.run}
         </button>
       ) : null}
-      {progress ? (
-        <p className="screen__note" role="status">
-          {progress.message}
-        </p>
-      ) : null}
+      {testing ? <TestProgress p={progress} /> : null}
       {run ? (
         run.status === 'done' && run.generation_tps ? (
           <>

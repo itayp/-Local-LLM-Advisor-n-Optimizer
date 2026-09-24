@@ -3,8 +3,10 @@ import { Link, useParams } from 'react-router'
 import { api } from '../api/client'
 import type { FileFit, ModelDetailResponse } from '../api/types'
 import { Figure } from '../components/Figure'
+import { FetchProgress, useCatalogStatus } from '../components/ModelList'
 import { formatDay, PublicFigure } from '../components/PublicFigure'
 import { Term } from '../components/Term'
+import { Working } from '../components/Working'
 import { en } from '../copy/en'
 import { useAdvanced } from '../state/settings'
 
@@ -33,6 +35,8 @@ export function ModelDetail() {
   const advanced = useAdvanced()
   const [detail, setDetail] = useState<ModelDetailResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Bumped after a fetch of the public scores, to read the model again.
+  const [asked, setAsked] = useState(0)
 
   useEffect(() => {
     const n = Number(id)
@@ -41,7 +45,6 @@ export function ModelDetail() {
       return
     }
     const ac = new AbortController()
-    setDetail(null)
     setError(null)
     api
       .modelDetail(n, ac.signal)
@@ -51,7 +54,7 @@ export function ModelDetail() {
         setError(err instanceof Error ? err.message : String(err))
       })
     return () => ac.abort()
-  }, [id])
+  }, [id, asked])
 
   if (error) {
     return (
@@ -68,9 +71,7 @@ export function ModelDetail() {
     return (
       <section className="screen" aria-labelledby="screen-title">
         <h1 id="screen-title">{en.nav.modelDetail}</h1>
-        <p className="screen__note" role="status">
-          {c.loading}
-        </p>
+        <Working label={c.loading} />
       </section>
     )
   }
@@ -106,6 +107,7 @@ export function ModelDetail() {
           <p className="screen__note" data-testid="public-updated">
             {detail.public.updated}
           </p>
+          <FetchPublic onFetched={() => setAsked((n) => n + 1)} />
         </section>
 
         <section className="detail-block" aria-labelledby="machine-title" data-testid="machine-block">
@@ -114,6 +116,31 @@ export function ModelDetail() {
         </section>
       </div>
     </section>
+  )
+}
+
+/**
+ * FetchPublic: when no public source has ever been read on this computer
+ * (a list fetched before public scores existed, or never fetched), the one
+ * button that reads them — with the model list, as a refresh always does —
+ * and its progress. Nothing once they have been read.
+ */
+function FetchPublic({ onFetched }: { onFetched: () => void }) {
+  const { status, running, failed, fetchList } = useCatalogStatus(onFetched)
+  if (running) return <FetchProgress status={status} />
+  if (!status || status.public_fetched) return null
+  return (
+    <div data-testid="public-fetch">
+      <p className="screen__note">{en.modelList.publicMissing}</p>
+      <button type="button" className="button button--secondary" onClick={() => void fetchList()}>
+        {en.modelList.fetchPublic}
+      </button>
+      {failed ? (
+        <p className="notice notice--warning" role="alert">
+          {en.modelList.failed(failed)}
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -143,7 +170,7 @@ function Machine({ detail, advanced }: { detail: ModelDetailResponse; advanced: 
         <dd>{formatDownload(fit.file.bytes)}</dd>
       </dl>
       <p className="screen__note">
-        <Link to="/benchmarks">{c.test}</Link> — {c.testHelp}
+        <Link to={`/benchmarks?model=${encodeURIComponent(detail.pull_name)}`}>{c.test}</Link> — {c.testHelp}
       </p>
       {advanced && local.fits.length > 1 ? <OtherFiles fits={local.fits} /> : null}
     </>

@@ -139,17 +139,20 @@ func (s *Server) routes() {
 	s.api("GET /api/catalog", s.handleCatalog)
 	s.api("POST /api/catalog/refresh", s.handleCatalogRefresh)
 	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
+	s.api("GET /api/catalog/status", s.handleCatalogStatus) // has the model list been fetched; a running fetch's progress
 	s.api("GET /api/recommend", s.handleRecommend)
 	s.api("GET /api/models/{id}/fit", s.handleModelFit)
 	s.api("GET /api/models/{id}/detail", s.handleModelDetail) // step 9b: public data and this machine, side by side, apart
 	s.api("POST /api/bench", s.handleBenchStart)
 	s.api("GET /api/bench/{id}", s.handleBenchRun)
 	s.api("POST /api/bench/{id}/cancel", s.handleBenchCancel)
+	s.api("GET /api/bench/{id}/progress", s.handleBenchProgress) // the progress as one JSON answer, for a browser whose stream does not arrive
 	// Literal paths beside the {id} wildcard: the wildcard's own fallback
 	// answers a wrong method on them with 405 (a second fallback for the
 	// literal path would conflict with "GET /api/bench/{id}").
 	s.apiLiteral("GET /api/bench/plan", s.handleBenchPlan)
 	s.apiLiteral("GET /api/bench/history", s.handleBenchHistory)
+	s.apiLiteral("GET /api/bench/models", s.handleBenchModels) // what can be tested: installed, and what the list has that is not
 	// First-run onboarding (build-plan step 7): whether it has run once.
 	s.api("GET /api/onboarding", s.handleOnboardingStatus)
 	s.api("POST /api/onboarding/complete", s.handleOnboardingComplete)

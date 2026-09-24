@@ -1,6 +1,13 @@
-Model version,Best score (across scorers),Started at,Organization
-Llama-3.3-70B-Instruct,0.482,2025-01-10T10:00:00Z,Meta
-Llama-3.3-70B-Instruct,0.497,2025-06-02T08:30:00Z,Meta
-Llama-3.2-3B-Instruct,0.281,2025-01-11T10:00:00Z,Meta
-Qwen3.5-27B,0.701,2026-04-20T10:00:00Z,Alibaba
-frontier-hosted-1,0.874,2026-08-01T10:00:00Z,Example Labs
+Model version,mean_score,Best score (across scorers),Release date,Organization,Country,Training compute (FLOP),Training compute notes,stderr,Log viewer,Logs,Started at,id
+qwen3.8-max-0902_xhigh,0.922979797979798,0.922979797979798,2026-09-01,Alibaba,China,,,0.017249976996605708,,,2026-09-02T18:04:58.000Z,VzeQXKBH9maR2nDcZJ8b7S
+glm-4.7-flash_none,0.4513888888888889,0.4513888888888889,,,,,,0.021751012010888356,https://logs.epoch.ai/inspect-viewer/36231d6d/viewer.html?log_file=https%3A%2F%2Flogs.epoch.ai%2Finspect_ai_logs%2FGSde7u2Mb6GZGpubJjjPam.eval,https://epoch-benchmarks-production-public.s3.us-east-2.amazonaws.com/inspect_ai_logs/GSde7u2Mb6GZGpubJjjPam.eval,2026-08-30T22:37:57.000Z,GSde7u2Mb6GZGpubJjjPam
+glm-4.7-flash,0.6054292929292929,0.6054292929292929,,,,,,0.02934798760577577,https://logs.epoch.ai/inspect-viewer/36231d6d/viewer.html?log_file=https%3A%2F%2Flogs.epoch.ai%2Finspect_ai_logs%2FGL7htq7XRnbzqpAVK5f862.eval,https://epoch-benchmarks-production-public.s3.us-east-2.amazonaws.com/inspect_ai_logs/GL7htq7XRnbzqpAVK5f862.eval,2026-08-30T22:37:35.000Z,GL7htq7XRnbzqpAVK5f862
+qwen3-8b,0.5675505050505051,0.5675505050505051,2025-04-28,Alibaba,China,1.7712e+24,6 FLOP / parameter / token * 36 * 10^12 tokens * 8.2  * 10^9 parameters = 1.7712e+24 FLOP,0.029327713464985333,https://logs.epoch.ai/inspect-viewer/36231d6d/viewer.html?log_file=https%3A%2F%2Flogs.epoch.ai%2Finspect_ai_logs%2FjRiWmBxtBAyiXiRBRMY8wX.eval,https://epoch-benchmarks-production-public.s3.us-east-2.amazonaws.com/inspect_ai_logs/jRiWmBxtBAyiXiRBRMY8wX.eval,2026-08-27T14:21:43.000Z,jRiWmBxtBAyiXiRBRMY8wX
+gpt-oss-20b_medium,0.6079545454545454,0.6079545454545454,2025-08-05,OpenAI,United States of America,5.49e+23,"""The training run for gpt-oss-120b required 2.1
+million H100-hours to complete, with gpt-oss-20b needing almost 10x fewer""
+assuming ""almost 10x fewer"" means ~9x fewer: 4.94e24/9 = 5.49e23",0.024864059770258008,https://logs.epoch.ai/inspect-viewer/36231d6d/viewer.html?log_file=https%3A%2F%2Flogs.epoch.ai%2Finspect_ai_logs%2FGEwyLqZT93Hp55fdtHrJhm.eval,https://epoch-benchmarks-production-public.s3.us-east-2.amazonaws.com/inspect_ai_logs/GEwyLqZT93Hp55fdtHrJhm.eval,2026-08-27T14:06:50.000Z,GEwyLqZT93Hp55fdtHrJhm
+Llama-3.3-70B-Instruct,0.4744318181818182,0.4744318181818182,2024-12-06,Meta AI,United States of America,6.8649768e+24,"6ND = 6 FLOP / parameter / token * 70*10^9 parameters * 15*10^12 tokens = 6.3e+24 FLOP
+
+7000000 GPU-hours * 3600 sec / hour * 989500000000000 FLOP / second * 0.3 [assumed utilization]= 7.48062e+24 FLOP
+
+sqrt(7.48062e+24*6.3e+24) = 6.8649768e+24",0.028523027562061026,https://logs.epoch.ai/inspect-viewer/36231d6d/viewer.html?log_file=https%3A%2F%2Flogs.epoch.ai%2Finspect_ai_logs%2FTxXS78Wg2pSCDbpmeJuzQn.eval,https://epoch-benchmarks-production-public.s3.us-east-2.amazonaws.com/inspect_ai_logs/TxXS78Wg2pSCDbpmeJuzQn.eval,2025-01-27T00:00:00.000Z,TxXS78Wg2pSCDbpmeJuzQn

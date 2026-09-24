@@ -170,9 +170,9 @@ adapter's load report parses server-log fixtures shaped from the format
 strings of the Ollama and llama.cpp builds it names
 (`internal/backend/ollama/testdata/README.md` says which). The public-data
 clients are tested against an `httptest` fake of the three sources; their
-fixtures (`internal/catalog/external/testdata/`) are shaped from
-documentation until real answers captured by `scripts/verify.command`
-(`.captures/external/`) replace them — the README there says which is which.
+fixtures (`internal/catalog/external/testdata/`) are cut from real answers
+captured by `scripts/verify.command` (`.captures/external/`), except the few
+cases no real answer has shown yet — the README there says which is which.
 
 **API.** JSON, snake_case keys, `GET /api/…`. Register endpoints through
 `Server.api("METHOD /api/path", handler)` so a wrong method is a 405. Errors

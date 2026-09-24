@@ -3,7 +3,9 @@ import { Link } from 'react-router'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
 import { Figure, formatBytes } from '../components/Figure'
+import { ModelList } from '../components/ModelList'
 import { PublicLine } from '../components/PublicFigure'
+import { Working } from '../components/Working'
 import { en } from '../copy/en'
 import { useAdvanced } from '../state/settings'
 
@@ -63,6 +65,8 @@ export function Recommend() {
     <section className="screen" aria-labelledby="screen-title">
       <h1 id="screen-title">{c.title}</h1>
 
+      <ModelList compact onFetched={() => setAsked((n) => n + 1)} />
+
       <fieldset className="purposes">
         <legend className="screen__lead">{c.question}</legend>
         <p className="screen__note">{c.questionHelp}</p>
@@ -83,19 +87,13 @@ export function Recommend() {
           {c.failed(error)}
         </p>
       ) : null}
-      {loading && !result ? (
-        <p className="screen__note" role="status">
-          {c.loading}
-        </p>
-      ) : null}
-      {result && purposes.length > 0 && !error ? (
-        <Result result={result} advanced={advanced} onListFetched={() => setAsked((n) => n + 1)} />
-      ) : null}
+      {loading && !result ? <Working label={c.loading} /> : null}
+      {result && purposes.length > 0 && !error ? <Result result={result} advanced={advanced} /> : null}
     </section>
   )
 }
 
-function Result({ result, advanced, onListFetched }: { result: RecommendResult; advanced: boolean; onListFetched: () => void }) {
+function Result({ result, advanced }: { result: RecommendResult; advanced: boolean }) {
   return (
     <>
       {result.warning ? (
@@ -117,7 +115,6 @@ function Result({ result, advanced, onListFetched }: { result: RecommendResult; 
       {result.empty ? (
         <div className="notice" data-testid="recommend-empty">
           <p>{result.empty}</p>
-          {result.empty_code === 'catalogue_empty' ? <FetchList onDone={onListFetched} /> : null}
         </div>
       ) : null}
       {result.recommendations.length > 0 ? (
@@ -129,39 +126,6 @@ function Result({ result, advanced, onListFetched }: { result: RecommendResult; 
           ))}
         </ol>
       ) : null}
-    </>
-  )
-}
-
-/**
- * The one thing on this screen that changes anything: fetching the model
- * list. The button says what it does and what it costs (product rule 5);
- * the daemon downloads descriptions only, never model weights.
- */
-function FetchList({ onDone }: { onDone: () => void }) {
-  const [state, setState] = useState<'idle' | 'fetching'>('idle')
-  const [failed, setFailed] = useState<string | null>(null)
-  const fetchList = () => {
-    setState('fetching')
-    setFailed(null)
-    api
-      .refreshCatalog()
-      .then(onDone)
-      .catch((err: unknown) => {
-        setFailed(err instanceof Error ? err.message : String(err))
-        setState('idle')
-      })
-  }
-  return (
-    <>
-      {state === 'fetching' ? (
-        <p role="status">{c.fetching}</p>
-      ) : (
-        <button type="button" className="button" onClick={fetchList}>
-          {c.fetchList}
-        </button>
-      )}
-      {failed ? <p role="alert">{c.fetchFailed(failed)}</p> : null}
     </>
   )
 }
@@ -211,6 +175,8 @@ function Card({ r, pathSource, advanced }: { r: Recommendation; pathSource: Reco
       <PublicLine entry={r.public} />
       <p className="screen__note">
         <Link to={`/models/${r.model.id}`}>{c.details}</Link>
+        {' · '}
+        <Link to={`/benchmarks?model=${encodeURIComponent(r.pull_name)}`}>{c.test}</Link>
       </p>
 
       {advanced ? <Technical r={r} pathSource={pathSource} /> : null}

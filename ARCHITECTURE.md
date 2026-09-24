@@ -1798,3 +1798,91 @@ argument; this is what was built from it.
   place) is step 10's; the curator flag for an installed model whose quant
   differs from `ollama_quant` waits for a size that states one.
 
+
+## D-54. The first coverage report, and no screen that needs the model list is a dead end
+
+**Context.** Two things arrived together on 2026-09-24. The first run of
+step 9b's gate on the M1 Pro (`scripts/verify.command`) read all three
+public sources and stored nothing: 0 of the curated sizes on every source.
+And Itay, testing on Windows, found the app in a limbo — Ollama and a model
+installed, the model list never fetched, and no screen offering to fetch it
+(the fetch button only appeared on an empty recommendation of one kind);
+the Benchmarks picker offered only installed models, so "Test it on this
+computer" led to a screen that could not test the model it came from; and
+two waits (the list fetch, a test between its click and its first event)
+showed nothing moving.
+
+**Decision — public data (supersedes D-53's "Consequences" on fixtures and coverage).**
+
+- **Why 0 of 22, per source.** Hugging Face: the task ids huggingface_hub's
+  docs gave were wrong (`diamond`, `hle`, `swe_bench_%_resolved`, not
+  `gpqa_diamond`, `default`, `default`), and almost every result on the
+  curated repos sits in an open pull request, which D-53 does not read
+  until merged. Arena: the dataset viewer answered HTTP 500 "the dataset
+  index is loading" part-way through each board, and a 500 was not retried.
+  Epoch: aliases.yaml had no Epoch entries at all.
+- **Fixed from the real answers**: the metric ids in external.yaml (and one
+  added: MMMU-Pro vision, merged into the Gemma 4 repos; and Epoch's OTIS
+  mock AIME, the Epoch file with the most curated sizes after GPQA); Arena
+  and Epoch aliases for every name the answers contained that is a curated
+  size, with the near misses written down as deliberately not mapped
+  (Epoch's "qwen3-8b" is Qwen3 8B, not Qwen3.8; "_none" runs are thinking
+  off; "ministral-3b-2410" is the 2024 Ministral); a 500 is retried, a
+  "loading" one after a longer wait (`Fetcher.LoadingWait`); a source read
+  only in part (any per-request or per-board state that failed) is due
+  again at the next refresh instead of after its cadence
+  (`store.ExternalPartsFailed`). Replaying the captured answers through
+  the new configuration gives public values for 9 of the 22 sizes the
+  catalogue had on 2026-09-24 (Epoch for all nine, the Hub for three of
+  them), before any Arena board is read whole.
+- **The open-pull-request rule stands.** Most of what the Hub shows for
+  these models is in open pull requests (222 results across the curated
+  repos in the first report). Reading them would triple Hugging Face's coverage, but they are
+  unreviewed by the repo's owner; D-53's rule is unchanged, and the count
+  stays in the report. Changing it is a product decision, not a fix.
+- **`hf_base_same_as`** (families.yaml, optional): other names a GGUF card
+  may give for the same original weights — a renamed repo (Meta's
+  `Meta-Llama-3.1-8B-Instruct`), a maker's BF16 copy of an FP8 release
+  (Mistral's Ministral 3). It quiets the base-model warning only; scores
+  are read from `hf_base_repo` alone.
+- **Fixtures are real.** `internal/catalog/external/testdata/` is now cut
+  from the captured answers; the two shaped cases left (a verified result,
+  an excluded publisher) say so in its README.
+
+**Decision — the model list is a fact every screen can ask for.**
+
+- `GET /api/catalog/status`: whether the list has been fetched (any size
+  resolved), the last refresh, whether one is running and how far
+  (`refresh.Options.Progress`, a phase — the list, then the public scores —
+  with parts done of total and what is being read, in words), and whether
+  public scores were ever read. `POST /api/catalog/refresh` is unchanged
+  (it answers when the refresh is over); screens poll the status meanwhile.
+- One UI component (`components/ModelList.tsx`) shows it on Recommend,
+  Benchmarks, Models and onboarding's recommendations: the fetch button
+  whenever the list was never fetched — whatever else is empty or missing
+  on the machine — the progress while a fetch runs (whoever started it),
+  and, on Recommend, one quiet line with a way to fetch again. The detail
+  view offers the same fetch when no public source has ever been read.
+- `GET /api/bench/models`: what can be tested — installed models (the
+  inventory read afresh, curated first) and, apart, the list's sizes that
+  are not installed and would run here (fit at Ollama's default context:
+  fits, fits with less context, or runs partly on the processor), smallest
+  download first, with the download size. The picker groups the two
+  ("Models you have installed", "Models you don't have yet"); for one not
+  installed the button says "Download 6.4 GB, then run the test" and does
+  both — the test starts by itself only if its plan is not refused.
+  `?model=` preselects; Recommend cards and the detail view link to it.
+- **Every wait moves.** `components/Working.tsx` (an indeterminate bar and
+  the seconds so far) replaces the bare "Loading…" lines;
+  `components/TestProgress.tsx` shows a test from the click — before its
+  first event — to its end, with a bar that moves on its own until the
+  first passage is timed. `api.followBench` polls the new
+  `GET /api/bench/{id}/progress` when the event stream brings nothing for
+  a few seconds or breaks (something between browser and daemon holding it
+  back), so a test never looks stalled.
+
+**Consequences.** The gate of step 9b is run again with the fixed
+configuration (verify.command); Arena's boards are the part still to be
+confirmed whole (their Llama and gpt-oss names lie below row 200, which the
+first run did not reach). Backlog item e (progress while fetching the list)
+is done by the second decision.

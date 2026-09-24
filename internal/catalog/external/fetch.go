@@ -37,6 +37,10 @@ type Fetcher struct {
 	// MaxBytes bounds one answer's body; a larger answer is an error, never
 	// a truncated parse.
 	MaxBytes int64
+	// LoadingWait is the first wait after an answer that says the source is
+	// still loading its data (doubled on each later attempt), longer than
+	// the ordinary backoff because an index takes a while to build.
+	LoadingWait time.Duration
 	// CaptureDir, when set, receives every 200 answer's body as a file named
 	// after its URL: how a curator captures real responses as test fixtures
 	// (`advisor catalog external -capture DIR`).
@@ -97,6 +101,7 @@ func NewFetcher(userAgent string, hosts []string) *Fetcher {
 		MinInterval: 250 * time.Millisecond,
 		MaxWait:     2 * time.Minute,
 		MaxAttempts: 4,
+		LoadingWait: 5 * time.Second,
 		MaxBytes:    64 << 20,
 		Sleep:       sleepCtx,
 		hosts:       map[string]bool{},
@@ -236,7 +241,12 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, v Validators) (*Respon
 				out.LastModified = v.LastModified
 			}
 			return out, nil
-		case http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout,
+			http.StatusInternalServerError:
+			// A 500 is retried too: Hugging Face's dataset viewer answers 500
+			// "the dataset index is loading" while it rebuilds, and a page
+			// read a few seconds later succeeds (the first coverage report,
+			// 2026-09-24).
 			transportOnly = false
 			wait, stated := retryAfter(resp.Header, time.Now())
 			se := &StatusError{Status: resp.StatusCode, URL: rawURL, Body: snippet(resp.Body)}
@@ -247,6 +257,9 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, v Validators) (*Respon
 			lastErr = se
 			if !stated {
 				wait = backoff(attempt)
+				if strings.Contains(strings.ToLower(se.Body), "loading") {
+					wait = f.LoadingWait * time.Duration(1<<(attempt-1))
+				}
 			}
 			if wait > f.MaxWait {
 				return nil, fmt.Errorf("%w: asked to wait %s", ErrRateLimited, wait.Round(time.Second))

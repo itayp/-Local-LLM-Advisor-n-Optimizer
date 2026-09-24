@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
-import type { BenchPlan, BenchProgress, BenchRun, Estimate, InstalledModel } from '../api/types'
+import type { BenchModel, BenchModelsResponse, BenchPlan, BenchProgress, BenchRun, Estimate, PullStatus } from '../api/types'
 import { en } from '../copy/en'
 
 const c = en.screens.benchmarks
@@ -25,11 +25,17 @@ function estimate(): Estimate {
   }
 }
 
-const models: InstalledModel[] = [
-  { backend_name: 'ollama', name: 'llama3.1:8b', size_bytes: 4.9e9, last_seen_at: '', catalog_match: 'file' },
-  { backend_name: 'ollama', name: 'llama3.2:3b', size_bytes: 2.0e9, last_seen_at: '', catalog_match: 'file' },
-  { backend_name: 'ollama', name: 'minicpm-v4.6:latest', size_bytes: 1.1e9, last_seen_at: '', catalog_match: 'unknown' },
+// As GET /api/bench/models orders them: curated first, then smallest first.
+const installed: BenchModel[] = [
+  { name: 'llama3.2:3b', display_name: 'Llama 3.2 3B', model_id: 3, installed: true },
+  { name: 'llama3.1:8b', display_name: 'Llama 3.1 8B', model_id: 5, installed: true },
+  { name: 'minicpm-v4.6:latest', installed: true },
 ]
+const gemma: BenchModel = { name: 'gemma4:e4b', display_name: 'Gemma 4 E4B', model_id: 9, installed: false, download_bytes: 6.4e9, fit: 'fits_with_headroom' }
+
+function benchModels(over: Partial<BenchModelsResponse> = {}): BenchModelsResponse {
+  return { installed, available: [gemma], catalogue_fetched: true, too_big: 2, ...over }
+}
 
 function plan(over: Partial<BenchPlan> = {}): BenchPlan {
   return {
@@ -104,7 +110,16 @@ class FakeEventSource {
   }
 }
 
-function serve(opts: { plan?: (url: string) => BenchPlan; start?: () => Response; history?: BenchRun[] } = {}) {
+function serve(
+  opts: {
+    plan?: (url: string) => BenchPlan
+    start?: () => Response
+    history?: BenchRun[]
+    models?: () => BenchModelsResponse
+    pull?: () => PullStatus
+    status?: () => object
+  } = {},
+) {
   const calls: { url: string; method: string; body?: string }[] = []
   vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal(
@@ -114,20 +129,24 @@ function serve(opts: { plan?: (url: string) => BenchPlan; start?: () => Response
       calls.push({ url, method, body: init?.body as string | undefined })
       const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status })
       if (url === '/api/health') return json({ version: 'test', os: 'darwin', arch: 'arm64', go_version: 'go1.27.1' })
-      if (url === '/api/models/installed') return json({ models })
+      if (url === '/api/bench/models') return json(opts.models ? opts.models() : benchModels())
+      if (url === '/api/catalog/status')
+        return json(opts.status ? opts.status() : { fetched: true, running: false, public_fetched: true, public_updated: '' })
       if (url.startsWith('/api/bench/plan')) return json(opts.plan ? opts.plan(url) : plan())
       if (url === '/api/bench/history') return json({ runs: opts.history ?? [] })
       if (url === '/api/bench' && method === 'POST') return opts.start ? opts.start() : json(run({ status: 'running', phase: 'preparing', results: [] }), 202)
       if (url === '/api/bench/7/cancel') return json(run({ status: 'cancelled', results: [], generation_tps: undefined, replaced: false }))
+      if (url === '/api/models/pull' && method === 'POST') return json(opts.pull ? opts.pull() : { status: 'running', completed_bytes: 0 }, 202)
+      if (url === '/api/models/pull') return json(opts.pull ? opts.pull() : { status: 'idle', completed_bytes: 0 })
       return json({ error: { code: 'not_found', message: 'no' } }, 404)
     }),
   )
   return calls
 }
 
-function open(advanced = false) {
+function open(advanced = false, path = '/benchmarks') {
   return render(
-    <MemoryRouter initialEntries={['/benchmarks']}>
+    <MemoryRouter initialEntries={[path]}>
       <App initialSettings={{ advanced }} />
     </MemoryRouter>,
   )
@@ -315,17 +334,90 @@ describe('Benchmarks', () => {
     expect(within(compare).queryByTestId('bench-compare-advanced')).not.toBeInTheDocument()
   })
 
-  it('says so when nothing is installed', async () => {
-    serve()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) =>
-        new Response(JSON.stringify(url === '/api/models/installed' ? { models: [] } : url === '/api/bench/history' ? { runs: [] } : { version: 't' }), {
-          status: 200,
-        }),
-      ),
-    )
+  it('says so when nothing is installed and the list has nothing that would run here', async () => {
+    serve({ models: () => benchModels({ installed: [], available: [], too_big: 0 }) })
     open()
     expect(await screen.findByText(c.noModels)).toBeInTheDocument()
+  })
+
+  it('lists the models not downloaded yet apart, and opens on the one a link named', async () => {
+    const calls = serve()
+    open(false, '/benchmarks?model=gemma4%3Ae4b')
+    const picker = await screen.findByRole('combobox', { name: c.model })
+    await waitFor(() => expect(picker).toHaveValue('gemma4:e4b'))
+    const groups = picker.querySelectorAll('optgroup')
+    expect([...groups].map((g) => g.label)).toEqual([c.groupInstalled, c.groupAvailable])
+    expect(within(groups[1] as HTMLElement).getByRole('option', { name: 'Gemma 4 E4B — 6.4 GB download' })).toBeInTheDocument()
+    expect(screen.getByText(c.tooBig(2))).toBeInTheDocument()
+    // Not installed: no plan is asked for; the button says both things it will do, and the cost.
+    const box = screen.getByTestId('bench-download')
+    expect(box).toHaveTextContent(c.needsDownload('6.4 GB'))
+    expect(within(box).getByRole('button', { name: c.downloadAndRun('6.4 GB') })).toBeInTheDocument()
+    expect(calls.some((x) => x.url.startsWith('/api/bench/plan?model=gemma4'))).toBe(false)
+    expect(calls.some((x) => x.method === 'POST')).toBe(false)
+  })
+
+  it('downloads a model that is not installed, shows the download, then runs the test by itself', async () => {
+    // Idle until the button is clicked (the screen asks on arrival, to pick up a download already running).
+    let pulled: PullStatus = { status: 'idle', completed_bytes: 0 }
+    let done = false
+    const calls = serve({
+      pull: () => pulled,
+      models: () =>
+        done
+          ? benchModels({ installed: [...installed, { ...gemma, installed: true, download_bytes: undefined, fit: undefined }], available: [] })
+          : benchModels(),
+      plan: (url) => plan({ model: url.includes('gemma4') ? 'gemma4:e4b' : 'llama3.2:3b' }),
+    })
+    open(false, '/benchmarks?model=gemma4%3Ae4b')
+    const button = await screen.findByRole('button', { name: c.downloadAndRun('6.4 GB') })
+    pulled = { status: 'running', model: 'gemma4:e4b', completed_bytes: 2e9, total_bytes: 6.4e9 }
+    await userEvent.click(button)
+    const post = calls.find((x) => x.url === '/api/models/pull' && x.method === 'POST')
+    expect(JSON.parse(post?.body ?? '{}')).toEqual({ ollama_tag: 'gemma4:e4b' })
+    expect(await screen.findByText('2 GB / 6.4 GB')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: c.downloadCancel })).toBeInTheDocument()
+
+    pulled = { status: 'done', model: 'gemma4:e4b', completed_bytes: 6.4e9, total_bytes: 6.4e9 }
+    done = true
+    await waitFor(() => expect(calls.some((x) => x.url === '/api/bench' && x.method === 'POST')).toBe(true), { timeout: 4000 })
+    const start = calls.find((x) => x.url === '/api/bench' && x.method === 'POST')
+    expect(JSON.parse(start?.body ?? '{}')).toEqual({ model: 'gemma4:e4b', measure_anyway: false })
+    expect(await screen.findByTestId('bench-running')).toBeInTheDocument()
+  })
+
+  it('shows the test starting from the click, before the first progress arrives', async () => {
+    serve()
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: 'Run a 1–4 minute test' }))
+    const running = await screen.findByTestId('bench-running')
+    expect(running).toHaveTextContent(c.startingTest)
+    // A moving bar (no value) until the first passage is timed.
+    expect(within(running).getByRole('progressbar', { name: c.progressLabel })).not.toHaveAttribute('value')
+    expect(screen.queryByTestId('bench-plan')).not.toBeInTheDocument()
+  })
+
+  it('offers to fetch the model list here too when it was never fetched', async () => {
+    let fetched = false
+    const calls = serve({
+      status: () => ({ fetched, running: false, public_fetched: fetched, public_updated: '' }),
+      models: () => (fetched ? benchModels() : benchModels({ available: [], catalogue_fetched: false, too_big: 0 })),
+    })
+    const base = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/catalog/refresh' && init?.method === 'POST') {
+          fetched = true
+          return new Response(JSON.stringify({ sizes: 9, resolved: 9 }), { status: 200 })
+        }
+        return base(url, init)
+      }),
+    )
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: en.modelList.fetch }))
+    // Afterwards the list is asked for again, and what it offers appears.
+    expect(await screen.findByRole('option', { name: 'Gemma 4 E4B — 6.4 GB download' })).toBeInTheDocument()
+    expect(calls.filter((x) => x.url === '/api/bench/models').length).toBeGreaterThan(1)
   })
 })

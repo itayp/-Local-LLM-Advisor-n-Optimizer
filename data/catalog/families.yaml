@@ -47,6 +47,12 @@
 #                                            # published it: where public benchmark
 #                                            # results live (step 9b), and whose
 #                                            # creation date is the release date
+#           hf_base_same_as: [owner/Other]   # optional: other names the GGUF repo's
+#                                            # card may give as base_model for the
+#                                            # SAME weights (a renamed repo; the
+#                                            # maker's BF16 copy of an FP8 release).
+#                                            # Quiets the base-model check only;
+#                                            # scores come from hf_base_repo alone.
 #           ollama_quant: Q4_K_M             # optional: the quant ollama_tag pulls,
 #                                            # read BY HAND from the Ollama library
 #                                            # page (never fetched by the advisor).
@@ -249,16 +255,19 @@ families:
         ollama_tag: ministral-3:3b
         hf_repo: bartowski/mistralai_Ministral-3-3B-Instruct-2512-GGUF
         hf_base_repo: mistralai/Ministral-3-3B-Instruct-2512
+        hf_base_same_as: [mistralai/Ministral-3-3B-Instruct-2512-BF16] # Mistral's BF16 copy of the FP8 release; the GGUF is made from it
       - parameters: 8400000000
         context_length: 262144
         ollama_tag: ministral-3:8b
         hf_repo: bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF
         hf_base_repo: mistralai/Ministral-3-8B-Instruct-2512
+        hf_base_same_as: [mistralai/Ministral-3-8B-Instruct-2512-BF16] # Mistral's BF16 copy of the FP8 release; the GGUF is made from it
       - parameters: 13500000000
         context_length: 262144
         ollama_tag: ministral-3:14b
         hf_repo: bartowski/mistralai_Ministral-3-14B-Instruct-2512-GGUF
         hf_base_repo: mistralai/Ministral-3-14B-Instruct-2512
+        hf_base_same_as: [mistralai/Ministral-3-14B-Instruct-2512-BF16] # Mistral's BF16 copy of the FP8 release; the GGUF is made from it
 
   - id: nemotron-3-nano
     display_name: Nemotron 3 Nano
@@ -343,6 +352,7 @@ families:
         ollama_tag: llama3.1:8b
         hf_repo: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
         hf_base_repo: meta-llama/Llama-3.1-8B-Instruct
+        hf_base_same_as: [meta-llama/Meta-Llama-3.1-8B-Instruct] # the repo's name before Meta renamed it; Hugging Face redirects it
 
   - id: llama3.3
     display_name: Llama 3.3

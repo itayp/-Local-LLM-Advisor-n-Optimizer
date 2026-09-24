@@ -123,33 +123,40 @@ excluded_hosts:
 metrics:
   # ---- Hugging Face Eval Results -----------------------------------------
   - source: hf_evals
-    metric: hf:Idavidrein/gpqa/gpqa_diamond
+    metric: hf:Idavidrein/gpqa/diamond
     purposes: [reasoning]
     higher_is_better: true
     tests: a graduate-level science exam (GPQA Diamond)
     scale: percent
-    note: The dataset and task id are the ones huggingface_hub 1.32.0's own docs use for this benchmark.
+    note: Confirmed 2026-09-24 — every curated repo that reports it uses task id "diamond" (huggingface_hub's docs said "gpqa_diamond").
   - source: hf_evals
     metric: hf:TIGER-Lab/MMLU-Pro/mmlu_pro
     purposes: [chat, reasoning]
     higher_is_better: true
     tests: a broad knowledge exam across many subjects (MMLU-Pro)
     scale: percent
-    note: Unconfirmed task id.
+    note: Confirmed 2026-09-24 (task id "mmlu_pro" on the Qwen, Gemma, Llama and gpt-oss repos).
   - source: hf_evals
-    metric: hf:cais/hle/default
+    metric: hf:cais/hle/hle
     purposes: [reasoning]
     higher_is_better: true
     tests: a very hard exam written by experts (Humanity's Last Exam)
     scale: percent
-    note: The dataset and task id are the ones huggingface_hub 1.32.0's own docs use for this benchmark.
+    note: Confirmed 2026-09-24 — the repos use task id "hle" (huggingface_hub's docs said "default").
   - source: hf_evals
-    metric: hf:SWE-bench/SWE-bench_Verified/default
+    metric: hf:SWE-bench/SWE-bench_Verified/swe_bench_%_resolved
     purposes: [coding, agentic]
     higher_is_better: true
     tests: fixing real bugs in real code projects (SWE-bench Verified)
     scale: percent
-    note: Unconfirmed task id.
+    note: Confirmed 2026-09-24 (task id "swe_bench_%_resolved" on the Qwen3.6, gpt-oss and GLM repos).
+  - source: hf_evals
+    metric: hf:MMMU/MMMU_Pro/mmmu_pro_vision
+    purposes: [vision]
+    higher_is_better: true
+    tests: a hard exam of questions asked in pictures and diagrams (MMMU-Pro, vision)
+    scale: percent
+    note: Added 2026-09-24 from the first coverage report; merged into the Gemma 4 26B and 31B repos, in open pull requests on others.
 
   # ---- Arena --------------------------------------------------------------
   - source: arena
@@ -158,35 +165,35 @@ metrics:
     higher_is_better: true
     tests: people's votes comparing answers to everyday questions
     scale: rating
-    note: Unconfirmed category name.
+    note: Confirmed 2026-09-24 (the board answered with rows).
   - source: arena
     metric: arena:text/creative_writing
     purposes: [writing]
     higher_is_better: true
     tests: people's votes comparing pieces of writing
     scale: rating
-    note: Unconfirmed category name.
+    note: Confirmed 2026-09-24 (the board answered with rows).
   - source: arena
     metric: arena:text/coding
     purposes: [coding]
     higher_is_better: true
     tests: people's votes comparing answers to coding questions
     scale: rating
-    note: Unconfirmed category name.
+    note: Unconfirmed category name — the first read failed with the dataset viewer's HTTP 500 ("index is loading") before any row.
   - source: arena
     metric: arena:text/math
     purposes: [reasoning]
     higher_is_better: true
     tests: people's votes comparing answers to maths questions
     scale: rating
-    note: Unconfirmed category name.
+    note: Unconfirmed category name — the first read failed with the dataset viewer's HTTP 500 ("index is loading") before any row.
   - source: arena
     metric: arena:vision/overall
     purposes: [vision]
     higher_is_better: true
     tests: people's votes comparing answers about pictures
     scale: rating
-    note: Unconfirmed category name.
+    note: Confirmed 2026-09-24 (the vision board answered with rows).
 
   # ---- Epoch AI (Epoch's own runs only) ------------------------------------
   - source: epoch
@@ -196,7 +203,7 @@ metrics:
     tests: a graduate-level science exam (GPQA Diamond), run by Epoch AI
     scale: percent
     file: gpqa_diamond.csv
-    note: Unconfirmed file name.
+    note: Confirmed 2026-09-24, with columns "Model version", "Best score (across scorers)" and "Started at".
   - source: epoch
     metric: epoch:math_level_5
     purposes: [reasoning]
@@ -204,7 +211,15 @@ metrics:
     tests: hard competition maths problems (MATH Level 5), run by Epoch AI
     scale: percent
     file: math_level_5.csv
-    note: Unconfirmed file name.
+    note: Confirmed 2026-09-24; only older sizes (the Llama ones) are in it.
+  - source: epoch
+    metric: epoch:otis_mock_aime
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: hard competition maths problems (a mock AIME exam from OTIS), run by Epoch AI
+    scale: percent
+    file: otis_mock_aime_2024_2025.csv
+    note: Added 2026-09-24 from the first read of the ZIP — the Epoch file that covers the most curated sizes after GPQA Diamond.
   - source: epoch
     metric: epoch:swe_bench_verified
     purposes: [coding, agentic]
@@ -212,4 +227,4 @@ metrics:
     tests: fixing real bugs in real code projects (SWE-bench Verified), run by Epoch AI
     scale: percent
     file: swe_bench_verified.csv
-    note: Unconfirmed file name.
+    note: Confirmed 2026-09-24; no curated size is in it yet (hosted models only).

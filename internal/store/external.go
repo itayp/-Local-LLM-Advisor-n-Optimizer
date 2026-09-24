@@ -192,3 +192,15 @@ func (s *Store) ExternalStates(ctx context.Context) (map[string]ExternalState, e
 	}
 	return out, rows.Err()
 }
+
+// ExternalPartsFailed counts source's per-request or per-metric states
+// (key not "") whose last try failed: a source read only in part.
+func (s *Store) ExternalPartsFailed(ctx context.Context, source string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM external_state WHERE source = ? AND key <> '' AND error <> ''`, source).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: external state %s: %w", source, err)
+	}
+	return n, nil
+}

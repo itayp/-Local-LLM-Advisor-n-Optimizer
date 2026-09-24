@@ -3,7 +3,9 @@ import { Link } from 'react-router'
 import { api } from '../api/client'
 import type { BackendInfo, FitCategory, HardwareResponse, InstalledModel, Rate } from '../api/types'
 import { Figure, formatBytes } from '../components/Figure'
+import { ModelList } from '../components/ModelList'
 import { Term } from '../components/Term'
+import { Working } from '../components/Working'
 import { en } from '../copy/en'
 import { useAdvanced } from '../state/settings'
 
@@ -83,6 +85,9 @@ export function Models() {
   const [confirming, setConfirming] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
   const [removeError, setRemoveError] = useState<string | null>(null)
+  // Bumped after the model list is fetched: installed models are matched to
+  // it afresh, so their fit and speed can be shown.
+  const [asked, setAsked] = useState(0)
   const fits = useFits(models)
 
   useEffect(() => {
@@ -103,7 +108,7 @@ export function Models() {
       .then(setHw)
       .catch(() => undefined)
     return () => ac.abort()
-  }, [])
+  }, [asked])
 
   const remove = (m: InstalledModel) => {
     setRemoving(key(m))
@@ -128,14 +133,14 @@ export function Models() {
       <h1 id="screen-title">{c.title}</h1>
       <p className="screen__lead">{c.lead}</p>
 
+      <ModelList onFetched={() => setAsked((n) => n + 1)} />
+
       {error ? (
         <p className="notice notice--warning" role="alert">
           {c.failed(error)}
         </p>
       ) : models === null ? (
-        <p className="screen__note" role="status">
-          {c.loading}
-        </p>
+        <Working label={c.loading} />
       ) : backend && backend.state !== 'running' ? (
         <p className="notice">{c.backendNotRunning}</p>
       ) : models.length === 0 ? (

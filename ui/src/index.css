@@ -786,3 +786,34 @@ body {
 .detail-block--public {
   background: var(--accent-bg);
 }
+
+/* Every wait shows what is happening and that it is still happening
+   (components/Working.tsx, ModelList.tsx, TestProgress.tsx). A <progress>
+   without a value is indeterminate: the browser animates it. */
+.working {
+  margin: 16px 0;
+}
+
+.working__label {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.working__bar {
+  width: 100%;
+  max-width: 480px;
+  height: 10px;
+}
+
+.working__elapsed {
+  margin-top: 4px;
+}
+
+.notice__title {
+  font-size: 1.05rem;
+  margin: 0 0 6px;
+}
+
+.bench-download {
+  margin: 16px 0;
+}

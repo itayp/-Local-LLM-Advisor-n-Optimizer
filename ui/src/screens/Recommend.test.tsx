@@ -236,6 +236,8 @@ describe('Recommend', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/catalog/status')
+          return new Response(JSON.stringify({ fetched, running: false, public_fetched: fetched, public_updated: '' }), { status: 200 })
         if (url === '/api/catalog/refresh' && init?.method === 'POST') {
           fetched = true
           return new Response(JSON.stringify({ sizes: 1, resolved: 1 }), { status: 200 })
@@ -245,9 +247,34 @@ describe('Recommend', () => {
     )
     open()
     // The button says what it will do and what it costs (product rule 5).
-    await userEvent.click(await screen.findByRole('button', { name: c.fetchList }))
+    await userEvent.click(await screen.findByRole('button', { name: en.modelList.fetch }))
     expect(await screen.findByRole('article', { name: 'Qwen3.5 9B' })).toBeInTheDocument()
     expect(calls.length).toBe(2)
+    // Once fetched: one quiet line, with a way to fetch it again.
+    expect(await screen.findByTestId('model-list-fetched')).toHaveTextContent(en.modelList.refetch)
+  })
+
+  it('offers the fetch even when the empty answer is about something else (no dead end, whatever the machine)', async () => {
+    serve(() => result({ recommendations: [], empty: 'The advisor could not read how much memory this computer can give a model.', empty_code: 'budget_unknown' }))
+    const base = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) =>
+        url === '/api/catalog/status'
+          ? new Response(JSON.stringify({ fetched: false, running: false, public_fetched: false, public_updated: '' }), { status: 200 })
+          : base(url, init),
+      ),
+    )
+    open()
+    expect(await screen.findByTestId('model-list-missing')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: en.modelList.fetch })).toBeInTheDocument()
+  })
+
+  it('links each card to a test of that model', async () => {
+    serve(() => result())
+    open()
+    const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
+    expect(within(item).getByRole('link', { name: c.test })).toHaveAttribute('href', '/benchmarks?model=qwen3.5%3A9b')
   })
 
   it('shows the daemon\'s message when the request fails', async () => {

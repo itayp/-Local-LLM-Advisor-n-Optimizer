@@ -172,6 +172,14 @@ func (c *Catalogue) Validate() []string {
 			case strings.EqualFold(s.HFBaseRepo, s.HFRepo):
 				bad("%s: hf_base_repo names the GGUF repo; it must be the original model's repo", sw)
 			}
+			for _, same := range s.HFBaseSameAs {
+				switch {
+				case !hfRepoPattern.MatchString(same):
+					bad("%s: hf_base_same_as %q is not an owner/name Hugging Face repo", sw, same)
+				case strings.EqualFold(same, s.HFBaseRepo):
+					bad("%s: hf_base_same_as repeats hf_base_repo", sw)
+				}
+			}
 			if s.OllamaQuant != "" && !c.Tracks(s.OllamaQuant) {
 				bad("%s: ollama_quant %q is not one of the tracked quants %v", sw, s.OllamaQuant, c.Quants)
 			}

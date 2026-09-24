@@ -12,7 +12,7 @@
       "filename": ".eval_results/gpqa.yaml",
       "verified": false,
       "data": {
-        "dataset": {"id": "Idavidrein/gpqa", "task_id": "gpqa_diamond"},
+        "dataset": {"id": "Idavidrein/gpqa", "task_id": "diamond"},
         "value": 81.7,
         "date": "2026-03-02T00:00:00Z",
         "source": {"url": "https://huggingface.co/Qwen/Qwen3.5-9B", "name": "Model card"}
@@ -32,7 +32,7 @@
       "filename": ".eval_results/hle.yaml",
       "verified": true,
       "data": {
-        "dataset": {"id": "cais/hle", "task_id": "default"},
+        "dataset": {"id": "cais/hle", "task_id": "hle"},
         "value": 12.4,
         "date": "2026-04-18T12:00:00Z",
         "verifyToken": "eyJhbGciOiJIUzI1NiJ9.chosen.fixture",
@@ -43,7 +43,7 @@
       "filename": ".eval_results/aa.yaml",
       "verified": false,
       "data": {
-        "dataset": {"id": "SWE-bench/SWE-bench_Verified", "task_id": "default"},
+        "dataset": {"id": "SWE-bench/SWE-bench_Verified", "task_id": "swe_bench_%_resolved"},
         "value": 38.0,
         "date": "2026-05-01",
         "source": {"url": "https://artificialanalysis.ai/models/qwen3-5-9b", "name": "Artificial Analysis"}

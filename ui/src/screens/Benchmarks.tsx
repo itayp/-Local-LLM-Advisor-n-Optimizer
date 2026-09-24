@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../api/client'
-import type { BenchPlan, BenchProgress, BenchRun, InstalledModel } from '../api/types'
+import { useSearchParams } from 'react-router'
+import { ApiRequestError, api } from '../api/client'
+import type { BenchModel, BenchModelsResponse, BenchPlan, BenchProgress, BenchRun, PullStatus } from '../api/types'
 import { Figure } from '../components/Figure'
+import { ModelList } from '../components/ModelList'
+import { minutes, TestProgress } from '../components/TestProgress'
+import { Working } from '../components/Working'
 import { en } from '../copy/en'
+import { formatDownload } from '../onboarding/format'
+import { Progress } from '../onboarding/Progress'
 import { useAdvanced } from '../state/settings'
 
 const c = en.screens.benchmarks
@@ -13,36 +19,54 @@ const contexts = [4096, 8192, 16384, 32768]
 /** Tokens to words, the way people count: about three quarters of a word each. */
 const words = (tokens: number) => (Math.round((tokens * 0.75) / 100) * 100).toLocaleString('en-US')
 
+/** The installed name a pulled tag shows up under: Ollama adds ":latest" to a tag without one. */
+function installedAs(list: BenchModelsResponse, wanted: BenchModel | string): BenchModel | undefined {
+  const name = typeof wanted === 'string' ? wanted : wanted.name
+  const id = typeof wanted === 'string' ? 0 : (wanted.model_id ?? 0)
+  return (
+    list.installed.find((m) => m.name === name || m.name === `${name}:latest`) ??
+    (id ? list.installed.find((m) => m.model_id === id) : undefined)
+  )
+}
+
 /**
- * Benchmarks (build-plan step 6): test an installed model on this computer.
+ * Benchmarks (build-plan step 6): test a model on this computer.
  *
- * The screen asks the daemon what a test would do before offering to run it
- * (GET /api/bench/plan) — how long it takes, which passages fit, and whether
- * the estimate already says the model would spill onto the processor, in
- * which case the test is refused unless asked for anyway. The button says
- * what it will do and how long it takes (product rule 5). While a test runs
- * the screen follows its progress stream and offers to stop it, which frees
- * the model's memory. Every number with provenance goes through <Figure>:
+ * The picker lists the models already installed and, apart, the ones the
+ * list has that would run here but are not downloaded yet (GET
+ * /api/bench/models); "Test it on this computer" elsewhere opens this
+ * screen with ?model= already picked. For an installed model the screen
+ * asks the daemon what a test would do before offering it (GET
+ * /api/bench/plan) — how long it takes, which passages fit, and whether it
+ * would spill onto the processor, in which case the test is refused unless
+ * asked for anyway. For one not downloaded yet, the one button downloads it
+ * and then runs the test, and says both, with the size (product rule 5).
+ * Every wait shows what is happening (a bar and the time so far), from the
+ * click to the result. Every number with provenance goes through <Figure>:
  * results are measured, the duration and the estimate before are estimated.
- *
- * Step 6 built the single-run flow above, enough for its own gate on a
- * machine without a terminal; step 8 adds the history's "Compare" picker
- * and the side-by-side view it opens.
  */
 export function Benchmarks() {
   const advanced = useAdvanced()
-  const [models, setModels] = useState<InstalledModel[] | null>(null)
+  const [params] = useSearchParams()
+  const wanted = params.get('model')
+  const [list, setList] = useState<BenchModelsResponse | null>(null)
+  const [listAsked, setListAsked] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [model, setModel] = useState('')
   const [ctx, setCtx] = useState(0)
   const [plan, setPlan] = useState<BenchPlan | null>(null)
   const [planning, setPlanning] = useState(false)
   const [progress, setProgress] = useState<BenchProgress | null>(null)
+  const [following, setFollowing] = useState<number | null>(null)
   const [shown, setShown] = useState<BenchRun | null>(null)
   const [history, setHistory] = useState<BenchRun[]>([])
   const [compareSelected, setCompareSelected] = useState<number[]>([])
   const [comparing, setComparing] = useState<[BenchRun, BenchRun] | null>(null)
   const [busy, setBusy] = useState<'starting' | 'cancelling' | null>(null)
+  // A download started from this screen: its status, polled; and whether
+  // the test should start by itself once the plan for the new model is in.
+  const [pull, setPull] = useState<PullStatus | null>(null)
+  const [autoStart, setAutoStart] = useState(false)
   // Bumped when a run ends, so the plan is asked for again: a finished run
   // replaces the estimate the plan showed (product rule 4).
   const [finished, setFinished] = useState(0)
@@ -61,6 +85,13 @@ export function Benchmarks() {
   const follow = useCallback(
     (id: number) => {
       stopFollowing.current?.()
+      setFollowing(id)
+      const end = (run: BenchRun) => {
+        setProgress(null)
+        setFollowing(null)
+        setShown(run)
+        loadHistory()
+      }
       stopFollowing.current = api.followBench(
         id,
         (p) => {
@@ -68,20 +99,15 @@ export function Benchmarks() {
             setProgress(p)
             return
           }
-          setProgress(null)
-          setShown(p.run)
-          loadHistory()
+          end(p.run)
         },
         () => {
-          // The stream broke (the daemon restarted, the network hiccupped):
-          // read the run as it stands instead.
+          // Neither the stream nor the progress could be read (the daemon
+          // restarted): read the run as it stands instead.
           api
             .benchRun(id)
             .then((run) => {
-              if (run.status === 'running') return
-              setProgress(null)
-              setShown(run)
-              loadHistory()
+              if (run.status !== 'running') end(run)
             })
             .catch(() => undefined)
         },
@@ -93,25 +119,19 @@ export function Benchmarks() {
   useEffect(() => {
     const ac = new AbortController()
     api
-      .installedModels(ac.signal)
-      .then((r) => {
-        const sorted = [...(r.models ?? [])].sort(
-          (a, b) => Number(b.catalog_match === 'file') - Number(a.catalog_match === 'file') || a.size_bytes - b.size_bytes,
-        )
-        setModels(sorted)
-        if (sorted.length > 0) setModel((m) => m || sorted[0].name)
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : String(err))
-      })
-    api
       .benchHistory(ac.signal)
       .then((h) => {
         const runs = h.runs ?? []
         setHistory(runs)
         const running = runs.find((r) => r.status === 'running')
         if (running) follow(running.id)
+      })
+      .catch(() => undefined)
+    // A download started earlier (then the page was left) is picked up.
+    api
+      .pullStatus(ac.signal)
+      .then((st) => {
+        if (st.status === 'running') setPull(st)
       })
       .catch(() => undefined)
     return () => {
@@ -121,7 +141,41 @@ export function Benchmarks() {
   }, [follow])
 
   useEffect(() => {
-    if (!model) return
+    const ac = new AbortController()
+    api
+      .benchModels(ac.signal)
+      .then((r) => {
+        const l = { ...r, installed: r.installed ?? [], available: r.available ?? [] }
+        setList(l)
+        setModel((cur) => {
+          if (cur) {
+            const now = installedAs(l, cur)
+            if (now) return now.name
+            if (l.available.some((m) => m.name === cur)) return cur
+          }
+          if (wanted) {
+            const w = installedAs(l, wanted) ?? l.available.find((m) => m.name === wanted)
+            if (w) return w.name
+          }
+          return l.installed[0]?.name ?? l.available[0]?.name ?? ''
+        })
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : String(err))
+      })
+    return () => ac.abort()
+  }, [listAsked, wanted])
+
+  const selected: BenchModel | undefined = list
+    ? (list.installed.find((m) => m.name === model) ?? list.available.find((m) => m.name === model))
+    : undefined
+
+  useEffect(() => {
+    if (!model || !selected?.installed) {
+      setPlan(null)
+      return
+    }
     const ac = new AbortController()
     setPlanning(true)
     setError(null)
@@ -135,36 +189,87 @@ export function Benchmarks() {
         if ((err as { name?: string })?.name === 'AbortError') return
         setPlan(null)
         setPlanning(false)
+        setAutoStart(false)
         setError(err instanceof Error ? err.message : String(err))
       })
     return () => ac.abort()
-  }, [model, ctx, finished])
+  }, [model, ctx, finished, selected?.installed])
 
-  const start = (anyway: boolean) => {
-    setBusy('starting')
+  const start = useCallback(
+    (anyway: boolean) => {
+      setBusy('starting')
+      setError(null)
+      setShown(null)
+      api
+        .benchStart({ model, num_ctx: ctx || undefined, measure_anyway: anyway })
+        .then((run) => {
+          setBusy(null)
+          follow(run.id)
+        })
+        .catch((err: unknown) => {
+          setBusy(null)
+          setError(err instanceof Error ? err.message : String(err))
+        })
+    },
+    [model, ctx, follow],
+  )
+
+  // Downloaded from here: once the new model's plan is in, the test starts
+  // by itself — unless the plan refuses it, which the screen then shows.
+  useEffect(() => {
+    if (!autoStart || !plan || plan.model !== model) return
+    setAutoStart(false)
+    if (!plan.refusal) start(false)
+  }, [autoStart, plan, model, start])
+
+  // A download in progress is polled once a second.
+  useEffect(() => {
+    if (pull?.status !== 'running') return
+    const id = window.setInterval(() => {
+      api
+        .pullStatus()
+        .then((st) => {
+          setPull(st)
+          if (st.status === 'done') {
+            setAutoStart(true)
+            setListAsked((n) => n + 1)
+          }
+        })
+        .catch(() => undefined)
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [pull?.status])
+
+  const download = () => {
+    if (!selected || selected.installed) return
     setError(null)
     setShown(null)
-    api
-      .benchStart({ model, num_ctx: ctx || undefined, measure_anyway: anyway })
-      .then((run) => {
-        setBusy(null)
-        follow(run.id)
-      })
-      .catch((err: unknown) => {
-        setBusy(null)
-        setError(err instanceof Error ? err.message : String(err))
-      })
+    setPull({ status: 'running', model: selected.name, completed_bytes: 0, total_bytes: selected.download_bytes })
+    api.pullStart(selected.name).then(setPull, (err: unknown) => {
+      if (err instanceof ApiRequestError && err.status === 409) {
+        api.pullStatus().then(setPull, () => setPull(null))
+        return
+      }
+      setPull(null)
+      setError(err instanceof Error ? err.message : String(err))
+    })
+  }
+
+  const cancelDownload = () => {
+    api.pullCancel().then(setPull, () => undefined)
   }
 
   const cancel = () => {
-    if (!progress) return
+    const id = progress?.run_id ?? following
+    if (id === null || id === undefined) return
     setBusy('cancelling')
     stopFollowing.current?.()
     api
-      .benchCancel(progress.run_id)
+      .benchCancel(id)
       .then((run) => {
         setBusy(null)
         setProgress(null)
+        setFollowing(null)
         setShown(run)
         loadHistory()
       })
@@ -174,7 +279,9 @@ export function Benchmarks() {
       })
   }
 
-  const running = progress !== null
+  const testing = progress !== null || following !== null || busy === 'starting'
+  const downloading = pull?.status === 'running'
+  const locked = testing || downloading
 
   const toggleCompare = (id: number) => {
     setCompareSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < 2 ? [...cur, id] : cur))
@@ -193,44 +300,60 @@ export function Benchmarks() {
     else setShown(r)
   }
 
+  const nothing = list !== null && list.installed.length === 0 && list.available.length === 0
+
   return (
     <section className="screen" aria-labelledby="screen-title">
       <h1 id="screen-title">{c.title}</h1>
       <p className="screen__lead">{c.lead}</p>
 
-      {models === null && !error ? (
-        <p className="screen__note" role="status">
-          {c.loading}
-        </p>
-      ) : null}
-      {models !== null && models.length === 0 ? <p className="notice">{c.noModels}</p> : null}
+      <ModelList onFetched={() => setListAsked((n) => n + 1)} />
 
-      {models !== null && models.length > 0 ? (
+      {list === null && !error ? <Working label={c.loading} /> : null}
+      {nothing && list?.catalogue_fetched ? <p className="notice">{c.noModels}</p> : null}
+
+      {list !== null && !nothing ? (
         <form className="bench-form" onSubmit={(e) => e.preventDefault()}>
           <label>
             <span className="setting__label">{c.model}</span>
-            <select value={model} disabled={running} onChange={(e) => setModel(e.target.value)}>
-              {models.map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.name}
-                </option>
-              ))}
+            <select value={model} disabled={locked} onChange={(e) => setModel(e.target.value)}>
+              {list.installed.length > 0 ? (
+                <optgroup label={c.groupInstalled}>
+                  {list.installed.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {c.optionInstalled(m.name, m.display_name)}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {list.available.length > 0 ? (
+                <optgroup label={c.groupAvailable}>
+                  {list.available.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {c.optionAvailable(m.display_name ?? m.name, formatDownload(m.download_bytes ?? 0))}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
-          <label>
-            <span className="setting__label">{c.context}</span>
-            <select value={ctx} disabled={running} aria-describedby="bench-context-help" onChange={(e) => setCtx(Number(e.target.value))}>
-              <option value={0}>{c.contextDefault(plan && plan.num_ctx_source === 'ollama_default' ? words(plan.num_ctx) : '…')}</option>
-              {contexts.map((n) => (
-                <option key={n} value={n}>
-                  {c.contextOption(words(n))}
-                </option>
-              ))}
-            </select>
-            <span className="setting__help" id="bench-context-help" aria-hidden="true">
-              {c.contextHelp}
-            </span>
-          </label>
+          {selected?.installed ? (
+            <label>
+              <span className="setting__label">{c.context}</span>
+              <select value={ctx} disabled={locked} aria-describedby="bench-context-help" onChange={(e) => setCtx(Number(e.target.value))}>
+                <option value={0}>{c.contextDefault(plan && plan.num_ctx_source === 'ollama_default' ? words(plan.num_ctx) : '…')}</option>
+                {contexts.map((n) => (
+                  <option key={n} value={n}>
+                    {c.contextOption(words(n))}
+                  </option>
+                ))}
+              </select>
+              <span className="setting__help" id="bench-context-help" aria-hidden="true">
+                {c.contextHelp}
+              </span>
+            </label>
+          ) : null}
+          {list.too_big > 0 ? <p className="screen__note">{c.tooBig(list.too_big)}</p> : null}
         </form>
       ) : null}
 
@@ -240,12 +363,17 @@ export function Benchmarks() {
         </p>
       ) : null}
 
-      {!running && planning && !plan ? <p className="screen__note">{c.planning}</p> : null}
-      {!running && plan && plan.model === model ? (
-        <Plan plan={plan} busy={busy === 'starting'} onRun={start} />
+      {selected && !selected.installed && !testing && !autoStart ? (
+        <DownloadAndTest m={selected} pull={pull} onDownload={download} onCancel={cancelDownload} />
+      ) : null}
+      {pull?.status === 'done' && autoStart && !testing ? <Working label={c.downloaded} /> : null}
+
+      {!testing && selected?.installed && planning && !plan ? <Working label={c.planning} /> : null}
+      {!testing && selected?.installed && plan && plan.model === model && !autoStart ? (
+        <Plan plan={plan} busy={false} onRun={start} />
       ) : null}
 
-      {progress ? <Running p={progress} cancelling={busy === 'cancelling'} onCancel={cancel} /> : null}
+      {testing ? <TestProgress p={progress} cancelling={busy === 'cancelling'} onCancel={cancel} /> : null}
 
       {comparing ? (
         <Compare a={comparing[0]} b={comparing[1]} advanced={advanced} onClose={() => setComparing(null)} />
@@ -265,10 +393,55 @@ export function Benchmarks() {
   )
 }
 
-/** An estimated duration in seconds as whole minutes, at least one. */
-function minutes(low: number, high: number): [number, number] {
-  const lo = Math.max(1, Math.round(low / 60))
-  return [lo, Math.max(lo, Math.round(high / 60))]
+/**
+ * DownloadAndTest: a model the list has that is not on this computer yet —
+ * what it costs to get, how it should fit, and one button that downloads it
+ * and then runs the test (it says both). While it downloads: the bytes so
+ * far of the total, and a way to stop.
+ */
+function DownloadAndTest({
+  m,
+  pull,
+  onDownload,
+  onCancel,
+}: {
+  m: BenchModel
+  pull: PullStatus | null
+  onDownload: () => void
+  onCancel: () => void
+}) {
+  const size = formatDownload(m.download_bytes ?? 0)
+  const mine = pull && (pull.model === m.name || !pull.model)
+  if (pull?.status === 'running' && mine) {
+    return (
+      <div className="bench-download" data-testid="bench-download">
+        <Progress label={`${c.downloading}: ${m.display_name ?? m.name}`} completed={pull.completed_bytes} total={pull.total_bytes} />
+        <button type="button" className="button button--secondary" onClick={onCancel}>
+          {c.downloadCancel}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="bench-download" data-testid="bench-download">
+      <p>{c.needsDownload(size)}</p>
+      {m.fit ? (
+        <p className="screen__note">
+          {c.fitLabel}: {en.screens.models.fitCategory[m.fit]} — {en.screens.models.fitWhy[m.fit]}
+        </p>
+      ) : null}
+      {pull?.status === 'running' && !mine ? <p className="screen__note">{c.downloadOther(pull.model ?? '')}</p> : null}
+      {pull?.status === 'failed' && mine ? (
+        <p className="notice notice--warning" role="alert">
+          {c.downloadFailed(pull.error ?? '')}
+        </p>
+      ) : null}
+      {pull?.status === 'cancelled' && mine ? <p className="notice">{c.downloadCancelled}</p> : null}
+      <button type="button" className="button" disabled={pull?.status === 'running'} onClick={onDownload}>
+        {c.downloadAndRun(size)}
+      </button>
+    </div>
+  )
 }
 
 function Plan({ plan, busy, onRun }: { plan: BenchPlan; busy: boolean; onRun: (anyway: boolean) => void }) {
@@ -323,31 +496,6 @@ function Plan({ plan, busy, onRun }: { plan: BenchPlan; busy: boolean; onRun: (a
           {busy ? c.starting : plan.duration ? c.run(...minutes(plan.duration.low, plan.duration.high)) : c.runUnknown}
         </button>
       )}
-    </div>
-  )
-}
-
-function Running({ p, cancelling, onCancel }: { p: BenchProgress; cancelling: boolean; onCancel: () => void }) {
-  return (
-    <div className="bench-running notice" data-testid="bench-running">
-      <p role="status">{cancelling ? c.cancelling : p.message}</p>
-      <progress aria-label={c.progressLabel} value={p.step} max={Math.max(p.steps, 1)} />
-      <p className="screen__note">
-        {c.step(p.step, p.steps)}
-        {p.remaining ? (
-          <>
-            {' · '}
-            {c.timeLeft}{' '}
-            <Figure
-              value={p.remaining.high < 60 ? c.underAMinute : c.minutes(...minutes(p.remaining.low, p.remaining.high))}
-              source="estimated"
-            />
-          </>
-        ) : null}
-      </p>
-      <button type="button" className="button button--secondary" disabled={cancelling} onClick={onCancel}>
-        {c.cancel}
-      </button>
     </div>
   )
 }

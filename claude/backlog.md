@@ -81,3 +81,20 @@ it worth doing sooner rather than later — it's not just "another runtime,"
 it's the fix for (c)'s stated gap on multi-GPU machines. Worth becoming
 its own line in ARCHITECTURE.md once the llama.cpp backend is scoped,
 citing whatever Itay shares.
+
+## e. Progress visualization when downloading the models list — done (2026-09-24, ARCHITECTURE.md D-54)
+
+**From:** Itay, step 8 closure (2026-09-20).
+
+The model list fetch (`POST /api/catalog/refresh`) takes a minute or two
+and showed only a button, then "Fetching…", then a result — nothing that
+moved while it ran.
+
+**Done** in the session after step 9b's first gate run: `GET
+/api/catalog/status` carries the running fetch's phase (the list, then the
+public scores), parts done of total and what is being read, and
+`ui/src/components/ModelList.tsx` shows them — a bar and the seconds so far
+— on every screen that needs the list. Itay's Windows findings of the same
+day (the list never fetched and no way to fetch it; Benchmarks offering
+only installed models; waits with nothing moving) are in
+`claude/step-9b-external.md`, "Also fixed this session".

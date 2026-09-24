@@ -58,6 +58,10 @@ type Options struct {
 	Only []string
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
+	// Progress, when set, is told before each enabled source is read (done
+	// sources so far, how many there are, the source's name); it must not
+	// block.
+	Progress func(done, total int, name string)
 }
 
 // Report is what a run did, for the CLI, the API and catalog_refreshes.
@@ -175,9 +179,22 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 	}
 
+	enabled := 0
+	for _, src := range o.Config.Sources {
+		if src.Enabled {
+			enabled++
+		}
+	}
+	read := 0
 	for _, src := range o.Config.Sources {
 		if err := ctx.Err(); err != nil {
 			return rep, err
+		}
+		if src.Enabled && o.Progress != nil {
+			o.Progress(read, enabled, src.Name)
+		}
+		if src.Enabled {
+			read++
 		}
 		sr := SourceReport{ID: src.ID, Name: src.Name, Hits: []string{}, Misses: []string{}, Failures: []string{}}
 		if !src.Enabled {
@@ -191,7 +208,14 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 		dig := r.digest(src)
 		sameConfig := state.ConfigDigest == dig
-		if !o.Force && sameConfig && state.OKAt != "" {
+		// A source read only in part last time (a board or a repo whose
+		// answer failed) is due again at once: waiting out its cadence
+		// would leave the gap for a day or a week.
+		partsFailed, err := o.Store.ExternalPartsFailed(ctx, src.ID)
+		if err != nil {
+			return rep, err
+		}
+		if !o.Force && sameConfig && state.OKAt != "" && partsFailed == 0 {
 			if ok, err := time.Parse(time.RFC3339, state.OKAt); err == nil && r.now.Sub(ok) < time.Duration(src.CadenceHours)*time.Hour {
 				next := ok.Add(time.Duration(src.CadenceHours) * time.Hour)
 				sr.Status = StatusSkipped

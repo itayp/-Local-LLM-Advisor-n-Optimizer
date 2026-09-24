@@ -367,6 +367,13 @@ func cleanPurposes(in []catalog.Purpose) []catalog.Purpose {
 
 // defaultFile is the weights file a size's Ollama tag pulls, and the vision
 // encoder loaded beside it.
+// DefaultFile is the weights file the size's Ollama tag pulls (by the
+// configured default quants) and its vision encoder, if any; ok is false
+// when the size has no resolved file to name.
+func (e *Engine) DefaultFile(entry Entry) (file catalog.File, projector *catalog.File, ok bool) {
+	return e.defaultFile(entry)
+}
+
 func (e *Engine) defaultFile(entry Entry) (file catalog.File, projector *catalog.File, ok bool) {
 	if !entry.Model.Present {
 		return file, nil, false

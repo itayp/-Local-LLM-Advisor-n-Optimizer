@@ -1,4 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
@@ -62,7 +63,7 @@ function detail(over: Partial<ModelDetailResponse> = {}): ModelDetailResponse {
       entries: [
         publicEntry(),
         publicEntry({
-          source_id: 'hf_evals', source_name: 'Hugging Face Eval Results', metric: 'hf:Idavidrein/gpqa/gpqa_diamond',
+          source_id: 'hf_evals', source_name: 'Hugging Face Eval Results', metric: 'hf:Idavidrein/gpqa/diamond',
           tests: 'a graduate-level science exam (GPQA Diamond)', provenance_words: "reported by the model's maker",
           position: '3rd for reasoning of the 4 models here with this score on Hugging Face.', scored: false,
           value: { value: 81.7, scale: 'percent', origin: { publisher: 'Qwen on Hugging Face', date: '2026-03-02', licence: 'HF-ToS; repo:apache-2.0', attribution: 'Reported by Qwen (Alibaba Cloud) on Hugging Face', provenance: 'maker' } },
@@ -81,11 +82,16 @@ function detail(over: Partial<ModelDetailResponse> = {}): ModelDetailResponse {
   }
 }
 
-function serve(d: ModelDetailResponse) {
+function serve(d: ModelDetailResponse, status?: () => object, onRefresh?: () => void) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/models/4/detail') return new Response(JSON.stringify(d), { status: 200 })
+      if (url === '/api/catalog/status' && status) return new Response(JSON.stringify(status()), { status: 200 })
+      if (url === '/api/catalog/refresh' && init?.method === 'POST' && onRefresh) {
+        onRefresh()
+        return new Response(JSON.stringify({ sizes: 1, resolved: 1 }), { status: 200 })
+      }
       if (url === '/api/health') return new Response(JSON.stringify({ version: 'test', os: 'darwin', arch: 'arm64', go_version: 'go' }), { status: 200 })
       return new Response('{}', { status: 404 })
     }),
@@ -150,6 +156,44 @@ describe('the model detail view', () => {
     open()
     expect(await screen.findByTestId('public-none')).toHaveTextContent('No public scores for this size yet.')
     expect(screen.getByTestId('public-block').querySelector('.public-figure')).toBeNull()
+  })
+
+  it('offers to fetch the public scores when none has ever been read here, then shows them', async () => {
+    let fetched = false
+    const none = detail({ public: { entries: [], updated: 'Public scores have not been fetched yet.' } })
+    const calls: string[] = []
+    serve(
+      none,
+      () => ({ fetched: true, running: false, public_fetched: fetched, public_updated: '' }),
+      () => {
+        fetched = true
+        calls.push('refresh')
+      },
+    )
+    open()
+    const pub = await screen.findByTestId('public-block')
+    const offer = await within(pub).findByTestId('public-fetch')
+    expect(offer).toHaveTextContent(en.modelList.publicMissing)
+    serve(
+      detail(),
+      () => ({ fetched: true, running: false, public_fetched: fetched, public_updated: '' }),
+      () => {
+        fetched = true
+        calls.push('refresh')
+      },
+    )
+    await userEvent.click(within(offer).getByRole('button', { name: en.modelList.fetchPublic }))
+    expect(calls).toEqual(['refresh'])
+    // The model is read again: its public values are there now, and the offer is gone.
+    await waitFor(() => expect(screen.getByTestId('public-block').querySelectorAll('.public-figure')).toHaveLength(2))
+    expect(screen.queryByTestId('public-fetch')).toBeNull()
+  })
+
+  it('links to a test of this very model', async () => {
+    serve(detail())
+    open()
+    const mine = await screen.findByTestId('machine-block')
+    expect(within(mine).getByRole('link', { name: c.test })).toHaveAttribute('href', '/benchmarks?model=qwen3.5%3A9b')
   })
 
   it('cannot hand a public value to <Figure>', () => {

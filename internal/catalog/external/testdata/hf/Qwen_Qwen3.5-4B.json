@@ -1,0 +1,295 @@
+{
+ "_id": "69a1adef9060862380ddaff7",
+ "id": "Qwen/Qwen3.5-4B",
+ "evalResults": [
+  {
+   "filename": ".eval_results/extractbench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ExtractBench",
+     "task_id": "mean"
+    },
+    "value": 82.43,
+    "date": "2026-08-26",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+     "name": "ExtractBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_extract_oneshot_structured_output_file"
+   },
+   "pullRequest": 28
+  },
+  {
+   "filename": ".eval_results/extractbench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ExtractBench",
+     "task_id": "short"
+    },
+    "value": 89.06,
+    "date": "2026-08-26",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+     "name": "ExtractBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_extract_oneshot_structured_output_file"
+   },
+   "pullRequest": 28
+  },
+  {
+   "filename": ".eval_results/extractbench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ExtractBench",
+     "task_id": "medium"
+    },
+    "value": 76.64,
+    "date": "2026-08-26",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+     "name": "ExtractBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_extract_oneshot_structured_output_file"
+   },
+   "pullRequest": 28
+  },
+  {
+   "filename": ".eval_results/extractbench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ExtractBench",
+     "task_id": "long"
+    },
+    "value": 27.31,
+    "date": "2026-08-26",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+     "name": "ExtractBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_extract_oneshot_structured_output_file"
+   },
+   "pullRequest": 28
+  },
+  {
+   "filename": ".eval_results/Qwen-Qwen3.5-4B.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "LiquidAI/ifstruct-v1.0",
+     "task_id": "ifstruct_v1"
+    },
+    "value": 36.25,
+    "date": "2026-06-30",
+    "source": {
+     "url": "https://www.liquid.ai/blog/ifstruct-v1.0",
+     "name": "Liquid AI — IFStruct v1.0 blog (Qwen3.5-4B)"
+    }
+   },
+   "pullRequest": 23
+  },
+  {
+   "filename": ".eval_results/mmmu_pro.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "MMMU/MMMU_Pro",
+     "task_id": "mmmu_pro_vision"
+    },
+    "value": 66.3,
+    "date": "2026-04-28",
+    "source": {
+     "url": "https://huggingface.co/Qwen/Qwen3.5-4B",
+     "name": "Model Card"
+    }
+   },
+   "pullRequest": 18
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "mean"
+    },
+    "value": 35.4,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "text_content"
+    },
+    "value": 88.9,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "text_formatting"
+    },
+    "value": 57.8,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "layout"
+    },
+    "value": 19.7,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "chart"
+    },
+    "value": 2.5,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/parsebench.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "llamaindex/ParseBench",
+     "task_id": "table"
+    },
+    "value": 8,
+    "date": "2026-04-14",
+    "source": {
+     "url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+     "name": "ParseBench",
+     "user": "boyang-runllama"
+    },
+    "notes": "Pipeline name: qwen3_5_4b_vllm_layout"
+   },
+   "pullRequest": 17
+  },
+  {
+   "filename": ".eval_results/screenspot_pro.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "likaixin/ScreenSpot-Pro",
+     "task_id": "overall"
+    },
+    "value": 60.3,
+    "source": {
+     "url": "https://huggingface.co/Qwen/Qwen3.5-4B",
+     "name": "Model Card",
+     "user": "merve"
+    },
+    "date": "2026-03-18T11:15:58.000Z"
+   },
+   "pullRequest": 12
+  },
+  {
+   "filename": ".eval_results/gpqa.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "Idavidrein/gpqa",
+     "task_id": "diamond"
+    },
+    "value": 76.2,
+    "source": {
+     "url": "https://huggingface.co/Qwen/Qwen3.5-4B",
+     "name": "Model Card",
+     "user": "SaylorTwift"
+    },
+    "date": "2026-03-02T13:31:44.000Z"
+   },
+   "pullRequest": 1
+  },
+  {
+   "filename": ".eval_results/mmlu_pro.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "TIGER-Lab/MMLU-Pro",
+     "task_id": "mmlu_pro"
+    },
+    "value": 79.1,
+    "source": {
+     "url": "https://huggingface.co/Qwen/Qwen3.5-4B",
+     "name": "Model Card",
+     "user": "SaylorTwift"
+    },
+    "date": "2026-03-02T13:37:51.000Z"
+   },
+   "pullRequest": 1
+  }
+ ],
+ "cardData": {
+  "library_name": "transformers",
+  "license": "apache-2.0",
+  "license_link": "https://huggingface.co/Qwen/Qwen3.5-4B/blob/main/LICENSE",
+  "pipeline_tag": "image-text-to-text",
+  "base_model": [
+   "Qwen/Qwen3.5-4B-Base"
+  ]
+ },
+ "lastModified": "2026-03-02T00:52:52.000Z",
+ "createdAt": "2026-02-27T14:45:03.000Z"
+}

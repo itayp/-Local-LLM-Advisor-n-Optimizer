@@ -40,7 +40,24 @@ type Options struct {
 	// External, when set, reads the public benchmark sources after the
 	// sizes (build-plan step 9b); nil skips them.
 	External *ExternalOptions
+	// Progress, when set, is told where the refresh is before each size and
+	// each public source — for a progress bar; it must not block.
+	Progress func(Progress)
 }
+
+// Progress is where a running refresh is.
+type Progress struct {
+	Phase   string // PhaseModels, then PhasePublic
+	Done    int    // parts finished in this phase
+	Total   int    // parts in this phase
+	Current string // what is being read now, in words
+}
+
+// The phases of a refresh.
+const (
+	PhaseModels = "models" // the curated sizes' descriptions from Hugging Face
+	PhasePublic = "public" // the public benchmark sources
+)
 
 // ExternalOptions is what the public-data part of a refresh needs beyond
 // what the refresh already has.
@@ -120,6 +137,12 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			rep.Sizes += len(fam.Sizes)
 		}
 	}
+	progress := func(p Progress) {
+		if o.Progress != nil {
+			o.Progress(p)
+		}
+	}
+	done := 0
 sizes:
 	for _, fam := range o.Catalogue.Families {
 		if len(only) > 0 && !only[fam.ID] {
@@ -129,6 +152,8 @@ sizes:
 			if err := ctx.Err(); err != nil {
 				return rep, err
 			}
+			progress(Progress{Phase: PhaseModels, Done: done, Total: rep.Sizes, Current: fam.DisplayName + " " + sizeWords(size)})
+			done++
 			id := ids[store.CatalogKey{FamilyID: fam.ID, Parameters: size.Parameters}]
 			res, err := refreshSize(ctx, o, fam, size)
 			rep.HeaderReads += res.headerReads
@@ -173,6 +198,9 @@ sizes:
 		ext, err := external.Run(ctx, external.Options{
 			Catalogue: o.Catalogue, Config: o.External.Config, Aliases: o.External.Aliases, Store: o.Store,
 			Fetcher: o.External.Fetcher, Log: o.Log, Trigger: o.Trigger, Force: o.External.Force, Only: o.Only,
+			Progress: func(done, total int, name string) {
+				progress(Progress{Phase: PhasePublic, Done: done, Total: total, Current: name})
+			},
 		})
 		if err != nil {
 			if ctx.Err() != nil {
@@ -486,4 +514,13 @@ func MapInstalled(ctx context.Context, st *store.Store) ([]UnknownModel, error) 
 		return nil, err
 	}
 	return unknown, nil
+}
+
+// sizeWords names a size the way its Ollama tag does ("8b", "e4b"), or by
+// its parameter count when the tag has no size.
+func sizeWords(size catalog.Size) string {
+	if _, tag, ok := strings.Cut(size.OllamaTag, ":"); ok && tag != "" && tag != "latest" {
+		return strings.ToUpper(tag)
+	}
+	return fmt.Sprintf("%.0fB", float64(size.Parameters)/1e9)
 }

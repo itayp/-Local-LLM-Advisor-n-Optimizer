@@ -142,6 +142,16 @@ func (r *runner) parseHFModel(src Source, s sizeRef, body []byte, sr *SourceRepo
 			sr.Unreadable = append(sr.Unreadable, fmt.Sprintf("%s: eval result %d is not an object", repo, i))
 			continue
 		}
+		if msg, ok := item["error"].(string); ok && item["data"] == nil {
+			if pendingPR(item["pullRequest"]) {
+				sr.Pending++ // unreadable, but not merged either: not ours to judge yet
+				continue
+			}
+			// The Hub could not parse the repo's own file: say so in its words.
+			file, _ := item["filename"].(string)
+			sr.Unreadable = append(sr.Unreadable, fmt.Sprintf("%s: Hugging Face could not read the repo's own %s (%s)", repo, orWords(file, "eval result file"), oneLine(msg)))
+			continue
+		}
 		e, ok, why := hfEntry(item)
 		if !ok {
 			sr.Unreadable = append(sr.Unreadable, fmt.Sprintf("%s: eval result %d: %s", repo, i, why))
@@ -245,17 +255,7 @@ func hfEntry(item map[string]any) (hfEntryFields, bool, string) {
 	}
 	e.filename, _ = item["filename"].(string)
 	e.verified, _ = item["verified"].(bool)
-	switch pr := item["pullRequest"].(type) {
-	case nil:
-	case bool:
-		e.pending = pr
-	case float64:
-		e.pending = pr > 0
-	case string:
-		e.pending = pr != ""
-	default:
-		e.pending = true
-	}
+	e.pending = pendingPR(item["pullRequest"])
 	ds, _ := d["dataset"].(map[string]any)
 	e.dataset, _ = ds["id"].(string)
 	e.task, _ = ds["task_id"].(string)
@@ -333,8 +333,13 @@ func (r *runner) checkBaseModel(ctx context.Context, s sizeRef) {
 		if strings.EqualFold(b, s.Size.HFBaseRepo) {
 			return
 		}
+		for _, same := range s.Size.HFBaseSameAs {
+			if strings.EqualFold(b, same) {
+				return
+			}
+		}
 	}
-	r.report.Warnings = append(r.report.Warnings, fmt.Sprintf("%s: the GGUF repo %s names base_model %s, but families.yaml's hf_base_repo is %s — the public scores would be another model's",
+	r.report.Warnings = append(r.report.Warnings, fmt.Sprintf("%s: the GGUF repo %s names base_model %s, but families.yaml's hf_base_repo is %s — the public scores would be another model's (if it is the same weights under another name, list it in hf_base_same_as)",
 		s.label(), s.Size.HFRepo, strings.Join(bases, ", "), s.Size.HFBaseRepo))
 }
 
@@ -342,4 +347,33 @@ func (r *runner) checkBaseModel(ctx context.Context, s sizeRef) {
 func escapeRepo(repo string) string {
 	owner, name, _ := strings.Cut(repo, "/")
 	return url.PathEscape(owner) + "/" + url.PathEscape(name)
+}
+
+func orWords(s, instead string) string {
+	if s == "" {
+		return instead
+	}
+	return s
+}
+
+// oneLine flattens a message that arrived with line breaks and marks.
+func oneLine(s string) string {
+	f := strings.Fields(strings.NewReplacer("\u2716", "", "\u2192", "").Replace(s))
+	return strings.Join(f, " ")
+}
+
+// pendingPR reads the Hub's "pullRequest" field: set when the result sits
+// in an open pull request rather than in the repo itself.
+func pendingPR(v any) bool {
+	switch pr := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return pr
+	case float64:
+		return pr > 0
+	case string:
+		return pr != ""
+	}
+	return true
 }

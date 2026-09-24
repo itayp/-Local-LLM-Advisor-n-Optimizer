@@ -36,6 +36,30 @@ export const en = {
     notScored: 'Reported by the model\'s maker: shown, but not used to rank models, because makers test their own models in different ways.',
     advanced: 'Details',
   },
+  // Every wait shows what is happening and that it is still happening: a
+  // moving bar and the time so far (Itay, testing on Windows, 2026-09-24).
+  working: {
+    elapsed: (s: number) => (s < 60 ? `${s} s so far` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s so far`),
+  },
+  // The model list, on every screen that needs it (GET /api/catalog/status).
+  modelList: {
+    missingTitle: 'The list of models has not been fetched yet',
+    missingLead:
+      'The advisor needs its list of models — their names, sizes and how they are built — before it can recommend one or offer one to test. Fetching it downloads descriptions only, never the models themselves.',
+    fetch: 'Get the model list (a few MB of descriptions, no models)',
+    refetch: 'Get the list again (a few MB)',
+    fetchedOn: (when: string) => `Model list fetched ${when}.`,
+    starting: 'Starting to fetch the model list…',
+    phaseModels: 'Step 1 of 2: the list of models, from Hugging Face',
+    phasePublic: 'Step 2 of 2: public scores other people published',
+    partOf: (done: number, total: number) => `${done} of ${total} done`,
+    progressLabel: 'Fetching the model list',
+    failed: (message: string) => `The model list could not be fetched: ${message}`,
+    stopped: (why: string) => `The fetch stopped early: ${why}. Try again when this computer is online.`,
+    publicMissing:
+      'Public scores come with the model list: fetching it again also reads the scores other people have published (a few MB, no models).',
+    fetchPublic: 'Get public scores now (a few MB, no models)',
+  },
   nav: {
     home: 'Home',
     computer: 'Your computer',
@@ -148,7 +172,7 @@ export const en = {
       download: 'Download',
       noFile: 'The model list has no file for this size yet, so the advisor cannot say how it would run here.',
       test: 'Test it on this computer',
-      testHelp: 'Benchmarks runs a test of a model you have downloaded, and a measurement then replaces these estimates.',
+      testHelp: 'Benchmarks runs a test — downloading the model first if it is not on this computer yet — and a measurement then replaces these estimates.',
       otherFiles: 'Other downloads of this size',
       quant: 'Quantization',
     },
@@ -215,9 +239,6 @@ export const en = {
       loading: 'Working out what fits this computer…',
       failed: (message: string) => `The advisor could not work out its recommendations: ${message}`,
       pickOne: 'Pick at least one thing above.',
-      fetchList: 'Fetch the model list (about 10 MB)',
-      fetching: 'Fetching the model list from Hugging Face… this takes a minute or two.',
-      fetchFailed: (message: string) => `The model list could not be fetched: ${message}`,
       whyNotUsed: 'Why is my graphics card not used?',
       current: (name: string) => `You have ${name}.`,
       listLabel: 'Recommended models, best first',
@@ -229,6 +250,7 @@ export const en = {
       installed: 'already on this computer',
       keepsInMind: (words: string) => `Set up to keep about ${words} words in mind at once`,
       details: 'Details: public data and this computer',
+      test: 'Test it on this computer',
       why: 'Why this one',
       explainer: 'Why?',
       confidence: {
@@ -272,9 +294,28 @@ export const en = {
       title: 'Benchmarks',
       lead:
         'Test a model on this computer. The advisor sends it passages of its own text, times how fast it reads them and answers, and keeps the result. Nothing you type is ever sent.',
-      loading: 'Reading what Ollama has installed…',
+      loading: 'Reading what Ollama has installed, and what else the list has…',
       failed: (message: string) => `The test could not be set up: ${message}`,
-      noModels: 'Ollama has no models installed yet. Download one first, then test it here.',
+      noModels: 'Ollama has no models installed yet, and the list has none that would run here.',
+      groupInstalled: 'Models you have installed',
+      groupAvailable: "Models you don't have yet (downloaded first)",
+      optionInstalled: (name: string, display?: string) => (display ? `${display} (${name})` : name),
+      optionAvailable: (display: string, size: string) => `${display} — ${size} download`,
+      tooBig: (n: number) =>
+        n === 1
+          ? 'One more model in the list would not fit this computer, so it is not offered.'
+          : `${n} more models in the list would not fit this computer, so they are not offered.`,
+      needsDownload: (size: string) => `Not on this computer yet. Testing it downloads it first: ${size}.`,
+      fitLabel: 'How it should fit',
+      downloadAndRun: (size: string) => `Download ${size}, then run the test`,
+      downloading: 'Downloading the model',
+      downloadCancel: 'Stop the download',
+      downloadStopping: 'Stopping…',
+      downloadFailed: (message: string) => `The download did not finish: ${message}`,
+      downloadCancelled: 'The download was stopped. Nothing was tested.',
+      downloadOther: (name: string) => `Another download is running (${name}); this one can start when it is done.`,
+      downloaded: 'Downloaded. Working out the test…',
+      startingTest: 'Starting the test: freeing memory, then loading the model — loading can take a minute.',
       model: 'Model',
       context: 'How much text it keeps in mind',
       contextHelp: 'More lets it read longer documents, and needs more memory.',
@@ -458,9 +499,6 @@ export const en = {
       loading: 'Working out what fits this computer…',
       failed: (message: string) => `The advisor could not work out its recommendations: ${message}`,
       empty: 'Nothing in the catalogue fits this computer yet.',
-      fetchList: 'Fetch the model list (about 10 MB)',
-      fetching: 'Fetching the model list from Hugging Face… this takes a minute or two.',
-      fetchFailed: (message: string) => `The model list could not be fetched: ${message}`,
       listLabel: 'Recommended models, best first',
       speed: 'Speed',
       noSpeed: 'no estimate yet',

@@ -96,6 +96,12 @@ type Size struct {
 	// where public benchmark results for this size live (build-plan step 9b)
 	// and whose creation date is the size's release date.
 	HFBaseRepo string `yaml:"hf_base_repo" json:"hf_base_repo"`
+	// HFBaseSameAs are other repo names a GGUF repo's card may give as its
+	// base_model for the SAME original weights — a repo the maker renamed
+	// (Hugging Face redirects the old name), or the maker's BF16 copy of an
+	// FP8 release. They only quiet the curator's base-model check; public
+	// scores are still read from HFBaseRepo alone.
+	HFBaseSameAs []string `yaml:"hf_base_same_as,omitempty" json:"hf_base_same_as,omitempty"`
 	// OllamaQuant is the quant OllamaTag pulls, read by hand from the Ollama
 	// library page; "" means the usual default (recommend.Config.DefaultQuants).
 	OllamaQuant string `yaml:"ollama_quant,omitempty" json:"ollama_quant,omitempty"`

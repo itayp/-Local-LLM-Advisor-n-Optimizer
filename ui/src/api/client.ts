@@ -3,6 +3,7 @@ import type {
   BackendsResponse,
   BackendStartResponse,
   BenchHistory,
+  BenchModelsResponse,
   BenchPlan,
   BenchProgress,
   BenchRequest,
@@ -11,6 +12,7 @@ import type {
   InstalledModelsResponse,
   CatalogRefreshReport,
   CatalogResponse,
+  CatalogStatus,
   HardwareHistory,
   HardwareResponse,
   Health,
@@ -75,6 +77,8 @@ export const api = {
   catalog: (signal?: AbortSignal) => get<CatalogResponse>('/catalog', signal),
   /** Installed models the catalogue does not know (the curator's list). */
   catalogUnknown: (signal?: AbortSignal) => get<UnknownInstalledResponse>('/catalog/unknown', signal),
+  /** Has the model list been fetched; a running fetch's progress; the public scores' one sentence. */
+  catalogStatus: (signal?: AbortSignal) => get<CatalogStatus>('/catalog/status', signal),
   /** Resolve the catalogue against Hugging Face (metadata only, no weights). 409 while one runs. */
   refreshCatalog: (signal?: AbortSignal) => send<CatalogRefreshReport>('POST', '/catalog/refresh', signal),
   /** At most three recommendations for this machine and these purposes (none = everyday chat). */
@@ -87,6 +91,10 @@ export const api = {
   modelDetail: (modelId: number, signal?: AbortSignal) => get<ModelDetailResponse>(`/models/${modelId}/detail`, signal),
   /** What Ollama has installed, as the daemon last read it. */
   installedModels: (signal?: AbortSignal) => get<InstalledModelsResponse>('/models/installed', signal),
+  /** What can be tested: installed models, and what the list has that is not installed and would run here. */
+  benchModels: (signal?: AbortSignal) => get<BenchModelsResponse>('/bench/models', signal),
+  /** A test's progress as one answer — the fallback when the event stream does not arrive. */
+  benchProgress: (id: number, signal?: AbortSignal) => get<BenchProgress>(`/bench/${id}/progress`, signal),
   /** What a test would do: the prompts that fit, how long it takes, and whether it is refused. Loads nothing. */
   benchPlan: (req: BenchRequest, signal?: AbortSignal) => get<BenchPlan>(`/bench/plan?${benchQuery(req)}`, signal),
   /** Start a test. 409 while one runs, or (code would_spill) for a configuration that would spill — unless measure_anyway. */
@@ -97,21 +105,55 @@ export const api = {
   benchHistory: (signal?: AbortSignal) => get<BenchHistory>('/bench/history', signal),
   /**
    * Follow a test as it runs: GET /api/bench/{id} as server-sent events.
-   * onProgress sees every event; the last has a finished status. Returns
-   * the function that stops following (the test itself runs on).
+   * onProgress sees every event; the last has a finished status. If the
+   * stream brings nothing for a few seconds (something between the browser
+   * and the daemon holding it back — seen on Windows) or breaks, the
+   * progress is polled instead, so the screen never sits still. Returns the
+   * function that stops following (the test itself runs on).
    */
   followBench: (id: number, onProgress: (p: BenchProgress) => void, onError?: () => void): (() => void) => {
+    let stopped = false
+    let heard = false
+    let poll: number | undefined
     const es = new EventSource(`${base}/bench/${id}`)
-    es.addEventListener('progress', (ev) => {
-      const p = JSON.parse((ev as MessageEvent<string>).data) as BenchProgress
+    const finished = (p: BenchProgress) => p.status !== 'running' && p.status !== 'queued'
+    const deliver = (p: BenchProgress) => {
+      if (stopped) return
       onProgress(p)
-      if (p.status !== 'running' && p.status !== 'queued') es.close()
+      if (finished(p)) stop()
+    }
+    const startPolling = () => {
+      if (stopped || poll !== undefined) return
+      const tick = () => {
+        api
+          .benchProgress(id)
+          .then(deliver)
+          .catch(() => {
+            stop()
+            onError?.()
+          })
+      }
+      tick()
+      poll = window.setInterval(tick, pollEvery)
+    }
+    const quiet = window.setTimeout(() => {
+      if (!heard) startPolling()
+    }, streamQuietFor)
+    function stop() {
+      stopped = true
+      es.close()
+      window.clearTimeout(quiet)
+      if (poll !== undefined) window.clearInterval(poll)
+    }
+    es.addEventListener('progress', (ev) => {
+      heard = true
+      deliver(JSON.parse((ev as MessageEvent<string>).data) as BenchProgress)
     })
     es.onerror = () => {
       es.close()
-      onError?.()
+      startPolling()
     }
-    return () => es.close()
+    return stop
   },
 
   /** Whether the first-run flow (build-plan step 7) has been completed. */
@@ -153,6 +195,10 @@ export const api = {
   removeModel: (backendName: string, name: string, signal?: AbortSignal) =>
     send<InstalledModelsResponse>('POST', `/backends/${encodeURIComponent(backendName)}/models/remove`, signal, { name }),
 }
+
+/** How long a silent event stream is waited for before polling instead, and how often a poll asks. */
+const streamQuietFor = 4000
+const pollEvery = 1500
 
 function benchQuery(req: BenchRequest): string {
   const q = new URLSearchParams({ model: req.model })

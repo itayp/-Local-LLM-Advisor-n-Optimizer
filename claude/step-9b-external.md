@@ -1,11 +1,13 @@
 # Step 9b: external benchmark ingestion and the public/local split — open
 
-**Status (2026-09-24): built and green here; the gate is not run yet.**
-Everything in `research/EXTERNAL_SOURCES.md`'s build list for 9b exists and
-passes `make check` and `make test` (Go with the UI embedded, and 85 UI
-tests). What only a fleet machine can do is still owed, because the session
-that built it could not reach any of the three sources (see "What the gate
-still needs"). ARCHITECTURE.md D-53 is the record.
+**Status (2026-09-24, evening): the gate has run once and failed on
+coverage; fixed, and waiting for the second run.** The first
+`scripts/verify.command` on the M1 Pro (20:58) was all green as code but
+stored no public value at all — 0 of the curated sizes on each source. The
+causes and fixes are below ("First gate run") and in ARCHITECTURE.md D-54.
+The same session fixed what Itay found testing on Windows (the model list
+limbo, the Benchmarks picker, waits with nothing moving). `make check` and
+`make test` pass (Go with the UI embedded; 94 UI tests).
 
 ## What exists
 
@@ -71,26 +73,78 @@ still needs"). ARCHITECTURE.md D-53 is the record.
 - **The card's line is the API's, not the engine's**: the engine scores;
   the server picks the line from the same `View`.
 
+## First gate run (verify.log, 2026-09-24 20:58) — what it showed, what changed
+
+- **Hugging Face Eval Results, 0 of 22.** The real task ids are `diamond`
+  (GPQA), `hle` (HLE) and `swe_bench_%_resolved` (SWE-bench Verified) —
+  huggingface_hub's docs had `gpqa_diamond` / `default`. Fixed in
+  external.yaml; MMMU-Pro vision added (merged into the Gemma 4 26B/31B
+  repos). Almost everything else is in open pull requests (222 results),
+  which D-53 does not read: **a product decision for Itay**, not changed.
+  The Hub's own `{"filename", "error"}` entries (Nemotron's unparsable
+  files) are now reported in the Hub's words.
+- **Arena, 0 of 22.** Every board failed part-way with HTTP 500 "the dataset
+  index is loading". A 500 is now retried (a "loading" one after 5 s, then
+  10, 20), and a source read in part is due again at the next refresh, not
+  in 24 hours. Aliases added for every curated name seen in the rows read
+  (Gemma 4 31B and 26B, Qwen3.8 27B, GLM-4.7-Flash, Nemotron 3 Nano); the
+  Llama and gpt-oss names are below row 200 and still unconfirmed.
+- **Epoch, 0 of 22.** aliases.yaml had no Epoch entries. Added for every
+  curated size Epoch ran (thinking-on runs; gpt-oss at medium), with the
+  near misses listed as deliberately not mapped. OTIS mock AIME added as a
+  second reasoning metric.
+- **Base-model warnings** for Ministral 3 and Llama 3.1 were the same
+  weights under another name: `hf_base_same_as` in families.yaml.
+- **Fixtures** are now cut from `.captures/external/` (the testdata README
+  says which two cases are still shaped).
+- Replaying the captured answers through the new configuration: public
+  values for 9 sizes (Epoch for all nine, the Hub for three), before Arena
+  is read whole.
+
+## Also fixed this session (Itay, testing on Windows)
+
+- **No dead end without the model list.** `GET /api/catalog/status`, and
+  one component on Recommend, Benchmarks, Models and onboarding that offers
+  "Get the model list (a few MB of descriptions, no models)" whenever the
+  list was never fetched — whatever else the machine has — and shows the
+  fetch's progress (step 1 of 2 the list, step 2 of 2 the public scores,
+  parts done, what is being read, seconds so far). Recommend keeps a quiet
+  "fetched on … · get it again" line. The detail view offers the fetch when
+  public scores were never read (the Windows symptom behind "Public scores
+  have not been fetched yet").
+- **Benchmarks offers every model.** `GET /api/bench/models`: "Models you
+  have installed", then "Models you don't have yet (downloaded first)" —
+  the list's sizes that would run here, with their download size. For one
+  of those, the button is "Download 6.4 GB, then run the test": it shows
+  the download, then starts the test by itself unless the plan refuses it.
+  "Test it on this computer" (Recommend cards, the detail view) opens
+  Benchmarks with that model picked (`?model=`).
+- **Every wait moves.** An indeterminate bar and the seconds so far for
+  loading and planning; a test shows its progress from the click (onboarding's
+  "Try it" no longer shows its button again between the click and the first
+  event); and if the progress stream is held back (seen on Windows), the
+  screen polls `GET /api/bench/{id}/progress` instead.
+
 ## What the gate still needs (on the M1 Pro, through `scripts/verify.command`)
 
-1. **Real fixtures.** verify.command now saves every answer the sources give
-   to `.captures/external/` (gitignored). The next session cuts fixtures
-   from those (small: one repo's model-info answer, one `/splits`, one
-   `/filter` page, a few rows of one Epoch CSV — never the whole ZIP),
-   replaces `internal/catalog/external/testdata/`'s shaped ones, and fixes
-   whatever shape differs. The README there says which files are shaped.
-2. **The coverage report** it prints — each source's hits and misses across
-   the curated sizes — confirms or corrects every "unconfirmed" metric id,
-   Arena category and Epoch file name in `external.yaml`, and every alias in
-   `aliases.yaml` (a wrong one shows as "aliases the source never answered
-   with"; the candidates list shows the right names). If Epoch covers no
-   curated size, switch it off in `external.yaml` and say why there.
-3. **The done-when:** `advisor recommend -purposes chat -detail` (the last
-   step of verify.command) shows the top pick's public value with its source
-   and date and, apart, this Mac's measured speed from the step 6 run — the
-   same thing the Recommend card and the detail view show in the UI. Itay
-   also reads the recommendations with public scores on (the note: re-read
-   `advisor recommend` on each fleet machine) and says whether ±15% is right.
+1. **The second coverage report.** Run verify.command again. Expected:
+   Hugging Face hits for GLM-4.7-Flash and the Gemma 4 26B/31B; Epoch for
+   the nine sizes above; Arena — if the dataset viewer has finished loading
+   — the aliased sizes on each board, and "aliases the source never
+   answered with" confirming or removing the Llama and gpt-oss names.
+2. **The done-when (unchanged):** `advisor recommend -purposes chat -detail`
+   shows the top pick's public value with its source and date and, apart,
+   this Mac's measured speed. Note the top pick for chat on the M1 Pro was
+   Ministral 3 8B, which no approved source covers yet — the detail block
+   will honestly say "no public scores for this size yet"; the gate is met
+   by any recommended size that has one (Gemma 4, Qwen3.5 9B, Llama 3.1 8B
+   for reasoning). Itay reads the recommendations with public scores on and
+   says whether ±15% is right.
+3. **Itay's decision:** keep ignoring Hugging Face results in open pull
+   requests (the D-53 rule), or read them labelled as unreviewed.
+4. **On Windows:** the fetch button, its progress, and the download-then-test
+   flow on a real machine; and whether the test's progress arrives (stream or
+   polling).
 
 ## Carried forward
 

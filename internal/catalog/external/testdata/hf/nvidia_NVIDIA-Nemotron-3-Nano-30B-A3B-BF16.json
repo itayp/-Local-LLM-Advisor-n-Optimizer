@@ -1,0 +1,75 @@
+{
+ "_id": "693101e726c69e7dca6b650d",
+ "id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+ "evalResults": [
+  {
+   "filename": ".eval_results/gpqa.yaml",
+   "error": "✖ Invalid input: expected string, received undefined\n  → at [0].dataset.task_id"
+  },
+  {
+   "filename": ".eval_results/hle.yaml",
+   "error": "✖ Invalid input: expected string, received undefined\n  → at [0].dataset.task_id"
+  },
+  {
+   "filename": ".eval_results/mmlu-pro.yaml",
+   "error": "✖ Invalid input: expected string, received undefined\n  → at [0].dataset.task_id"
+  },
+  {
+   "filename": ".eval_results/nvidia-NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.yaml",
+   "verified": false,
+   "data": {
+    "dataset": {
+     "id": "LiquidAI/ifstruct-v1.0",
+     "task_id": "ifstruct_v1"
+    },
+    "value": 86.8,
+    "date": "2026-06-30",
+    "source": {
+     "url": "https://www.liquid.ai/blog/ifstruct-v1.0",
+     "name": "Liquid AI — IFStruct v1.0 blog (Nemotron-3-Nano-30B-A3B)"
+    }
+   },
+   "pullRequest": 66
+  }
+ ],
+ "cardData": {
+  "library_name": "transformers",
+  "license": "other",
+  "license_name": "nvidia-nemotron-open-model-license",
+  "license_link": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/",
+  "pipeline_tag": "text-generation",
+  "language": [
+   "en",
+   "es",
+   "fr",
+   "de",
+   "ja",
+   "it"
+  ],
+  "tags": [
+   "nvidia",
+   "pytorch"
+  ],
+  "datasets": [
+   "nvidia/Nemotron-Pretraining-Code-v1",
+   "nvidia/Nemotron-CC-v2",
+   "nvidia/Nemotron-Pretraining-SFT-v1",
+   "nvidia/Nemotron-CC-Math-v1",
+   "nvidia/Nemotron-Pretraining-Code-v2",
+   "nvidia/Nemotron-Pretraining-Specialized-v1",
+   "nvidia/Nemotron-CC-v2.1",
+   "nvidia/Nemotron-CC-Code-v1",
+   "nvidia/Nemotron-Pretraining-Dataset-sample",
+   "nvidia/Nemotron-Competitive-Programming-v1",
+   "nvidia/Nemotron-Math-v2",
+   "nvidia/Nemotron-Agentic-v1",
+   "nvidia/Nemotron-Math-Proofs-v1",
+   "nvidia/Nemotron-Instruction-Following-Chat-v1",
+   "nvidia/Nemotron-Science-v1",
+   "nvidia/Nemotron-3-Nano-RL-Training-Blend"
+  ],
+  "track_downloads": true
+ },
+ "lastModified": "2026-08-24T23:50:04.000Z",
+ "createdAt": "2025-12-04T03:37:11.000Z"
+}

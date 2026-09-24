@@ -5,6 +5,7 @@ import type {
   BackendInfo,
   BenchProgress,
   BenchRun,
+  CatalogStatus,
   ChatAppsResponse,
   HardwareResponse,
   PullStatus,
@@ -74,6 +75,10 @@ function hardware(): HardwareResponse {
 
 function backendRunning(): BackendInfo {
   return { name: 'ollama', state: 'running', version: '0.34.2', host: 'http://127.0.0.1:11434', checked_at: '2026-09-19T09:00:00Z' }
+}
+
+function catalogStatus(over: Partial<CatalogStatus> = {}): CatalogStatus {
+  return { fetched: true, running: false, public_fetched: true, public_updated: 'Public scores last updated 24 September 2026.', ...over }
 }
 
 function recommendation(over: Partial<Recommendation> = {}): Recommendation {
@@ -265,6 +270,7 @@ describe('Onboarding: welcome to a measured number, unhelped', () => {
         if (url === '/api/bench' && method === 'POST') return json(benchRun(), 202)
         if (url === '/api/chatapps') return json(chatApps())
         if (url === '/api/onboarding/complete' && method === 'POST') return json({ completed: true, completed_at: '2026-09-19T12:05:00Z' })
+        if (url === '/api/catalog/status') return json(catalogStatus())
         pullCalls.push(url)
         return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
       }),
@@ -298,6 +304,11 @@ describe('Onboarding: welcome to a measured number, unhelped', () => {
     // 6. Getting it is skipped for an already-installed model — straight to 7. Try it.
     expect(await screen.findByRole('heading', { name: en.onboarding.tryit.title })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: en.onboarding.tryit.run }))
+    // From the click on, something visibly happens — before the first event
+    // arrives, and the button does not come back meanwhile.
+    expect(await screen.findByText(en.screens.benchmarks.startingTest)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: en.screens.benchmarks.progressLabel })).not.toHaveAttribute('value')
+    expect(screen.queryByRole('button', { name: en.onboarding.tryit.run })).not.toBeInTheDocument()
 
     await waitFor(() => expect(FakeEventSource.last).not.toBeNull())
     FakeEventSource.last?.push({
@@ -410,40 +421,61 @@ describe('Recommendations', () => {
     expect(line.querySelector('.figure')).toBeNull()
   })
 
-  it('offers to fetch the model list when the catalogue is empty, then asks again (no dead end on first run)', async () => {
+  it('offers to fetch the model list when it was never fetched, shows the fetch as it goes, then asks again (no dead end on first run)', async () => {
     const user = userEvent.setup()
     const calls: { url: string; method: string }[] = []
-    let refreshed = false
+    let phase: 'never' | 'running' | 'fetched' = 'never'
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         const method = init?.method ?? 'GET'
         calls.push({ url, method })
         if (url.startsWith('/api/recommend')) {
-          return refreshed
+          return phase === 'fetched'
             ? json(recommendResult())
             : json(
                 recommendResult({
                   recommendations: [],
-                  empty: 'Nothing in the catalogue fits this computer yet.',
+                  empty: 'The list of models has not been fetched yet, so there is nothing to recommend from.',
                   empty_code: 'catalogue_empty',
                 }),
               )
         }
+        if (url === '/api/catalog/status') {
+          if (phase === 'running')
+            return json(
+              catalogStatus({
+                fetched: false,
+                running: true,
+                progress: { phase: 'models', message: 'Reading the description of Gemma 4 E4B', done: 3, total: 9, started_at: new Date().toISOString() },
+              }),
+            )
+          return json(catalogStatus({ fetched: phase === 'fetched' }))
+        }
         if (url === '/api/catalog/refresh' && method === 'POST') {
-          refreshed = true
-          return json({ added: 3, updated: 0, removed: 0 })
+          phase = 'running'
+          await new Promise((r) => setTimeout(r, 400))
+          phase = 'fetched'
+          return json({ sizes: 9, resolved: 9, failures: [], warnings: [], unknown_installed: [] })
         }
         return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
       }),
     )
     render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
 
-    expect(await screen.findByText('Nothing in the catalogue fits this computer yet.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: en.onboarding.recommend.fetchList }))
+    const missing = await screen.findByTestId('model-list-missing')
+    expect(missing).toHaveTextContent(en.modelList.missingTitle)
+    await user.click(within(missing).getByRole('button', { name: en.modelList.fetch }))
 
-    expect(await screen.findByRole('heading', { name: 'Qwen3.5 9B' })).toBeInTheDocument()
+    // While it runs: what it reads now, how far it has got, and a moving bar.
+    const fetching = await screen.findByTestId('model-list-fetching')
+    expect(within(fetching).getByRole('progressbar', { name: en.modelList.progressLabel })).toBeInTheDocument()
+    await waitFor(() => expect(fetching).toHaveTextContent('Reading the description of Gemma 4 E4B'))
+    expect(fetching).toHaveTextContent(en.modelList.phaseModels)
+
+    expect(await screen.findByRole('heading', { name: 'Qwen3.5 9B' }, { timeout: 3000 })).toBeInTheDocument()
     expect(calls.some((c) => c.url === '/api/catalog/refresh' && c.method === 'POST')).toBe(true)
+    expect(screen.queryByTestId('model-list-missing')).not.toBeInTheDocument()
   })
 
   it('reports a failed fetch in words and leaves the button there to try again', async () => {
@@ -456,33 +488,35 @@ describe('Recommendations', () => {
           return json(
             recommendResult({
               recommendations: [],
-              empty: 'Nothing in the catalogue fits this computer yet.',
+              empty: 'The list of models has not been fetched yet.',
               empty_code: 'catalogue_empty',
             }),
           )
+        if (url === '/api/catalog/status') return json(catalogStatus({ fetched: false }))
         if (url === '/api/catalog/refresh' && method === 'POST') return json({ error: { code: 'internal', message: 'no network' } }, 500)
         return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
       }),
     )
     render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
 
-    await user.click(await screen.findByRole('button', { name: en.onboarding.recommend.fetchList }))
+    await user.click(await screen.findByRole('button', { name: en.modelList.fetch }))
     expect(await screen.findByRole('alert')).toHaveTextContent('no network')
-    expect(screen.getByRole('button', { name: en.onboarding.recommend.fetchList })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: en.modelList.fetch })).toBeInTheDocument()
   })
 
-  it('does not offer a fetch button for an empty result that is not the catalogue being empty', async () => {
+  it('offers the fetch whatever else is empty — a list never fetched is never a dead end — and not once it has been', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
         if (url.startsWith('/api/recommend'))
           return json(recommendResult({ recommendations: [], empty: 'Nothing fits this computer.', empty_code: 'nothing_fits' }))
+        if (url === '/api/catalog/status') return json(catalogStatus({ fetched: true }))
         return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
       }),
     )
     render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
     expect(await screen.findByText('Nothing fits this computer.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: en.onboarding.recommend.fetchList })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: en.modelList.fetch })).not.toBeInTheDocument()
   })
 })
 

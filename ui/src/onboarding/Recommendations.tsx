@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
 import { Figure } from '../components/Figure'
+import { ModelList } from '../components/ModelList'
 import { PublicLine } from '../components/PublicFigure'
 import { Term } from '../components/Term'
+import { Working } from '../components/Working'
 import { en } from '../copy/en'
 import { formatDownload } from './format'
 
@@ -37,21 +39,17 @@ export function Recommendations({ purposes, onDownload }: { purposes: Purpose[];
   return (
     <section className="onboarding__step" aria-labelledby="onboarding-title">
       <h1 id="onboarding-title">{c.title}</h1>
+      <ModelList onFetched={() => setAsked((n) => n + 1)} />
       {error ? (
         <p className="notice notice--warning" role="alert">
           {c.failed(error)}
         </p>
       ) : null}
-      {!result && !error ? (
-        <p className="screen__note" role="status">
-          {c.loading}
-        </p>
-      ) : null}
+      {!result && !error ? <Working label={c.loading} /> : null}
       {result ? (
         result.recommendations.length === 0 ? (
           <div className="notice" data-testid="onboarding-recommend-empty">
             <p>{result.empty ?? c.empty}</p>
-            {result.empty_code === 'catalogue_empty' ? <FetchList onDone={() => setAsked((n) => n + 1)} /> : null}
           </div>
         ) : (
           <ol className="cards" aria-label={c.listLabel}>
@@ -64,42 +62,6 @@ export function Recommendations({ purposes, onDownload }: { purposes: Purpose[];
         )
       ) : null}
     </section>
-  )
-}
-
-/**
- * The one thing this step can do besides download a model: fetch the
- * catalogue's model list from Hugging Face when it hasn't been resolved
- * yet (a fresh install, before any /catalog/refresh has run) — without
- * this, an empty catalogue is a dead end on first run. The button says
- * what it does and what it costs (product rule 5); the daemon downloads
- * descriptions only, never model weights.
- */
-function FetchList({ onDone }: { onDone: () => void }) {
-  const [state, setState] = useState<'idle' | 'fetching'>('idle')
-  const [failed, setFailed] = useState<string | null>(null)
-  const fetchList = () => {
-    setState('fetching')
-    setFailed(null)
-    api
-      .refreshCatalog()
-      .then(onDone)
-      .catch((err: unknown) => {
-        setFailed(err instanceof Error ? err.message : String(err))
-        setState('idle')
-      })
-  }
-  return (
-    <>
-      {state === 'fetching' ? (
-        <p role="status">{c.fetching}</p>
-      ) : (
-        <button type="button" className="button" onClick={fetchList}>
-          {c.fetchList}
-        </button>
-      )}
-      {failed ? <p role="alert">{c.fetchFailed(failed)}</p> : null}
-    </>
   )
 }
 
