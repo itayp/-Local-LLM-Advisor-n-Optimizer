@@ -141,6 +141,7 @@ func (s *Server) routes() {
 	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
 	s.api("GET /api/recommend", s.handleRecommend)
 	s.api("GET /api/models/{id}/fit", s.handleModelFit)
+	s.api("GET /api/models/{id}/detail", s.handleModelDetail) // step 9b: public data and this machine, side by side, apart
 	s.api("POST /api/bench", s.handleBenchStart)
 	s.api("GET /api/bench/{id}", s.handleBenchRun)
 	s.api("POST /api/bench/{id}/cancel", s.handleBenchCancel)

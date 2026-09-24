@@ -711,3 +711,78 @@ body {
   align-items: baseline;
   gap: 12px;
 }
+
+/* Public data (step 9b): the third kind of number — someone else's result
+   about a model, not a number about this computer. Its own look, never
+   either figure treatment: no colour of its own for the number, a rule on
+   the left, the words first and the origin beneath (P-1, P-4). */
+.public-figure {
+  border-left: 3px solid var(--line);
+  padding: 2px 0 2px 12px;
+  margin: 8px 0;
+}
+
+.public-figure__position {
+  margin: 0;
+  font-style: italic;
+}
+
+.public-figure__origin,
+.public-figure__note {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.public-figure__attribution {
+  font-size: 13px;
+}
+
+.public-figure__detail {
+  margin: 8px 0 0;
+  font-size: 14px;
+  display: grid;
+  gap: 2px;
+}
+
+.public-figure__detail div {
+  display: grid;
+  grid-template-columns: 14em 1fr;
+  gap: 12px;
+}
+
+.public-figure__detail dt {
+  color: var(--muted);
+}
+
+.public-figure__detail dd {
+  margin: 0;
+}
+
+.card__public {
+  margin-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+/* The model detail view: two blocks, titled apart, never one table. */
+.detail-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.detail-block {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.detail-block h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.detail-block--public {
+  background: var(--accent-bg);
+}

@@ -79,17 +79,20 @@ func (e *Engine) card(c candidate, pl estimate.Placement, m estimate.Machine, pu
 	model := c.entry.Model
 	model.Files = []catalog.File{} // the card carries the one file it recommends
 	r := Recommendation{
-		FamilyID:      c.entry.FamilyID,
-		DisplayName:   displayName(c.entry),
-		Model:         model,
-		File:          c.file,
-		PullName:      c.entry.Model.Size.OllamaTag,
-		NumCtx:        c.ctx,
-		Estimate:      c.est,
-		Installed:     c.installed,
-		Speed:         c.est.Speed.Generation,
-		Score:         round3(c.score),
-		Factors:       Factors{round3(c.factors.Purpose), round3(c.factors.Fit), round3(c.factors.Speed), round3(c.factors.Size)},
+		FamilyID:    c.entry.FamilyID,
+		DisplayName: displayName(c.entry),
+		Model:       model,
+		File:        c.file,
+		PullName:    c.entry.Model.Size.OllamaTag,
+		NumCtx:      c.ctx,
+		Estimate:    c.est,
+		Installed:   c.installed,
+		Speed:       c.est.Speed.Generation,
+		Score:       round3(c.score),
+		Factors: Factors{
+			Purpose: round3(c.factors.Purpose), Fit: round3(c.factors.Fit), Speed: round3(c.factors.Speed),
+			Size: round3(c.factors.Size), Public: round3(c.factors.Public),
+		},
 		VersusCurrent: versus,
 	}
 	if !c.installed {
@@ -122,8 +125,10 @@ func (e *Engine) card(c candidate, pl estimate.Placement, m estimate.Machine, pu
 	return r
 }
 
-// displayName is the family's name with the size a person would say:
+// DisplayName is the family's name with the size a person would say:
 // "Qwen3.5 9B", "Gemma 4 E4B", "GLM-4.7-Flash".
+func DisplayName(entry Entry) string { return displayName(entry) }
+
 func displayName(entry Entry) string {
 	name := entry.DisplayName
 	if name == "" {

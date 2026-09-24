@@ -3,6 +3,7 @@ import { en } from '../copy/en'
 import { Benchmarks } from './Benchmarks'
 import { Computer } from './Computer'
 import { Home } from './Home'
+import { ModelDetail } from './ModelDetail'
 import { Models } from './Models'
 import { Ollama } from './Ollama'
 import { Recommend } from './Recommend'
@@ -27,6 +28,8 @@ export interface Screen {
   path: string
   label: string
   Component: ComponentType
+  /** A screen reached from another one (a model's detail view), not from the navigation. */
+  hidden?: boolean
 }
 
 export const screens: readonly Screen[] = [
@@ -34,6 +37,7 @@ export const screens: readonly Screen[] = [
   { path: '/computer', label: en.nav.computer, Component: Computer },
   { path: '/ollama', label: en.nav.ollama, Component: Ollama },
   { path: '/models', label: en.nav.models, Component: Models },
+  { path: '/models/:id', label: en.nav.modelDetail, Component: ModelDetail, hidden: true },
   { path: '/recommend', label: en.nav.recommend, Component: Recommend },
   { path: '/benchmarks', label: en.nav.benchmarks, Component: Benchmarks },
   { path: '/watch', label: en.nav.watch, Component: Watch },

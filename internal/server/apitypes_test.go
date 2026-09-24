@@ -17,3 +17,13 @@ func TestEveryUserFacingNumberHasASource(t *testing.T) {
 			len(problems), strings.Join(problems, "\n  "))
 	}
 }
+
+// TestPublicAndLocalNeverShareAStruct is the display rule's first half as a
+// build gate (research/EXTERNAL_SOURCES.md P-2): no API struct holds a
+// public value (figure.Public) beside an estimate or a measurement
+// (figure.Bytes, figure.Rate); they sit in sibling sub-objects.
+func TestPublicAndLocalNeverShareAStruct(t *testing.T) {
+	if problems := figure.CheckSeparation(APITypes()...); len(problems) > 0 {
+		t.Fatalf("%d API struct(s) mix public and local numbers:\n  %s", len(problems), strings.Join(problems, "\n  "))
+	}
+}

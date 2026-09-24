@@ -79,7 +79,7 @@ function fitResponse(category: FitCategory, speed?: Rate): ModelFitResponse {
   return {
     family_id: 'llama3.2',
     display_name: 'Llama 3.2 3B',
-    model: { id: 4, family_id: 'llama3.2', size: { parameters: 3e9, context_length: 131072, ollama_tag: 'llama3.2:3b', hf_repo: 'bartowski/x' }, present: true, parameters_counted: 0, files: [] },
+    model: { id: 4, family_id: 'llama3.2', size: { parameters: 3e9, context_length: 131072, ollama_tag: 'llama3.2:3b', hf_repo: 'bartowski/x', hf_base_repo: 'base/x' }, present: true, parameters_counted: 0, files: [] },
     num_ctx: 4096,
     num_ctx_source: 'ollama_default',
     kv_cache_type: 'f16',

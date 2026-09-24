@@ -4,6 +4,7 @@ import (
 	"advisor/internal/backend"
 	"advisor/internal/bench"
 	"advisor/internal/catalog"
+	"advisor/internal/catalog/external"
 	"advisor/internal/catalog/refresh"
 	"advisor/internal/chatapps"
 	"advisor/internal/estimate"
@@ -34,7 +35,10 @@ func APITypes() []any {
 		catalog.Family{},
 		catalog.Model{},
 		catalog.File{},
-		catalog.External{},
+		catalog.PublicEntry{}, // step 9b; catalog.External is the stored row, never served
+		external.Report{},
+		ModelDetailResponse{},
+		PublicBlock{},
 		estimate.Estimate{},
 		recommend.Result{},
 		recommend.Preferences{},

@@ -24,7 +24,11 @@ import (
 // `advisor catalog`, it is never the customer's tool: theirs is the
 // Recommend screen, which shows the same answer.
 //
-//	advisor recommend [-port N] [-purposes chat,coding] [-current NAME]
+//	advisor recommend [-port N] [-purposes chat,coding] [-current NAME] [-detail]
+//
+// -detail also prints the top pick's detail view (GET /api/models/{id}/detail,
+// build-plan step 9b's gate): its public data and this machine's numbers, as
+// the two separate blocks the screen shows.
 
 func isRecommendCommand(args []string) bool { return len(args) > 1 && args[1] == "recommend" }
 
@@ -34,6 +38,7 @@ func runRecommend(args []string, stdout, stderr io.Writer) int {
 	port := fs.Int("port", server.DefaultPort, "the port the running daemon listens on, on 127.0.0.1")
 	purposes := fs.String("purposes", "chat", "what the model is for, comma-separated: coding, chat, reasoning, long_context, vision, agentic, writing")
 	current := fs.String("current", "", "the installed model to compare with (default: the one that serves the purposes best)")
+	detail := fs.Bool("detail", false, "also print the top pick's detail view: public data and this machine, apart")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -65,7 +70,48 @@ func runRecommend(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	printRecommendations(stdout, res)
+	if *detail && len(res.Recommendations) > 0 {
+		id := res.Recommendations[0].Model.ID
+		u := "http://" + server.LoopbackHost + ":" + strconv.Itoa(*port) + "/api/models/" + strconv.FormatInt(id, 10) + "/detail"
+		dresp, err := client.Get(u)
+		if err != nil {
+			fmt.Fprintf(stderr, "advisor recommend: %v\n", err)
+			return 1
+		}
+		defer dresp.Body.Close()
+		var d server.ModelDetailResponse
+		if dresp.StatusCode != http.StatusOK || json.NewDecoder(dresp.Body).Decode(&d) != nil {
+			fmt.Fprintf(stderr, "advisor recommend: GET %s answered %s\n", u, dresp.Status)
+			return 1
+		}
+		printDetail(stdout, d)
+	}
 	return 0
+}
+
+// printDetail is the detail view as text: the two blocks, apart.
+func printDetail(w io.Writer, d server.ModelDetailResponse) {
+	fmt.Fprintf(w, "\n%s (%s) — detail\n", d.Name, d.PullName)
+	fmt.Fprintf(w, "  Public data — how others rated this model\n")
+	if len(d.Public.Entries) == 0 {
+		fmt.Fprintf(w, "    no public scores for this size yet\n")
+	}
+	for _, e := range d.Public.Entries {
+		o := e.Value.Origin
+		fmt.Fprintf(w, "    - %s\n      %s — %s. %s, %s. %s\n", e.Position, e.Tests, e.ProvenanceWords, o.Publisher, o.Date, o.Attribution)
+	}
+	fmt.Fprintf(w, "    %s\n", d.Public.Updated)
+	fmt.Fprintf(w, "  Your machine — estimated or measured here (context %d)\n", d.Local.NumCtx)
+	for _, f := range d.Local.Fits {
+		if !f.Default {
+			continue
+		}
+		speed := "no speed estimate"
+		if g := f.Estimate.Speed.Generation; g != nil {
+			speed = rate(*g)
+		}
+		fmt.Fprintf(w, "    %s: %s · needs %s · %s\n", f.File.Quant, f.Estimate.Category, gib(f.Estimate.Memory.Total), speed)
+	}
 }
 
 func printRecommendations(w io.Writer, res recommend.Result) {
@@ -105,6 +151,17 @@ func printRecommendations(w io.Writer, res recommend.Result) {
 		fmt.Fprintf(w, "   confidence: %s\n", r.ConfidenceWhy)
 		for _, n := range e.Notes {
 			fmt.Fprintf(w, "   note: %s\n", n)
+		}
+		if p := r.Public; p != nil {
+			// Public data: someone else's result about the model, apart from
+			// the reasons and never beside a local number (step 9b).
+			o := p.Value.Origin
+			fmt.Fprintf(w, "   public data: %s\n     %s — %s. %s, %s. %s\n", p.Position, p.Tests, p.ProvenanceWords, o.Publisher, o.Date, o.Attribution)
+		} else {
+			fmt.Fprintf(w, "   public data: none for this size and purpose\n")
+		}
+		if r.Factors.Public != 0 && r.Factors.Public != 1 {
+			fmt.Fprintf(w, "   public scores moved the purpose term ×%.3f\n", r.Factors.Public)
 		}
 	}
 }

@@ -19,8 +19,10 @@ describe('the shell', () => {
     renderAt('/')
     const nav = screen.getByRole('navigation', { name: 'Main' })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(screens.map((s) => s.label))
-    expect(links.map((l) => l.getAttribute('href'))).toEqual(screens.map((s) => s.path))
+    // A screen reached from another one (a model's detail view) is routed, not listed.
+    const listed = screens.filter((s) => !s.hidden)
+    expect(links.map((l) => l.textContent)).toEqual(listed.map((s) => s.label))
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(listed.map((s) => s.path))
   })
 
   it.each(screens.map((s) => [s.label, s.path]))('shows the %s screen at %s', (label, path) => {

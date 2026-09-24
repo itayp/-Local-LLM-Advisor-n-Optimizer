@@ -1,0 +1,61 @@
+{
+  "_id": "67c1a2b3c4d5e6f708192a3b",
+  "id": "Qwen/Qwen3.5-9B",
+  "createdAt": "2026-03-02T09:14:27.000Z",
+  "lastModified": "2026-06-11T16:40:03.000Z",
+  "cardData": {
+    "license": "apache-2.0",
+    "pipeline_tag": "image-text-to-text"
+  },
+  "evalResults": [
+    {
+      "filename": ".eval_results/gpqa.yaml",
+      "verified": false,
+      "data": {
+        "dataset": {"id": "Idavidrein/gpqa", "task_id": "gpqa_diamond"},
+        "value": 81.7,
+        "date": "2026-03-02T00:00:00Z",
+        "source": {"url": "https://huggingface.co/Qwen/Qwen3.5-9B", "name": "Model card"}
+      }
+    },
+    {
+      "filename": ".eval_results/mmlu_pro.yaml",
+      "verified": false,
+      "pullRequest": 14,
+      "data": {
+        "dataset": {"id": "TIGER-Lab/MMLU-Pro", "task_id": "mmlu_pro"},
+        "value": 0.772,
+        "source": {"url": "https://huggingface.co/Qwen/Qwen3.5-9B", "name": "Model card", "user": "hf-staff"}
+      }
+    },
+    {
+      "filename": ".eval_results/hle.yaml",
+      "verified": true,
+      "data": {
+        "dataset": {"id": "cais/hle", "task_id": "default"},
+        "value": 12.4,
+        "date": "2026-04-18T12:00:00Z",
+        "verifyToken": "eyJhbGciOiJIUzI1NiJ9.chosen.fixture",
+        "source": {"url": "https://huggingface.co/spaces/example/hle-runs", "name": "Eval logs"}
+      }
+    },
+    {
+      "filename": ".eval_results/aa.yaml",
+      "verified": false,
+      "data": {
+        "dataset": {"id": "SWE-bench/SWE-bench_Verified", "task_id": "default"},
+        "value": 38.0,
+        "date": "2026-05-01",
+        "source": {"url": "https://artificialanalysis.ai/models/qwen3-5-9b", "name": "Artificial Analysis"}
+      }
+    },
+    {
+      "dataset": {"id": "openai/gsm8k", "task_id": "main"},
+      "value": 0.93
+    },
+    {
+      "dataset": {"id": "cais/hle", "task_id": "default"},
+      "value": "not a number"
+    }
+  ]
+}

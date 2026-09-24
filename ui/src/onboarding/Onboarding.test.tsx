@@ -19,6 +19,7 @@ import { OnboardingGate } from './OnboardingGate'
 import { OllamaStep } from './OllamaStep'
 import { Purposes } from './Purposes'
 import { Recommendations } from './Recommendations'
+import { publicEntry } from '../test/publicFixtures'
 
 function health() {
   return { version: 'test', os: 'darwin', arch: 'arm64', go_version: 'go1.27.1' }
@@ -82,7 +83,7 @@ function recommendation(over: Partial<Recommendation> = {}): Recommendation {
     model: {
       id: 4,
       family_id: 'qwen3.5',
-      size: { parameters: 9e9, context_length: 262144, ollama_tag: 'qwen3.5:9b', hf_repo: 'bartowski/Qwen_Qwen3.5-9B-GGUF' },
+      size: { parameters: 9e9, context_length: 262144, ollama_tag: 'qwen3.5:9b', hf_repo: 'bartowski/Qwen_Qwen3.5-9B-GGUF', hf_base_repo: 'Qwen/Qwen3.5-9B' },
       present: true,
       parameters_counted: 0,
       files: [],
@@ -134,7 +135,7 @@ function recommendation(over: Partial<Recommendation> = {}): Recommendation {
     confidence: 'medium',
     confidence_why: 'Ollama has not run a model on this computer yet.',
     score: 0.5,
-    factors: { purpose: 1, fit: 1, speed: 1, size: 0.5 },
+    factors: { purpose: 1, fit: 1, speed: 1, size: 0.5, public: 1 },
     ...over,
   }
 }
@@ -393,6 +394,22 @@ describe('Purposes', () => {
 })
 
 describe('Recommendations', () => {
+  // Step 8's lesson: onboarding's cards and Recommend's are two components;
+  // what one gains the other needs too. Step 9b's public line is on both.
+  it('shows a card\'s public line, with its source and date, apart from the reasons', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/recommend') ? json(recommendResult({ recommendations: [recommendation({ public: publicEntry() })] })) : json({}, 404),
+      ),
+    )
+    render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
+    const line = await screen.findByTestId('public-line')
+    expect(line).toHaveTextContent('Among the strongest for everyday chat')
+    expect(line).toHaveTextContent('Arena (arena.ai), 15 September 2026.')
+    expect(line.querySelector('.figure')).toBeNull()
+  })
+
   it('offers to fetch the model list when the catalogue is empty, then asks again (no dead end on first run)', async () => {
     const user = userEvent.setup()
     const calls: { url: string; method: string }[] = []

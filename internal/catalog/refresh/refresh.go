@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"advisor/internal/catalog"
+	"advisor/internal/catalog/external"
 	"advisor/internal/catalog/gguf"
 	"advisor/internal/catalog/hf"
 	"advisor/internal/store"
@@ -36,6 +37,18 @@ type Options struct {
 	Trigger   string // who asked: "cli", "api", "watch"
 	// Only, when not empty, limits the refresh to these family ids.
 	Only []string
+	// External, when set, reads the public benchmark sources after the
+	// sizes (build-plan step 9b); nil skips them.
+	External *ExternalOptions
+}
+
+// ExternalOptions is what the public-data part of a refresh needs beyond
+// what the refresh already has.
+type ExternalOptions struct {
+	Config  *external.Config
+	Aliases external.Aliases
+	Fetcher *external.Fetcher // nil: external.NewFetcher over the enabled sources' hosts
+	Force   bool              // read every source now, whatever its cadence
 }
 
 // Report is what a refresh did, for the CLI, the API and catalog_refreshes.
@@ -61,6 +74,11 @@ type Report struct {
 	Warnings []string `json:"warnings"` // resolved, but something the curator should look at
 
 	Unknown []UnknownModel `json:"unknown_installed"` // installed models the catalogue does not know
+
+	// External is the public-data part (build-plan step 9b): what each
+	// approved source hit and missed across the curated sizes, and why a
+	// source failed, in words. Absent when the refresh did not read them.
+	External *external.Report `json:"external,omitempty"`
 }
 
 // SizeFailure is one size that did not resolve, and why, in words.
@@ -148,6 +166,22 @@ sizes:
 		return rep, err
 	}
 	rep.Unknown = unknown
+
+	if o.External != nil {
+		// Public data never fails the refresh: a source that cannot be read
+		// keeps what it stored and says why in its own report.
+		ext, err := external.Run(ctx, external.Options{
+			Catalogue: o.Catalogue, Config: o.External.Config, Aliases: o.External.Aliases, Store: o.Store,
+			Fetcher: o.External.Fetcher, Log: o.Log, Trigger: o.Trigger, Force: o.External.Force, Only: o.Only,
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return rep, ctx.Err()
+			}
+			return rep, fmt.Errorf("refresh: public data: %w", err)
+		}
+		rep.External = &ext
+	}
 
 	after := o.HF.Stats()
 	rep.Requests = after.Requests - before.Requests

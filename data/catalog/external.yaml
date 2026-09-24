@@ -1,0 +1,215 @@
+# The external benchmark sources the advisor may read, and how their metrics
+# map onto the purposes a person picks (build-plan step 9b).
+#
+# This file is DATA, and the ONLY place a source is switched on. Which
+# sources are here, and why every other source is not, is decided in
+# research/EXTERNAL_SOURCES.md (step 9a) and ARCHITECTURE.md D-53; a new
+# source needs a new research note, a client in internal/catalog/external,
+# and its hosts in external.PermittedHosts — this file cannot add a host the
+# code does not already permit. internal/catalog/external loads it strictly
+# (unknown keys are errors); `advisor catalog check` validates it offline.
+#
+# Schema (mirrors external.Config in internal/catalog/external/config.go):
+#
+#   sources:
+#     - id: arena                  # one of the clients the code has: hf_evals | arena | epoch
+#       name: Arena leaderboard dataset      # what the UI and the report call it
+#       publisher: Arena (arena.ai)          # who publishes the values
+#       enabled: true              # false: never requested, its stored values not shown or scored
+#       url: https://...           # the one endpoint the client starts from
+#       hosts: [host, ...]         # every host it may contact, redirects included
+#       terms_url: https://...     # the terms read for step 9a
+#       terms_checked: 2026-09-24  # when a person last read them (step 12 re-reads)
+#       licence: CC-BY-4.0         # what the values are published under
+#       licence_url: https://...
+#       attribution: "..."         # the credit its licence asks for; {date} is the
+#                                  # source's own date, {accessed} the fetch date,
+#                                  # {maker} the repo owner (hf_evals only)
+#       cadence_hours: 24          # the shortest gap between two reads
+#       dataset: owner/name        # arena: the Hugging Face dataset
+#       split: latest              # arena: the split read
+#       external_suffix: _external.csv   # epoch: files whose names end so are other
+#                                  # people's results collected by Epoch, never read
+#       columns: {model: ..., value: ..., ...}  # arena, epoch: the column names read.
+#                                  # A mapped column missing from an answer fails the
+#                                  # source in words; it is never guessed.
+#
+#   excluded_hosts: [...]          # publishers whose numbers are never ingested, even
+#                                  # when they arrive inside an approved source (a Hugging
+#                                  # Face eval result whose source URL is one of these)
+#
+#   metrics:                       # the metric → purpose map. A value whose metric is
+#     - source: arena              # not listed here is stored nowhere and shown nowhere;
+#       metric: arena:text/coding  # the coverage report lists it for the curator.
+#       purposes: [coding]         # catalog.Purpose values it informs
+#       higher_is_better: true
+#       tests: people's votes ...  # what it tested, in plain words (shown under every value)
+#       scale: rating              # rating | percent (a published fraction ≤ 1 is read
+#                                  # as a fraction of 100 when positions are computed)
+#       file: gpqa_diamond.csv     # epoch: the CSV in the ZIP that holds this benchmark
+#       note: ...                  # optional, for the curator
+#
+# Metric names: hf:<benchmark dataset id>/<task id>, arena:<subset>/<category>,
+# epoch:<benchmark>. The first live run's coverage report
+# (`advisor catalog external -report`, printed by scripts/verify.command)
+# lists the metrics, subsets and categories each source actually answered
+# with; entries below marked "unconfirmed" were written before any live
+# response had been read (no network from the session that wrote them) and
+# are confirmed or corrected from that report.
+
+sources:
+  - id: hf_evals
+    name: Hugging Face Eval Results
+    publisher: Hugging Face (each model's own repo)
+    enabled: true
+    url: https://huggingface.co
+    hosts: [huggingface.co]
+    terms_url: https://huggingface.co/terms-of-service
+    terms_checked: 2026-09-24
+    licence: HF-ToS
+    licence_url: https://huggingface.co/terms-of-service
+    attribution: "Reported by {maker} on Hugging Face"
+    cadence_hours: 24
+
+  - id: arena
+    name: Arena leaderboard dataset
+    publisher: Arena (arena.ai)
+    enabled: true
+    url: https://datasets-server.huggingface.co
+    hosts: [datasets-server.huggingface.co]
+    terms_url: https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset
+    terms_checked: 2026-09-24
+    licence: CC-BY-4.0
+    licence_url: https://creativecommons.org/licenses/by/4.0/
+    attribution: "Arena leaderboard dataset (arena.ai), {date}, CC BY 4.0 — position computed by the advisor"
+    cadence_hours: 24
+    dataset: lmarena-ai/leaderboard-dataset
+    split: latest
+    columns:
+      model: model_name
+      licence: license
+      value: rating
+      lower: rating_lower
+      upper: rating_upper
+      votes: vote_count
+      rank: rank
+      category: category
+      date: leaderboard_publish_date
+
+  - id: epoch
+    name: Epoch AI Benchmarking Hub
+    publisher: Epoch AI
+    enabled: true
+    url: https://epoch.ai/data/benchmark_data.zip
+    hosts: [epoch.ai]
+    terms_url: https://epoch.ai/benchmarks/use-this-data
+    terms_checked: 2026-09-24
+    licence: CC-BY-4.0
+    licence_url: https://creativecommons.org/licenses/by/4.0/
+    attribution: "Epoch AI, 'Capabilities & Benchmarking', epoch.ai, accessed {accessed}"
+    cadence_hours: 168
+    external_suffix: _external.csv
+    columns:
+      model: Model version
+      value: Best score (across scorers)
+      date: Started at
+
+excluded_hosts:
+  - artificialanalysis.ai
+  - artificialanalysiscdn.com
+  - openrouter.ai
+  - localscore.ai
+
+metrics:
+  # ---- Hugging Face Eval Results -----------------------------------------
+  - source: hf_evals
+    metric: hf:Idavidrein/gpqa/gpqa_diamond
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: a graduate-level science exam (GPQA Diamond)
+    scale: percent
+    note: The dataset and task id are the ones huggingface_hub 1.32.0's own docs use for this benchmark.
+  - source: hf_evals
+    metric: hf:TIGER-Lab/MMLU-Pro/mmlu_pro
+    purposes: [chat, reasoning]
+    higher_is_better: true
+    tests: a broad knowledge exam across many subjects (MMLU-Pro)
+    scale: percent
+    note: Unconfirmed task id.
+  - source: hf_evals
+    metric: hf:cais/hle/default
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: a very hard exam written by experts (Humanity's Last Exam)
+    scale: percent
+    note: The dataset and task id are the ones huggingface_hub 1.32.0's own docs use for this benchmark.
+  - source: hf_evals
+    metric: hf:SWE-bench/SWE-bench_Verified/default
+    purposes: [coding, agentic]
+    higher_is_better: true
+    tests: fixing real bugs in real code projects (SWE-bench Verified)
+    scale: percent
+    note: Unconfirmed task id.
+
+  # ---- Arena --------------------------------------------------------------
+  - source: arena
+    metric: arena:text/overall
+    purposes: [chat]
+    higher_is_better: true
+    tests: people's votes comparing answers to everyday questions
+    scale: rating
+    note: Unconfirmed category name.
+  - source: arena
+    metric: arena:text/creative_writing
+    purposes: [writing]
+    higher_is_better: true
+    tests: people's votes comparing pieces of writing
+    scale: rating
+    note: Unconfirmed category name.
+  - source: arena
+    metric: arena:text/coding
+    purposes: [coding]
+    higher_is_better: true
+    tests: people's votes comparing answers to coding questions
+    scale: rating
+    note: Unconfirmed category name.
+  - source: arena
+    metric: arena:text/math
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: people's votes comparing answers to maths questions
+    scale: rating
+    note: Unconfirmed category name.
+  - source: arena
+    metric: arena:vision/overall
+    purposes: [vision]
+    higher_is_better: true
+    tests: people's votes comparing answers about pictures
+    scale: rating
+    note: Unconfirmed category name.
+
+  # ---- Epoch AI (Epoch's own runs only) ------------------------------------
+  - source: epoch
+    metric: epoch:gpqa_diamond
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: a graduate-level science exam (GPQA Diamond), run by Epoch AI
+    scale: percent
+    file: gpqa_diamond.csv
+    note: Unconfirmed file name.
+  - source: epoch
+    metric: epoch:math_level_5
+    purposes: [reasoning]
+    higher_is_better: true
+    tests: hard competition maths problems (MATH Level 5), run by Epoch AI
+    scale: percent
+    file: math_level_5.csv
+    note: Unconfirmed file name.
+  - source: epoch
+    metric: epoch:swe_bench_verified
+    purposes: [coding, agentic]
+    higher_is_better: true
+    tests: fixing real bugs in real code projects (SWE-bench Verified), run by Epoch AI
+    scale: percent
+    file: swe_bench_verified.csv
+    note: Unconfirmed file name.

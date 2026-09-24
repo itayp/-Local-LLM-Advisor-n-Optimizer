@@ -4,6 +4,8 @@
 //
 //	hardware/runtime-support.yaml   internal/hardware (build-plan step 2)
 //	catalog/families.yaml           internal/catalog  (build-plan step 4)
+//	catalog/external.yaml           internal/catalog/external (build-plan step 9b)
+//	catalog/aliases.yaml            internal/catalog/external (build-plan step 9b)
 //	hardware/gpus.yaml              internal/estimate (build-plan step 5)
 //	bench/suite.yaml, bench/text.txt internal/bench   (build-plan step 6)
 package data
@@ -21,6 +23,14 @@ const RuntimeSupportPath = "hardware/runtime-support.yaml"
 
 // CatalogPath is where the curated model catalogue lives in Files.
 const CatalogPath = "catalog/families.yaml"
+
+// ExternalPath is where the approved external benchmark sources and the
+// metric → purpose map live in Files.
+const ExternalPath = "catalog/external.yaml"
+
+// AliasesPath is where the external sources' names for catalogue sizes live
+// in Files.
+const AliasesPath = "catalog/aliases.yaml"
 
 // DevicesPath is where the memory-bandwidth table of graphics parts and
 // processor memory lives in Files.

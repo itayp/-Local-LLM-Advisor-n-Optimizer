@@ -10,7 +10,15 @@
 // explain column instead of this component — the explanation is right
 // next to the term either way, just laid out differently for a table.
 
-export type GlossaryTermId = 'vram' | 'quantization' | 'gguf' | 'kv_cache' | 'context_window' | 'tokens_per_sec' | 'offload'
+export type GlossaryTermId =
+  | 'vram'
+  | 'quantization'
+  | 'gguf'
+  | 'kv_cache'
+  | 'context_window'
+  | 'tokens_per_sec'
+  | 'offload'
+  | 'public_benchmark'
 
 export interface GlossaryEntry {
   /** How the term reads inline, in the app's own usage. */
@@ -43,6 +51,11 @@ export const glossary: Record<GlossaryTermId, GlossaryEntry> = {
   tokens_per_sec: {
     term: 'tok/s',
     explain: 'How fast a model reads or writes, in tokens per second; a token is about three quarters of a word.',
+  },
+  public_benchmark: {
+    term: 'public benchmark',
+    explain:
+      'A test someone else ran on this model, on their computers. It says how good the model is at a kind of task, not how fast it runs on yours.',
   },
   offload: {
     term: 'offload',

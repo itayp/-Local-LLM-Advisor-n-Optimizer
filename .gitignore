@@ -23,3 +23,6 @@ Thumbs.db
 
 # Output of scripts/verify.command
 /verify.log
+# Raw answers of the public benchmark sources, captured by verify.command
+# (`advisor catalog external -capture`), from which test fixtures are cut
+/.captures/

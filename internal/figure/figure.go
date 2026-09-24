@@ -15,6 +15,12 @@
 // values read straight from the OS — carry the struct tag `source:"n/a"`
 // and say why in a comment. figurecheck (see check.go) walks every API type
 // and fails on anything else.
+//
+// A third kind of number arrived with build-plan step 9b: Public (public.go),
+// a value about a model that someone else published. It is neither
+// estimated nor measured and has no Source; it carries its Origin instead,
+// and CheckSeparation keeps it out of every struct that holds a Bytes or a
+// Rate (research/EXTERNAL_SOURCES.md, the display rule).
 package figure
 
 import (

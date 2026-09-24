@@ -186,6 +186,10 @@ export interface CatalogSize {
   context_length: number
   ollama_tag: string
   hf_repo: string
+  /** The original model's repo, where its public scores live (step 9b). */
+  hf_base_repo: string
+  /** The quant ollama_tag pulls, read by hand from the Ollama library; absent = the usual default. */
+  ollama_quant?: string
 }
 
 /** The header fields step 5's estimator reads (Go: catalog.GGUFHeader). */
@@ -269,6 +273,8 @@ export interface CatalogModel {
   /** Absent: never resolved. */
   refreshed_at?: string
   refresh_error?: string
+  /** When the original model was released (YYYY-MM-DD); display only, never scored. */
+  released_at?: string
   files: CatalogFile[]
 }
 
@@ -326,6 +332,16 @@ export interface CatalogRefreshReport {
   stopped?: string
   warnings: string[]
   unknown_installed: { backend: string; name: string; note: string }[]
+  /** The public-data part (step 9b); absent when the refresh did not read the sources. */
+  external?: ExternalReport
+}
+
+/** Go: external.Report — what each public-data source did in a refresh (the curator's coverage report; the fields the UI reads). */
+export interface ExternalReport {
+  started_at: string
+  finished_at: string
+  sources: { id: string; name: string; status: 'read' | 'unchanged' | 'skipped' | 'failed' | 'disabled'; summary: string; error?: string }[]
+  warnings: string[]
 }
 
 /** An installed model the catalogue does not know (Go: server.UnknownInstalledModel). */
@@ -447,6 +463,8 @@ export interface ScoreFactors {
   fit: number
   speed: number
   size: number
+  /** The multiplier public quality signals applied inside `purpose` (1 = none). */
+  public: number
 }
 
 /** Go: recommend.Recommendation — one card. */
@@ -470,6 +488,12 @@ export interface Recommendation {
   score: number
   factors: ScoreFactors
   versus_current?: string
+  /**
+   * The card's one "Public data" line (step 9b): someone else's result for
+   * this size, shown below and apart from the reasons. Absent when no public
+   * value speaks to the purposes asked.
+   */
+  public?: PublicEntry
 }
 
 /** Go: recommend.Current. */
@@ -855,4 +879,87 @@ export interface SettingsUpdate {
 /** POST /api/backends/{name}/models/remove (Go: server.ModelRemoveRequest). The response is InstalledModelsResponse: the inventory as it now stands. */
 export interface ModelRemoveRequest {
   name: string
+}
+
+// --- Public data (step 9b; Go: figure.Public, catalog.PublicEntry) -----------
+//
+// The third kind of number (research/EXTERNAL_SOURCES.md, the display rule):
+// a value about a MODEL that someone else published — never a number about
+// this machine. It has no `source` field, so <Figure>, whose props require
+// one, cannot render it; components/PublicFigure.tsx does, and nothing else.
+// Public and local numbers never share a block, a table, a column or a
+// sentence: the API sends them as sibling objects ("public", "local").
+
+/** Who produced a public value (Go: figure.Provenance). */
+export type Provenance = 'maker' | 'verified' | 'independent' | 'crowd'
+
+/** Where a public value came from, shown directly beneath it (Go: figure.Origin). */
+export interface PublicOrigin {
+  /** Who published it, in words. */
+  publisher: string
+  url?: string
+  /** The source's own date (YYYY-MM-DD) — never the day the advisor fetched it. */
+  date: string
+  licence: string
+  /** The credit the licence asks for, shown as it is. */
+  attribution: string
+  provenance: Provenance
+}
+
+/** A number someone else published about a model (Go: figure.Public). */
+export interface PublicValue {
+  value: number
+  /** What `value` is measured in: 'rating' (relative) or 'percent'. */
+  scale: string
+  origin: PublicOrigin
+}
+
+/** One labelled line of a public value's Advanced detail, already in words. */
+export interface PublicDetail {
+  label: string
+  text: string
+}
+
+/** One public value as a size's "Public data" block shows it (Go: catalog.PublicEntry). */
+export interface PublicEntry {
+  source_id: 'hf_evals' | 'arena' | 'epoch' | string
+  source_name: string
+  metric: string
+  /** What it tested, in plain words. */
+  tests: string
+  purposes: Purpose[]
+  /** The size's place among the curated sizes this source has scored, in words. */
+  position: string
+  /** "rated by people comparing answers on Arena", "reported by the model's maker". */
+  provenance_words: string
+  rated: number
+  rank: number
+  /** Whether the recommendation engine may use it (a maker's own report is shown, not scored). */
+  scored: boolean
+  value: PublicValue
+  /** Advanced only: the raw value, its scale, bounds, votes, notes, ids. */
+  detail: PublicDetail[]
+  fetched_at: string
+}
+
+/** A size's "Public data" block (Go: server.PublicBlock). */
+export interface PublicBlock {
+  /** Empty: no approved source has scored this size (never a sibling's score). */
+  entries: PublicEntry[]
+  /** When public scores were last fetched, and any source whose latest check failed, in words. */
+  updated: string
+}
+
+/** GET /api/models/{id}/detail (Go: server.ModelDetailResponse): the two blocks, apart. */
+export interface ModelDetailResponse {
+  id: number
+  family_id: string
+  /** "Qwen3.5 9B" */
+  name: string
+  maintainer: string
+  purposes: Purpose[]
+  released_at?: string
+  pull_name: string
+  public: PublicBlock
+  local: ModelFitResponse
 }

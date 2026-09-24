@@ -164,6 +164,17 @@ func (c *Catalogue) Validate() []string {
 			if !hfRepoPattern.MatchString(s.HFRepo) {
 				bad("%s: hf_repo %q is not an owner/name Hugging Face repo", sw, s.HFRepo)
 			}
+			switch {
+			case s.HFBaseRepo == "":
+				bad("%s: hf_base_repo is missing (the original model's repo, where its public scores live)", sw)
+			case !hfRepoPattern.MatchString(s.HFBaseRepo):
+				bad("%s: hf_base_repo %q is not an owner/name Hugging Face repo", sw, s.HFBaseRepo)
+			case strings.EqualFold(s.HFBaseRepo, s.HFRepo):
+				bad("%s: hf_base_repo names the GGUF repo; it must be the original model's repo", sw)
+			}
+			if s.OllamaQuant != "" && !c.Tracks(s.OllamaQuant) {
+				bad("%s: ollama_quant %q is not one of the tracked quants %v", sw, s.OllamaQuant, c.Quants)
+			}
 		}
 	}
 	return out

@@ -43,6 +43,20 @@
 #           context_length: 131072 # trained context, from the model card
 #           ollama_tag: llama3.1:8b          # what a beginner would pull
 #           hf_repo: owner/repo-GGUF         # the GGUF repo used for metadata
+#           hf_base_repo: owner/Model-Name   # the ORIGINAL model's repo, as its maker
+#                                            # published it: where public benchmark
+#                                            # results live (step 9b), and whose
+#                                            # creation date is the release date
+#           ollama_quant: Q4_K_M             # optional: the quant ollama_tag pulls,
+#                                            # read BY HAND from the Ollama library
+#                                            # page (never fetched by the advisor).
+#                                            # Omitted: the usual default (Q4_K_M,
+#                                            # or MXFP4 for models released in it).
+#
+# hf_base_repo: the GGUF repo's own card names it as `base_model`; the
+# external refresh (`advisor catalog external`) checks the two agree and
+# warns when they do not. Public scores are read from this repo per size and
+# never copied between sizes (research/EXTERNAL_SOURCES.md).
 #
 # Choosing hf_repo: an ungated repo that publishes the tracked quants under
 # llama.cpp's standard names (bartowski's where it exists, else ggml-org or
@@ -79,18 +93,22 @@ families:
         context_length: 262144
         ollama_tag: qwen3.5:0.8b
         hf_repo: bartowski/Qwen_Qwen3.5-0.8B-GGUF
+        hf_base_repo: Qwen/Qwen3.5-0.8B
       - parameters: 2000000000
         context_length: 262144
         ollama_tag: qwen3.5:2b
         hf_repo: bartowski/Qwen_Qwen3.5-2B-GGUF
+        hf_base_repo: Qwen/Qwen3.5-2B
       - parameters: 4000000000
         context_length: 262144
         ollama_tag: qwen3.5:4b
         hf_repo: bartowski/Qwen_Qwen3.5-4B-GGUF
+        hf_base_repo: Qwen/Qwen3.5-4B
       - parameters: 9000000000
         context_length: 262144
         ollama_tag: qwen3.5:9b
         hf_repo: bartowski/Qwen_Qwen3.5-9B-GGUF
+        hf_base_repo: Qwen/Qwen3.5-9B
 
   - id: qwen3.6
     display_name: Qwen3.6
@@ -110,6 +128,7 @@ families:
         context_length: 262144
         ollama_tag: qwen3.6:35b
         hf_repo: bartowski/Qwen_Qwen3.6-35B-A3B-GGUF
+        hf_base_repo: Qwen/Qwen3.6-35B-A3B
 
   - id: qwen3.8
     display_name: Qwen3.8
@@ -128,6 +147,7 @@ families:
         context_length: 262144
         ollama_tag: qwen3.8:27b
         hf_repo: bartowski/Qwen3.8-27B-GGUF
+        hf_base_repo: Qwen/Qwen3.8-27B
 
   - id: gemma4
     display_name: Gemma 4
@@ -151,24 +171,29 @@ families:
         context_length: 131072
         ollama_tag: gemma4:e2b
         hf_repo: bartowski/google_gemma-4-E2B-it-GGUF
+        hf_base_repo: google/gemma-4-E2B-it
       - parameters: 8000000000
         active_parameters: 4500000000
         context_length: 131072
         ollama_tag: gemma4:e4b
         hf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+        hf_base_repo: google/gemma-4-E4B-it
       - parameters: 11950000000
         context_length: 131072
         ollama_tag: gemma4:12b
         hf_repo: bartowski/gemma-4-12B-it-GGUF
+        hf_base_repo: google/gemma-4-12B-it
       - parameters: 25200000000
         active_parameters: 3800000000
         context_length: 262144
         ollama_tag: gemma4:26b
         hf_repo: bartowski/google_gemma-4-26B-A4B-it-GGUF
+        hf_base_repo: google/gemma-4-26B-A4B-it
       - parameters: 30700000000
         context_length: 262144
         ollama_tag: gemma4:31b
         hf_repo: bartowski/google_gemma-4-31B-it-GGUF
+        hf_base_repo: google/gemma-4-31B-it
 
   - id: gpt-oss
     display_name: gpt-oss
@@ -189,6 +214,7 @@ families:
         context_length: 131072
         ollama_tag: gpt-oss:20b
         hf_repo: ggml-org/gpt-oss-20b-GGUF
+        hf_base_repo: openai/gpt-oss-20b
 
   - id: devstral-small-2
     display_name: Devstral Small 2
@@ -204,6 +230,7 @@ families:
         context_length: 393216
         ollama_tag: devstral-small-2:24b
         hf_repo: bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF
+        hf_base_repo: mistralai/Devstral-Small-2-24B-Instruct-2512
 
   - id: ministral-3
     display_name: Ministral 3
@@ -221,14 +248,17 @@ families:
         context_length: 262144
         ollama_tag: ministral-3:3b
         hf_repo: bartowski/mistralai_Ministral-3-3B-Instruct-2512-GGUF
+        hf_base_repo: mistralai/Ministral-3-3B-Instruct-2512
       - parameters: 8400000000
         context_length: 262144
         ollama_tag: ministral-3:8b
         hf_repo: bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF
+        hf_base_repo: mistralai/Ministral-3-8B-Instruct-2512
       - parameters: 13500000000
         context_length: 262144
         ollama_tag: ministral-3:14b
         hf_repo: bartowski/mistralai_Ministral-3-14B-Instruct-2512-GGUF
+        hf_base_repo: mistralai/Ministral-3-14B-Instruct-2512
 
   - id: nemotron-3-nano
     display_name: Nemotron 3 Nano
@@ -250,6 +280,7 @@ families:
         context_length: 1048576
         ollama_tag: nemotron-3-nano:30b
         hf_repo: bartowski/nvidia_Nemotron-3-Nano-30B-A3B-GGUF
+        hf_base_repo: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
 
   - id: glm-4.7-flash
     display_name: GLM-4.7-Flash
@@ -269,6 +300,7 @@ families:
         context_length: 202752
         ollama_tag: glm-4.7-flash
         hf_repo: bartowski/zai-org_GLM-4.7-Flash-GGUF
+        hf_base_repo: zai-org/GLM-4.7-Flash
 
   - id: llama3.2
     display_name: Llama 3.2
@@ -288,10 +320,12 @@ families:
         context_length: 131072
         ollama_tag: llama3.2:1b
         hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+        hf_base_repo: meta-llama/Llama-3.2-1B-Instruct
       - parameters: 3210000000
         context_length: 131072
         ollama_tag: llama3.2:3b
         hf_repo: bartowski/Llama-3.2-3B-Instruct-GGUF
+        hf_base_repo: meta-llama/Llama-3.2-3B-Instruct
 
   - id: llama3.1
     display_name: Llama 3.1
@@ -308,6 +342,7 @@ families:
         context_length: 131072
         ollama_tag: llama3.1:8b
         hf_repo: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
+        hf_base_repo: meta-llama/Llama-3.1-8B-Instruct
 
   - id: llama3.3
     display_name: Llama 3.3
@@ -326,3 +361,4 @@ families:
         context_length: 131072
         ollama_tag: llama3.3:70b
         hf_repo: bartowski/Llama-3.3-70B-Instruct-GGUF
+        hf_base_repo: meta-llama/Llama-3.3-70B-Instruct

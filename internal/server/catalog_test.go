@@ -37,10 +37,12 @@ families:
         context_length: 131072
         ollama_tag: llama3.2:1b
         hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+        hf_base_repo: base/Llama-3.2-1B-Instruct
       - parameters: 3210000000
         context_length: 131072
         ollama_tag: llama3.2:3b
         hf_repo: bartowski/Llama-3.2-3B-Instruct-GGUF
+        hf_base_repo: base/Llama-3.2-3B-Instruct
 `
 
 // fakeHub serves one repo whose Q8_0 file is a real captured header (see
@@ -86,6 +88,7 @@ func newCatalogTestServer(t *testing.T, backends ...backend.Backend) (*Server, *
 	srv.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := fakeHub(t)
 	srv.cat.load = func() (*catalog.Catalogue, error) { return catalog.Parse([]byte(serverTestCatalogue)) }
+	srv.cat.loadExternal = nil // no public data unless a test asks for it: tests never touch the network
 	srv.cat.newClient = func() *hf.Client {
 		c := hf.New("advisor-test")
 		c.BaseURL, c.MinInterval = hub.URL, 0

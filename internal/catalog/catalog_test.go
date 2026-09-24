@@ -100,6 +100,7 @@ families:
         context_length: 8192
         ollama_tag: demo:1b
         hf_repo: owner/demo-GGUF
+        hf_base_repo: base/demo
 `
 
 func TestParseValid(t *testing.T) {

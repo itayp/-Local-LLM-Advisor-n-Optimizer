@@ -1,0 +1,6 @@
+Model version,Best score (across scorers),Started at,Organization
+Llama-3.3-70B-Instruct,0.482,2025-01-10T10:00:00Z,Meta
+Llama-3.3-70B-Instruct,0.497,2025-06-02T08:30:00Z,Meta
+Llama-3.2-3B-Instruct,0.281,2025-01-11T10:00:00Z,Meta
+Qwen3.5-27B,0.701,2026-04-20T10:00:00Z,Alibaba
+frontier-hosted-1,0.874,2026-08-01T10:00:00Z,Example Labs

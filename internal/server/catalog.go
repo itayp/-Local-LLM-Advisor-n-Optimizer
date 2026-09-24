@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"advisor/internal/catalog"
+	"advisor/internal/catalog/external"
 	"advisor/internal/catalog/hf"
 	"advisor/internal/catalog/refresh"
 	"advisor/internal/store"
@@ -67,12 +68,28 @@ type UnknownInstalledResponse struct {
 type catalogState struct {
 	load      func() (*catalog.Catalogue, error) // catalog.Default; tests replace it
 	newClient func() *hf.Client                  // hf.New; tests point it at a fake hub
-	running   sync.Mutex
+	// loadExternal is the public-data configuration (external.yaml and
+	// aliases.yaml, embedded); nil means no public data at all — refreshes
+	// read no external source and the public blocks are empty. Tests set it.
+	loadExternal func() (*external.Config, external.Aliases, error)
+	// externalFetcher builds the fetcher a refresh's public-data read uses;
+	// nil is external.NewFetcher over the enabled sources' hosts. Tests point
+	// it at a fake.
+	externalFetcher func(*external.Config) *external.Fetcher
+	running         sync.Mutex
 }
 
 func (c *catalogState) init() {
 	c.load = catalog.Default
 	c.newClient = func() *hf.Client { return hf.New(version.UserAgent()) }
+	c.loadExternal = func() (*external.Config, external.Aliases, error) {
+		cfg, err := external.DefaultConfig()
+		if err != nil {
+			return nil, nil, err
+		}
+		al, err := external.DefaultAliases()
+		return cfg, al, err
+	}
 }
 
 // ErrRefreshRunning is returned by RefreshCatalog while another refresh is
@@ -98,7 +115,59 @@ func (s *Server) RefreshCatalog(ctx context.Context, trigger string) (refresh.Re
 	client.Log = s.log
 	return refresh.Run(ctx, refresh.Options{
 		Catalogue: cat, Store: s.store, HF: client, Log: s.log, Trigger: trigger,
+		External: s.externalOptions(cat),
 	})
+}
+
+// externalOptions is the public-data part of a refresh (build-plan step
+// 9b), or nil when there is none: no configuration, or one that does not
+// validate against the catalogue (logged; the model list still refreshes).
+func (s *Server) externalOptions(cat *catalog.Catalogue) *refresh.ExternalOptions {
+	if s.cat.loadExternal == nil {
+		return nil
+	}
+	cfg, al, err := s.cat.loadExternal()
+	if err == nil {
+		err = external.Check(cat, cfg, al)
+	}
+	if err != nil {
+		s.log.Error("the public-data configuration is not valid; public scores were not refreshed", "err", err)
+		return nil
+	}
+	opts := &refresh.ExternalOptions{Config: cfg, Aliases: al}
+	if s.cat.externalFetcher != nil {
+		opts.Fetcher = s.cat.externalFetcher(cfg)
+	}
+	return opts
+}
+
+// publicView is the stored public data as the screens and the engine read
+// it: present values from enabled sources, on mapped metrics, about sizes
+// still in the catalogue. With no configuration it is an empty view.
+func (s *Server) publicView(ctx context.Context, rows []store.CatalogModelRow) (*external.View, error) {
+	cfg := &external.Config{}
+	if s.cat.loadExternal != nil {
+		c, _, err := s.cat.loadExternal()
+		if err != nil {
+			return nil, err
+		}
+		cfg = c
+	}
+	values, err := s.store.ExternalValues(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	states, err := s.store.ExternalStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	present := map[int64]bool{}
+	for _, r := range rows {
+		if r.Model.Present {
+			present[r.Model.ID] = true
+		}
+	}
+	return external.NewView(cfg, values, present, states), nil
 }
 
 // handleCatalogRefresh is POST /api/catalog/refresh. The refresh is detached

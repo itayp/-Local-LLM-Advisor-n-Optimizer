@@ -1,0 +1,24 @@
+{
+  "features": [
+    {"feature_idx": 0, "name": "model_name", "type": {"dtype": "string", "_type": "Value"}},
+    {"feature_idx": 1, "name": "organization", "type": {"dtype": "string", "_type": "Value"}},
+    {"feature_idx": 2, "name": "license", "type": {"dtype": "string", "_type": "Value"}},
+    {"feature_idx": 3, "name": "rating", "type": {"dtype": "float64", "_type": "Value"}},
+    {"feature_idx": 4, "name": "rating_lower", "type": {"dtype": "float64", "_type": "Value"}},
+    {"feature_idx": 5, "name": "rating_upper", "type": {"dtype": "float64", "_type": "Value"}},
+    {"feature_idx": 6, "name": "vote_count", "type": {"dtype": "int64", "_type": "Value"}},
+    {"feature_idx": 7, "name": "rank", "type": {"dtype": "int64", "_type": "Value"}},
+    {"feature_idx": 8, "name": "category", "type": {"dtype": "string", "_type": "Value"}},
+    {"feature_idx": 9, "name": "leaderboard_publish_date", "type": {"dtype": "string", "_type": "Value"}}
+  ],
+  "rows": [
+    {"row_idx": 0, "row": {"model_name": "frontier-hosted-1", "organization": "Example Labs", "license": "Proprietary", "rating": 1482.3, "rating_lower": 1476.0, "rating_upper": 1488.9, "vote_count": 30511, "rank": 1, "category": "overall", "leaderboard_publish_date": "2026-09-15"}, "truncated_cells": []},
+    {"row_idx": 1, "row": {"model_name": "qwen3.8-27b", "organization": "Alibaba", "license": "Apache 2.0", "rating": 1391.0, "rating_lower": 1383.2, "rating_upper": 1398.1, "vote_count": 8410, "rank": 40, "category": "overall", "leaderboard_publish_date": "2026-09-15"}, "truncated_cells": []},
+    {"row_idx": 2, "row": {"model_name": "llama-3.3-70b-instruct", "organization": "Meta", "license": "Llama 3.3", "rating": 1318.6, "rating_lower": 1314.9, "rating_upper": 1322.0, "vote_count": 51876, "rank": 88, "category": "overall", "leaderboard_publish_date": "2026-09-15"}, "truncated_cells": []},
+    {"row_idx": 3, "row": {"model_name": "llama-3.1-8b-instruct", "organization": "Meta", "license": "Llama 3.1 Community", "rating": 1211.4, "rating_lower": 1207.7, "rating_upper": 1215.3, "vote_count": 60122, "rank": 140, "category": "overall", "leaderboard_publish_date": "2026-09-15"}, "truncated_cells": []},
+    {"row_idx": 4, "row": {"model_name": "llama-3.2-3b-instruct", "organization": "Meta", "license": "Llama 3.2", "rating": 1166.2, "rating_lower": 1160.0, "rating_upper": 1172.5, "vote_count": 12904, "rank": 171, "category": "overall", "leaderboard_publish_date": "2026-09-15"}, "truncated_cells": []}
+  ],
+  "num_rows_total": 5,
+  "num_rows_per_page": 100,
+  "partial": false
+}

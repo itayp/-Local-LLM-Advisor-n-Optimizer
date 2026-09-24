@@ -11,7 +11,10 @@
 # `advisor bench`. Ollama must be running with at least one model
 # installed; BENCH_MODEL=name picks the model (default: the smallest
 # installed one of the curated list with 3 billion parameters or more that
-# fits — `advisor bench` says why). Everything it prints also
+# fits — `advisor bench` says why). Step 9b adds the public benchmark
+# sources (`advisor catalog external`, their coverage report, and every
+# answer saved to .captures/external/ for the test fixtures) and the top
+# pick's detail view. Everything it prints also
 # goes to verify.log in the repo root so the result can be read back later.
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -38,7 +41,11 @@ LOG="verify.log"
   echo; echo "== the curated catalogue against Hugging Face (build plan step 4's gate: does every size resolve, with no weights downloaded?)"
   "$BIN" catalog check || exit 1
   CATALOGUE=ok
-  "$BIN" catalog refresh -data-dir "$DATA" || CATALOGUE=failed
+  "$BIN" catalog refresh -data-dir "$DATA" -no-external || CATALOGUE=failed
+  echo; echo "== build plan step 9b's gate: the public benchmark sources — each approved source's hits and misses across the curated sizes"
+  echo "   (every answer is also saved to .captures/external/ — the real responses the test fixtures are to be replaced with)"
+  EXTERNAL=ok
+  "$BIN" catalog external -data-dir "$DATA" -force -capture "$(pwd)/.captures/external" || EXTERNAL=failed
   echo; echo "== smoke test: start the binary on that catalogue, hit /api/health and the UI"
   ADVISOR_DATA_DIR="$DATA" "$BIN" -port 27183 -no-browser &
   PID=$!
@@ -61,14 +68,15 @@ LOG="verify.log"
   "$BIN" bench "${BENCH_ARGS[@]}" -runs 2 || BENCH=failed
   echo; "$BIN" bench "${BENCH_ARGS[@]}" -cancel-during loading || BENCH=failed
   echo; "$BIN" bench "${BENCH_ARGS[@]}" -cancel-during measuring || BENCH=failed
-  echo; echo "== what the advisor recommends now that it has measured (the measured model's cards say so)"
-  "$BIN" recommend -port 27183 -purposes chat || echo "advisor recommend FAILED"
+  echo; echo "== what the advisor recommends now that it has measured (the measured model's cards say so), and build plan step 9b's gate: the top pick's public data with its source and date, and this Mac's numbers, as two blocks apart"
+  "$BIN" recommend -port 27183 -purposes chat -detail || echo "advisor recommend FAILED"
   echo; "$BIN" bench -port 27183 -history
   kill $PID; wait $PID 2>/dev/null
   echo; echo "== git status"
   git status --short
   echo
   if [ "$CATALOGUE" != ok ]; then echo "ALL GREEN EXCEPT THE CATALOGUE REFRESH: not every size resolved (see FAIL / STOPPED above)"; exit 3; fi
+  if [ "$EXTERNAL" != ok ]; then echo "ALL GREEN EXCEPT THE PUBLIC DATA: a public benchmark source could not be read (see FAIL above)"; exit 5; fi
   if [ "$BENCH" != ok ]; then echo "ALL GREEN EXCEPT THE BENCHMARK GATE (see NOT REPEATABLE / NOT COMPARABLE / CANCEL above; is Ollama running with a model installed?)"; exit 4; fi
   echo "ALL GREEN"
 } 2>&1 | tee "$LOG"

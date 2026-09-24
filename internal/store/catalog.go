@@ -67,8 +67,8 @@ func (s *Store) SyncCatalogModels(ctx context.Context, cat *catalog.Catalogue) (
 				INSERT INTO catalog_models
 					(created_at, family_id, display_name, maintainer, license_json, purposes_json,
 					 parameters, context_length, ollama_tag, hf_repo, reviewed_at,
-					 active_parameters, source_url, notes, present, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+					 active_parameters, source_url, notes, present, updated_at, hf_base_repo, ollama_quant)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
 				ON CONFLICT (family_id, parameters) DO UPDATE SET
 					display_name = excluded.display_name,
 					maintainer = excluded.maintainer,
@@ -81,12 +81,14 @@ func (s *Store) SyncCatalogModels(ctx context.Context, cat *catalog.Catalogue) (
 					active_parameters = excluded.active_parameters,
 					source_url = excluded.source_url,
 					notes = excluded.notes,
+					hf_base_repo = excluded.hf_base_repo,
+					ollama_quant = excluded.ollama_quant,
 					present = 1,
 					updated_at = excluded.updated_at
 				RETURNING id`,
 				now, f.ID, f.DisplayName, f.Maintainer, string(license), string(purposes),
 				int64(sz.Parameters), sz.ContextLength, sz.OllamaTag, sz.HFRepo, f.ReviewedAt,
-				int64(sz.ActiveParameters), f.Source, f.Notes, now).Scan(&id)
+				int64(sz.ActiveParameters), f.Source, f.Notes, now, sz.HFBaseRepo, sz.OllamaQuant).Scan(&id)
 			if err != nil {
 				return nil, fmt.Errorf("store: catalogue size %s %s: %w", f.ID, sz.OllamaTag, err)
 			}
@@ -190,7 +192,7 @@ func (s *Store) RecordCatalogModelError(ctx context.Context, modelID int64, msg 
 
 const catalogModelColumns = `id, family_id, display_name, maintainer, license_json, purposes_json, parameters,
 	active_parameters, context_length, ollama_tag, hf_repo, reviewed_at, source_url, notes, present,
-	hf_sha, parameters_counted, refreshed_at, refresh_error`
+	hf_sha, parameters_counted, refreshed_at, refresh_error, hf_base_repo, ollama_quant, released_at`
 
 func scanCatalogModel(sc interface{ Scan(...any) error }) (CatalogModelRow, error) {
 	var r CatalogModelRow
@@ -198,11 +200,11 @@ func scanCatalogModel(sc interface{ Scan(...any) error }) (CatalogModelRow, erro
 	var params, active int64
 	var present int
 	var counted sql.NullInt64
-	var refreshed sql.NullString
+	var refreshed, released sql.NullString
 	m := &r.Model
 	if err := sc.Scan(&m.ID, &m.FamilyID, &r.DisplayName, &r.Maintainer, &license, &purposes, &params,
 		&active, &m.Size.ContextLength, &m.Size.OllamaTag, &m.Size.HFRepo, &r.ReviewedAt, &r.SourceURL, &r.Notes,
-		&present, &m.HFSHA, &counted, &refreshed, &m.RefreshError); err != nil {
+		&present, &m.HFSHA, &counted, &refreshed, &m.RefreshError, &m.Size.HFBaseRepo, &m.Size.OllamaQuant, &released); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return r, ErrNotFound
 		}
@@ -212,6 +214,7 @@ func scanCatalogModel(sc interface{ Scan(...any) error }) (CatalogModelRow, erro
 	m.Present = present != 0
 	m.ParametersCounted = uint64(counted.Int64)
 	m.RefreshedAt = refreshed.String
+	m.ReleasedAt = released.String
 	if err := json.Unmarshal([]byte(license), &r.License); err != nil {
 		return r, fmt.Errorf("store: catalog_models %d license_json: %w", m.ID, err)
 	}

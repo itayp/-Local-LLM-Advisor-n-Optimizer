@@ -40,14 +40,20 @@ disagree, the code is wrong.
   takes only a port; `Serve` refuses a non-loopback listener; every request
   needs a loopback `Host` header. There is no bind flag and there must never
   be one. Tests: `internal/server/server_test.go`.
-- **Rule 4 is a type.** A number a user will see is a `figure.Bytes` or
-  `figure.Rate` with `source: "estimated" | "measured"`. A numeric API field
+- **Rule 4 is a type.** A number a user will see about this machine is a
+  `figure.Bytes` or `figure.Rate` with `source: "estimated" | "measured"`;
+  a number someone else published about a model is a `figure.Public`, which
+  has no source, carries its origin (publisher, the source's own date,
+  attribution) and never shares a struct with the other two
+  (`TestPublicAndLocalNeverShareAStruct`; ARCHITECTURE.md D-53). A numeric API field
   that is neither (an id, a count, a timestamp, configuration, a value read
   from the OS) carries the struct tag `source:"n/a"` and a comment saying
   which. `server.APITypes()` lists every API type and
   `TestEveryUserFacingNumberHasASource` fails the build otherwise. When you
   add an API type, add it to that list. In the UI, a number with provenance
-  is rendered by `<Figure>` and nothing else.
+  is rendered by `<Figure>` and nothing else, and a public value by
+  `<PublicFigure>` and nothing else — in its own block, never the same
+  column, row or sentence as a local number.
 
 ## Layout
 
@@ -60,16 +66,17 @@ internal/backend/       Backend interface + registry; internal/backend/ollama ar
 internal/catalog/       curated families: YAML loader + validation, repo-file grouping, installed-model matching (step 4)
 internal/catalog/gguf/  the GGUF header parser (stops at the tokenizer; real header fixtures in testdata/)
 internal/catalog/hf/    the Hugging Face client: listings with ETags, header range reads, rate limits
-internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files) and MapInstalled
+internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files, then the public sources) and MapInstalled
+internal/catalog/external/ public benchmark data (step 9b): the approved sources' clients (Hugging Face Eval Results, Arena, Epoch AI), a polite fetcher limited to PermittedHosts, the coverage report, and the View the screens and the engine read
 internal/estimate/      Fit (memory terms, split, category + the threshold that decided), the speed range, placement, gpus.yaml loader; Config holds every constant
 internal/recommend/     Recommend: at most three cards with templated reasons, versus-current, confidence; Config holds every weight
 internal/bench/         the benchmark harness (step 6): suite loader, plan + spill refusal, one-at-a-time runner with a cancel that unloads, 1 Hz resource sampler (per-OS probes behind a sysEnv seam), medians + spread, write-back and calibration evidence
 internal/watch/         new-model watch state, notifications, log (step 10)
-internal/figure/        Source, Bytes, Rate, and Check — product rule 4
+internal/figure/        Source, Bytes, Rate, Public, Check and CheckSeparation — product rule 4, and public data kept apart
 internal/version/       Version (set by -ldflags), GoVersion
 ui/                     Vite + React + TypeScript; builds into internal/server/ui/dist
 data/                   data.go embeds the data files (package advisor/data)
-data/catalog/           families.yaml — the curated catalogue (data, never counted in prose)
+data/catalog/           families.yaml — the curated catalogue (data, never counted in prose); external.yaml — the approved public-data sources and the metric → purpose map; aliases.yaml — each source's names for catalogue sizes
 data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card; gpus.yaml — memory bandwidth per graphics part and processor family; both with sources and dates
 data/bench/             suite.yaml + text.txt — the benchmark suite: the advisor's own prose, three prompts, the options; versioned and pinned by digest (suite_test.go)
 scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/ (internal/estimate's tests replay them)
@@ -106,15 +113,23 @@ a session cannot run Go itself.
 - The daemon: `advisor [-port N] [-data-dir DIR] [-no-browser] [-v] [-version]`.
   The port is the only network setting.
 - The curator's catalogue tools (never the customer's):
-  `advisor catalog check [FILE]` validates `families.yaml` offline;
+  `advisor catalog check [FILE]` validates `families.yaml`, `external.yaml`
+  and `aliases.yaml` offline;
   `advisor catalog refresh [-data-dir DIR] [-family ID,...] [-json]`
   resolves every size against Hugging Face (listings + header range reads,
   no weights), stores it, and lists installed models the catalogue does not
-  know; it exits 1 if a size did not resolve. The daemon's
-  `POST /api/catalog/refresh` runs the same thing.
+  know, then reads the public benchmark sources that are due
+  (`-no-external` skips them); it exits 1 if a size did not resolve. The
+  daemon's `POST /api/catalog/refresh` runs the same thing.
+  `advisor catalog external [-data-dir DIR] [-force] [-report] [-capture DIR]`
+  reads the approved public sources alone and prints the coverage report
+  (each source's hits and misses across the curated sizes); `-report` is
+  offline; `-capture` saves every answer, for fixtures.
 - The developer's view of a running daemon's recommendations, as text:
-  `advisor recommend [-port N] [-purposes chat,coding] [-current NAME]` —
-  what `scripts/verify.command` prints for build-plan step 5's gate.
+  `advisor recommend [-port N] [-purposes chat,coding] [-current NAME] [-detail]` —
+  what `scripts/verify.command` prints for build-plan step 5's gate;
+  `-detail` adds the top pick's detail view (public data and this machine,
+  apart — step 9b's gate).
 - The developer's benchmark client for a running daemon (build-plan step 6's
   gate): `advisor bench [-model NAME] [-num-ctx N] [-prompts 500,2000]
   [-runs 2] [-measure-anyway]` runs the suite and prints it (exit 3 when
@@ -153,7 +168,11 @@ benchmark sampler reads the machine through `internal/bench`'s `sysEnv` seam
 (fixtures in `testdata/sampler/`, each tool's real format), and the Ollama
 adapter's load report parses server-log fixtures shaped from the format
 strings of the Ollama and llama.cpp builds it names
-(`internal/backend/ollama/testdata/README.md` says which).
+(`internal/backend/ollama/testdata/README.md` says which). The public-data
+clients are tested against an `httptest` fake of the three sources; their
+fixtures (`internal/catalog/external/testdata/`) are shaped from
+documentation until real answers captured by `scripts/verify.command`
+(`.captures/external/`) replace them — the README there says which is which.
 
 **API.** JSON, snake_case keys, `GET /api/…`. Register endpoints through
 `Server.api("METHOD /api/path", handler)` so a wrong method is a 405. Errors
@@ -221,9 +240,14 @@ speed estimate, by design.
 React, React Router, Vite, Vitest, Testing Library. A new one is a sentence
 in the PR saying what it replaces. Nothing that needs cgo, ever.
 
-**Network.** Outbound requests go only to the model sources on an allow-list
-(Hugging Face until step 9a decides otherwise; the Ollama download host in
-step 3). Nothing the user typed is ever sent anywhere. No telemetry. The
+**Network.** Outbound requests go only to the model sources on an allow-list:
+Hugging Face (`huggingface.co` and its CDNs), the Ollama download host (step
+3), and the public-data sources step 9a approved —
+`datasets-server.huggingface.co` (Arena's dataset) and `epoch.ai` —
+bounded by `external.PermittedHosts` and switched on in
+`data/catalog/external.yaml` (ARCHITECTURE.md D-53). The public-data
+requests are a function of the data files alone, the same on every
+install. Nothing the user typed is ever sent anywhere. No telemetry. The
 Hugging Face client (`internal/catalog/hf`) follows redirects only to
 Hugging Face's own hosts, reads GGUF headers with range requests and
 refuses a whole-file answer, never sends a token, and honours the Hub's

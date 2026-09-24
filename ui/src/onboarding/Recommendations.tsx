@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
 import { Figure } from '../components/Figure'
+import { PublicLine } from '../components/PublicFigure'
 import { Term } from '../components/Term'
 import { en } from '../copy/en'
 import { formatDownload } from './format'
@@ -133,6 +134,8 @@ function Card({ r, onDownload }: { r: Recommendation; onDownload: (r: Recommenda
         <Term id="context_window" />
         {c.keepsInMindSuffix}
       </p>
+
+      <PublicLine entry={r.public} />
 
       <button type="button" className="button" onClick={() => onDownload(r)}>
         {r.installed ? c.continueInstalled : c.downloadButton(formatDownload(r.download_bytes))}

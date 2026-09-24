@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
 import type { Estimate, Recommendation, RecommendResult } from '../api/types'
 import { en } from '../copy/en'
+import { publicEntry } from '../test/publicFixtures'
 
 const c = en.screens.recommend
 
@@ -44,7 +45,7 @@ function card(over: Partial<Recommendation> = {}): Recommendation {
     model: {
       id: 4,
       family_id: 'qwen3.5',
-      size: { parameters: 9e9, context_length: 262144, ollama_tag: 'qwen3.5:9b', hf_repo: 'bartowski/Qwen_Qwen3.5-9B-GGUF' },
+      size: { parameters: 9e9, context_length: 262144, ollama_tag: 'qwen3.5:9b', hf_repo: 'bartowski/Qwen_Qwen3.5-9B-GGUF', hf_base_repo: 'Qwen/Qwen3.5-9B' },
       present: true,
       parameters_counted: 0,
       files: [],
@@ -83,7 +84,7 @@ function card(over: Partial<Recommendation> = {}): Recommendation {
     confidence: 'medium',
     confidence_why: 'Ollama has not run a model on this computer yet, so that it will use the graphics is expected, not seen.',
     score: 0.513,
-    factors: { purpose: 0.95, fit: 1, speed: 1, size: 0.54 },
+    factors: { purpose: 0.95, fit: 1, speed: 1, size: 0.54, public: 1 },
     ...over,
   }
 }
@@ -269,5 +270,25 @@ describe('Recommend', () => {
     expect(within(tech).getByText(/hybrid attention/)).toBeInTheDocument()
     // Every number in the table that has provenance shows it.
     for (const fig of tech.querySelectorAll('.figure')) expect(fig).toHaveAttribute('data-source', 'estimated')
+  })
+  it('shows a public line below and apart from the reasons, with its source and date, and a link to the details', async () => {
+    serve(() => result({ recommendations: [card({ public: publicEntry() })] }))
+    open()
+    const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
+    const line = within(item).getByTestId('public-line')
+    expect(line).toHaveTextContent(en.publicData.cardTitle)
+    expect(line).toHaveTextContent('Among the strongest for everyday chat')
+    expect(line).toHaveTextContent('Arena (arena.ai), 15 September 2026.')
+    // Not a reason, and not a local figure.
+    expect(item.querySelector('.card__reasons')).not.toHaveTextContent('Arena')
+    expect(line.querySelector('.figure')).toBeNull()
+    expect(within(item).getByRole('link', { name: c.details })).toHaveAttribute('href', '/models/4')
+  })
+
+  it('shows no public line when there is no public value', async () => {
+    serve(() => result())
+    open()
+    const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
+    expect(within(item).queryByTestId('public-line')).toBeNull()
   })
 })

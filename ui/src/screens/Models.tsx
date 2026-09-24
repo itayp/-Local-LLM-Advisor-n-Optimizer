@@ -173,7 +173,17 @@ export function Models() {
                 const known = m.catalog_match === 'file'
                 return (
                   <tr key={key(m)}>
-                    <td>{m.name}</td>
+                    <td>
+                      {m.name}
+                      {m.catalog_model_id ? (
+                        <>
+                          {' '}
+                          <Link className="screen__note" to={`/models/${m.catalog_model_id}`}>
+                            {c.details}
+                          </Link>
+                        </>
+                      ) : null}
+                    </td>
                     <td>
                       {!known ? (
                         <span className="fit fit--unknown" title={c.fitUnknown}>

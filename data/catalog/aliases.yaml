@@ -1,0 +1,69 @@
+# What each external source calls the catalogue's sizes (build-plan step 9b).
+#
+# This file is DATA. A source's model name maps to ONE catalogue size —
+# family id and parameter count, exactly as families.yaml has them — or to
+# nothing. The rules (research/EXTERNAL_SOURCES.md, "Common to all three"):
+#
+#   - Exact strings only. The advisor never fuzzy-matches a name at runtime;
+#     a name that is not here is not the catalogue's, however close it looks.
+#   - Per size, never per family. No score is copied from one size to another,
+#     from a family to a size, or from one variant to another the source did
+#     not test. A source that rates "Model 27B" says nothing about "Model 9B".
+#   - One variant. Where a source lists effort variants of a hosted run
+#     ("(High)", "(Max)"), the alias pins the one that matches how Ollama runs
+#     the model by default, or none.
+#   - A miss is a curator flag, never a guess: `advisor catalog external
+#     -report` lists the catalogue sizes a source has no alias for and the
+#     source's open-licence names nothing here maps (with the closest
+#     catalogue family, as a suggestion it never writes here itself).
+#
+# Hugging Face Eval Results needs no aliases: it is read from each size's
+# own original repo (hf_base_repo in families.yaml).
+#
+# Schema (mirrors external.Aliases in internal/catalog/external/config.go):
+#
+#   arena:                         # an approved source id from external.yaml
+#     - name: llama-3.3-70b-instruct   # the source's exact model name
+#       family: llama3.3               # a family id in families.yaml
+#       parameters: 70600000000        # that family's size, exactly as listed there
+#       reviewed_at: 2026-09-24        # when a person last checked the pairing
+#       note: ...                      # optional: why, and anything unconfirmed
+#
+# The entries below were written on 2026-09-24 without a live response from
+# either source (the session that wrote them had no network to them). They
+# follow the names these sources used for these models in the past; the
+# first coverage report (scripts/verify.command) confirms each one — an
+# alias the source never answers with is listed there as "not seen" — and
+# lists the candidates for the sizes that have none yet.
+
+arena:
+  - name: llama-3.3-70b-instruct
+    family: llama3.3
+    parameters: 70600000000
+    reviewed_at: 2026-09-24
+    note: Unconfirmed against a live response.
+  - name: llama-3.1-8b-instruct
+    family: llama3.1
+    parameters: 8030000000
+    reviewed_at: 2026-09-24
+    note: Unconfirmed against a live response.
+  - name: llama-3.2-3b-instruct
+    family: llama3.2
+    parameters: 3210000000
+    reviewed_at: 2026-09-24
+    note: Unconfirmed against a live response.
+  - name: llama-3.2-1b-instruct
+    family: llama3.2
+    parameters: 1230000000
+    reviewed_at: 2026-09-24
+    note: Unconfirmed against a live response.
+  - name: gpt-oss-20b
+    family: gpt-oss
+    parameters: 21000000000
+    reviewed_at: 2026-09-24
+    note: >-
+      Unconfirmed against a live response. The plain name, without an effort
+      suffix: Ollama runs gpt-oss at its default (medium) reasoning effort; if
+      Arena lists only "(High)" variants, this alias should be removed.
+
+epoch: []

@@ -46,7 +46,7 @@ export function Shell() {
       </header>
       <nav className="shell__nav" aria-label="Main">
         <ul>
-          {screens.map((s) => (
+          {screens.filter((s) => !s.hidden).map((s) => (
             <li key={s.path}>
               <NavLink to={s.path} end={s.path === '/'} className={({ isActive }) => (isActive ? 'active' : undefined)}>
                 {s.label}

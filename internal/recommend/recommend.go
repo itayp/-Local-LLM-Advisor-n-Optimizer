@@ -124,6 +124,14 @@ type Recommendation struct {
 	// VersusCurrent is what this changes compared with the model the user
 	// has, in one sentence; empty when the user has none.
 	VersusCurrent string `json:"versus_current,omitempty"`
+
+	// Public is the card's one "Public data" line (research/EXTERNAL_SOURCES.md
+	// P-3): someone else's result for this size, shown below and apart from
+	// the reasons — it is not a reason. A sub-object of its own, never beside
+	// Speed or the estimate's figures in one struct (P-2). Absent when no
+	// public value speaks to the purposes asked (P-7). The API fills it; the
+	// engine only scores (Engine.Public).
+	Public *catalog.PublicEntry `json:"public,omitempty"`
 }
 
 // Factors are the four terms of the score. Internal ranking material.
@@ -132,6 +140,10 @@ type Factors struct {
 	Fit     float64 `json:"fit" source:"n/a"`
 	Speed   float64 `json:"speed" source:"n/a"`
 	Size    float64 `json:"size" source:"n/a"`
+	// Public is the average multiplier public quality signals applied inside
+	// Purpose (1 = none): already part of Purpose, shown for the Advanced
+	// view and the tests.
+	Public float64 `json:"public" source:"n/a"`
 }
 
 // Current is the installed model the recommendations were compared with.
@@ -189,6 +201,10 @@ type Engine struct {
 	// context; a measured configuration's estimate is replaced before it is
 	// scored (product rule 4).
 	Measurements map[MeasurementKey]estimate.Measurement
+	// Public is what public quality signals the engine may score, per
+	// purpose (internal/catalog/external's View.Scoring). It reaches the
+	// purpose-fit term and nothing else; nil or empty changes nothing.
+	Public map[catalog.Purpose][]catalog.PublicMetric
 }
 
 // MeasurementKey identifies a benchmarked configuration on this machine.
@@ -355,7 +371,11 @@ func (e *Engine) defaultFile(entry Entry) (file catalog.File, projector *catalog
 	if !entry.Model.Present {
 		return file, nil, false
 	}
-	for _, q := range e.Config.DefaultQuants {
+	quants := e.Config.DefaultQuants
+	if q := entry.Model.Size.OllamaQuant; q != "" {
+		quants = append([]string{q}, quants...) // what the tag pulls, read by hand from the Ollama library
+	}
+	for _, q := range quants {
 		for _, f := range entry.Model.Files {
 			if f.Present && f.Role == catalog.RoleModel && strings.EqualFold(f.Quant, q) {
 				file, ok = f, true
@@ -442,8 +462,10 @@ func (e *Engine) consider(m estimate.Machine, pl estimate.Placement, entry Entry
 		return c, false
 	}
 
+	purposeFit, public := e.purposeFit(entry, projector != nil, purposes, c.ctx, c.wanted)
 	c.factors = Factors{
-		Purpose: e.purposeFit(entry, projector != nil, purposes, c.ctx, c.wanted),
+		Purpose: purposeFit,
+		Public:  public,
 		Fit:     cfg.FitFactor[c.est.Category],
 		Speed:   e.speedFactor(c.est),
 		Size:    e.sizeFactor(entry.Model.Size, file.Header),
@@ -467,9 +489,11 @@ func (e *Engine) fit(m estimate.Machine, pl estimate.Placement, model estimate.M
 	return est
 }
 
-func (e *Engine) purposeFit(entry Entry, hasProjector bool, purposes []catalog.Purpose, ctx, wanted int) float64 {
+// purposeFit is the purpose term, and the average multiplier public quality
+// signals applied inside it (1 when none did).
+func (e *Engine) purposeFit(entry Entry, hasProjector bool, purposes []catalog.Purpose, ctx, wanted int) (float64, float64) {
 	cfg := e.Config
-	sum := 0.0
+	sum, adjSum, adjN := 0.0, 0.0, 0
 	for _, p := range purposes {
 		rank := -1
 		for i, q := range entry.Purposes {
@@ -485,14 +509,55 @@ func (e *Engine) purposeFit(entry Entry, hasProjector bool, purposes []catalog.P
 		case p == catalog.PurposeVision && !hasProjector:
 			// The catalogue has no vision encoder for this size: it cannot look at images here.
 		default:
-			sum += math.Max(cfg.PurposeFloor, 1-cfg.PurposeRankStep*float64(rank))
+			adj := e.publicAdjustment(entry.Model.ID, p)
+			adjSum, adjN = adjSum+adj, adjN+1
+			sum += math.Max(cfg.PurposeFloor, 1-cfg.PurposeRankStep*float64(rank)) * adj
 		}
 	}
 	fit := sum / float64(len(purposes))
 	if wanted > 0 && ctx < wanted {
 		fit *= math.Sqrt(float64(ctx) / float64(wanted))
 	}
-	return fit
+	public := 1.0
+	if adjN > 0 {
+		public = adjSum / float64(adjN)
+	}
+	return fit, public
+}
+
+// publicAdjustment is the multiplier public quality signals put on one
+// purpose's fit for one catalogue size: 1 + ExternalWeight × (2p − 1), p the
+// size's average position across the (source, metric) pairs that score it
+// and at least ExternalMinCovered curated sizes. No such pair: exactly 1 —
+// the absence of a signal, not a default score.
+func (e *Engine) publicAdjustment(modelID int64, p catalog.Purpose) float64 {
+	cfg := e.Config
+	if cfg.ExternalWeight == 0 || modelID == 0 {
+		return 1
+	}
+	sum, n := 0.0, 0
+	for _, pm := range e.Public[p] {
+		mine, ok := pm.Values[modelID]
+		if !ok || len(pm.Values) < max(cfg.ExternalMinCovered, 2) {
+			continue
+		}
+		better, equal := 0, 0
+		for id, v := range pm.Values {
+			switch {
+			case id == modelID:
+			case v == mine:
+				equal++
+			case (v > mine) == pm.HigherIsBetter:
+				better++
+			}
+		}
+		sum += 1 - (float64(better)+float64(equal)/2)/float64(len(pm.Values)-1)
+		n++
+	}
+	if n == 0 {
+		return 1
+	}
+	return 1 + cfg.ExternalWeight*(2*sum/float64(n)-1)
 }
 
 func (e *Engine) speedFactor(est estimate.Estimate) float64 {

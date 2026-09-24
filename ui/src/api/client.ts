@@ -16,6 +16,7 @@ import type {
   Health,
   InstallSizeResponse,
   InstallStatus,
+  ModelDetailResponse,
   ModelFitResponse,
   OnboardingStatus,
   PullStatus,
@@ -82,6 +83,8 @@ export const api = {
   /** How every tracked variant of one catalogue size fits; without ctx, at Ollama's own default context. */
   modelFit: (modelId: number, ctx?: number, signal?: AbortSignal) =>
     get<ModelFitResponse>(`/models/${modelId}/fit${ctx ? `?ctx=${ctx}` : ''}`, signal),
+  /** One catalogue size: what others have published about it, and what this computer would do with it, apart. */
+  modelDetail: (modelId: number, signal?: AbortSignal) => get<ModelDetailResponse>(`/models/${modelId}/detail`, signal),
   /** What Ollama has installed, as the daemon last read it. */
   installedModels: (signal?: AbortSignal) => get<InstalledModelsResponse>('/models/installed', signal),
   /** What a test would do: the prompts that fit, how long it takes, and whether it is refused. Loads nothing. */

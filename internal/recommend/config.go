@@ -101,10 +101,33 @@ type Config struct {
 	// signals it is the only proxy for quality the catalogue carries.
 	SizeReferenceBillions float64
 
+	// ---- public quality signals (build-plan step 9b) -----------------------
+
+	// ExternalWeight is how far public quality signals — other people's
+	// benchmark results and ratings (research/EXTERNAL_SOURCES.md) — may move
+	// a purpose's fit, and nothing else: that purpose's fit is multiplied by
+	// 1 + ExternalWeight × (2p − 1), p being the size's average position (0
+	// = last, 1 = first) among the curated sizes each covering signal has
+	// scored. At 0.15 a size ranked first on every signal for a purpose gains
+	// 15% on that purpose, one ranked last loses 15%: enough to separate two
+	// families the purposes order alone cannot, not enough to outvote fit or
+	// speed. Only verified, independent and crowd values are scored — a
+	// maker's own report is shown, never scored (PRD §21's comparability
+	// risk). The fit, speed and size factors never see public data, and 0
+	// reproduces step 5's outcomes exactly. CHOSEN; Itay reading
+	// `advisor recommend` on each fleet machine with it on settles it.
+	ExternalWeight float64
+	// ExternalMinCovered is how many curated sizes a (source, metric) pair
+	// must have scored before a position on it counts: a place among three is
+	// noise. CHOSEN.
+	ExternalMinCovered int
+
 	// ---- which file --------------------------------------------------------
 
 	// DefaultQuants picks the one file of a size the engine recommends: the
-	// first of these that the catalogue holds. The first two are what a size's
+	// size's own ollama_quant when families.yaml states it (read by hand from
+	// the Ollama library), otherwise the first of these that the catalogue
+	// holds. The first two are what a size's
 	// ollama_tag pulls — the download a beginner actually gets (Q4_K_M, or
 	// MXFP4 for models released in it); the rest are fallbacks for a size
 	// whose repo lacks the usual file, nearest in quality first. The MVP
@@ -165,6 +188,9 @@ func DefaultConfig() Config {
 		UnknownSpeedFactor: 0.6,
 
 		SizeReferenceBillions: 70,
+
+		ExternalWeight:     0.15,
+		ExternalMinCovered: 5,
 
 		DefaultQuants: []string{"Q4_K_M", "MXFP4", "Q5_K_M", "Q6_K", "Q8_0", "IQ4_XS", "Q3_K_M"},
 		OnePerFamily:  true,

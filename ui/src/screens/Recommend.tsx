@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
 import { Figure, formatBytes } from '../components/Figure'
+import { PublicLine } from '../components/PublicFigure'
 import { en } from '../copy/en'
 import { useAdvanced } from '../state/settings'
 
@@ -16,7 +18,10 @@ const purposeOrder: Purpose[] = ['chat', 'writing', 'coding', 'reasoning', 'long
  * words, what it costs to get, and how sure the advisor is.
  *
  * Every sentence on a card comes from the daemon (recommend.Reason): the
- * screen adds labels, not claims. Every number with provenance goes through
+ * screen adds labels, not claims. A card's public line (step 9b) sits below
+ * and apart from the reasons, under its own heading, and is rendered by
+ * <PublicFigure> — never <Figure>; "Details" opens the model's detail view,
+ * where public data and this computer's numbers sit in two blocks. Every number with provenance goes through
  * <Figure>: a speed is an estimated RANGE until a test measures it, and when
  * there is no estimate the card says so in words — never a number.
  */
@@ -203,6 +208,11 @@ function Card({ r, pathSource, advanced }: { r: Recommendation; pathSource: Reco
         {c.keepsInMind(words.toLocaleString('en-US'))} · {c.nameInOllama}: <code>{r.pull_name}</code>
       </p>
 
+      <PublicLine entry={r.public} />
+      <p className="screen__note">
+        <Link to={`/models/${r.model.id}`}>{c.details}</Link>
+      </p>
+
       {advanced ? <Technical r={r} pathSource={pathSource} /> : null}
     </article>
   )
@@ -237,6 +247,7 @@ function Technical({ r, pathSource }: { r: Recommendation; pathSource: Recommend
   if (e.speed.prompt) rows.push([a.prompt, <Figure rate={e.speed.prompt} />])
   if (e.speed.basis) rows.push([a.speedBasis, e.speed.basis])
   rows.push([a.score, a.scoreValue(r.score, f.purpose, f.fit, f.speed, f.size)])
+  if (f.public !== undefined && f.public !== 1) rows.push([a.publicAdjust, `× ${f.public}`])
   return (
     <div className="screen__advanced" data-testid="recommend-advanced">
       <h3>{a.title}</h3>

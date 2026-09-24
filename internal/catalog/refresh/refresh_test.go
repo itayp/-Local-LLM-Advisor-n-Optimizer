@@ -168,6 +168,7 @@ families:
         context_length: 131072
         ollama_tag: llama3.2:1b
         hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+        hf_base_repo: base/Llama-3.2-1B-Instruct
   - id: vision
     display_name: A Vision Model
     maintainer: Someone
@@ -180,6 +181,7 @@ families:
         context_length: 131072
         ollama_tag: vision:1b
         hf_repo: o/vision-GGUF
+        hf_base_repo: base/vision
   - id: broken
     display_name: Broken
     maintainer: Someone
@@ -192,18 +194,22 @@ families:
         context_length: 4096
         ollama_tag: broken:1b
         hf_repo: o/does-not-exist
+        hf_base_repo: base/does-not-exist
       - parameters: 2000000000
         context_length: 4096
         ollama_tag: broken:2b
         hf_repo: o/gated
+        hf_base_repo: base/gated
       - parameters: 3000000000
         context_length: 4096
         ollama_tag: broken:3b
         hf_repo: o/malformed
+        hf_base_repo: base/malformed
       - parameters: 4000000000
         context_length: 4096
         ollama_tag: broken:4b
         hf_repo: o/no-tracked-quant
+        hf_base_repo: base/no-tracked-quant
 `
 
 func setup(t *testing.T) (*hub, *store.Store, *catalog.Catalogue) {

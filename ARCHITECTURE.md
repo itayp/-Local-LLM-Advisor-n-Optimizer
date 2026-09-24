@@ -181,6 +181,9 @@ code.
 
 ## D-10. Official APIs and permitted sources only
 
+*Step 9a decided the list: D-53 records it, with the research note
+(`research/EXTERNAL_SOURCES.md`) that argues it.*
+
 **Decision.** Until step 9a decides otherwise, Hugging Face is the only
 external source. Scraping a page whose terms do not permit it is excluded
 regardless of usefulness.
@@ -1606,10 +1609,13 @@ one laptop's run is evidence enough to move a constant or a rule.
   `load_ms` if it happens again.
 - **The quant an Ollama tag pulls.** The engine assumes the usual default;
   at least one small size in Ollama's library defaults to a larger quant.
-  A per-size field in families.yaml is the fix when it matters.
+  A per-size field in families.yaml is the fix when it matters — step 9b
+  added it (`ollama_quant`, D-53); a curator fills it in by hand.
 - **Quality beyond size.** Until step 9b brings public signals, a larger
   model of an older family can out-rank a smaller one of a newer family;
-  the purposes order is the curator's only lever.
+  the purposes order is the curator's only lever. Step 9b brings them
+  (D-53), into the purpose term only; how much they move depends on the
+  coverage the first live read reports.
 - **The live gate** passed on the M1 Pro (2026-09-19, `verify.command`):
   every size resolved, no weights downloaded. `advisor catalog refresh` in
   `scripts/verify.command` stays the live check for catalogue edits.
@@ -1680,3 +1686,115 @@ backend status, 1 s while an install or start is in flight) is an
 onboarding-only constant, not `estimate.Config`/`bench.Config` material —
 worth a shared UI-polling constant if step 8's screens grow the same
 pattern rather than each picking their own number.
+
+---
+
+Step 9b (external benchmark ingestion and the public/local split,
+2026-09-24) adds D-53.
+
+## D-53. Public data: three approved sources, stored apart, shown apart, scored in the purpose term only
+
+**Decision.** Step 9a's note (`research/EXTERNAL_SOURCES.md`) is the
+argument; this is what was built from it.
+
+- **The list.** Three sources are approved, in this order: Hugging Face
+  Eval Results (read from each size's *original* repo, `hf_base_repo`, a new
+  per-size field in families.yaml), Arena's own CC BY 4.0 leaderboard
+  dataset (through Hugging Face's Dataset Viewer API), and Epoch AI's
+  benchmark ZIP (Epoch's own runs only — files ending `_external.csv` are
+  never opened, and a ZIP that stops marking them is refused whole).
+  Artificial Analysis, OpenRouter, ollama.com's library and registry,
+  arena.ai's pages and every mirror, the Open LLM Leaderboard, LocalScore,
+  the llama.cpp scoreboards at runtime and the Aider leaderboard are
+  excluded, for the reasons and clauses the note quotes. No external
+  hardware throughput is ingested: speed stays the estimator's, narrowed by
+  this machine's own benchmarks (D-48).
+- **Data, with a code ceiling.** `data/catalog/external.yaml` is the only
+  place a source is switched on; it names each source's hosts, terms URL and
+  the date they were read, licence, attribution template and cadence
+  (daily; Epoch weekly), the excluded publishers (a Hugging Face result whose
+  stated source is one of them is dropped), and the metric → purpose map
+  with each metric's plain words and scale. It cannot add a host:
+  `external.PermittedHosts` in the code is the ceiling
+  (`huggingface.co`, `datasets-server.huggingface.co`, `epoch.ai`), which is
+  D-10's allow-list for public data, beside `hf.allowedHost`.
+  `data/catalog/aliases.yaml` maps each source's exact model names to one
+  catalogue size; nothing is fuzzy-matched, nothing crosses sizes, and a
+  miss is a line in the coverage report.
+- **Storage.** Migration 0006 gives `catalog_external` the source's own
+  date, URL, provenance (`CHECK` in maker, verified, independent, crowd),
+  attribution, `detail_json`, `present` and `updated_at`, and adds
+  `external_state` (a source's last success and failure in words, and each
+  request's validators). Only values that map to a catalogue size are
+  stored; a value that leaves its source is marked absent, never deleted; a
+  source that fails keeps what it stored. `catalog.External` is the stored
+  row and is not served.
+- **The type.** `figure.Public` is the third kind of number: a value about a
+  model that someone else published. It has no `Source` and refuses to
+  marshal without its `Origin` (publisher, the source's own date,
+  attribution, provenance). The origin's who-field is `publisher` in JSON,
+  not the note's `source`, so no key of a public value matches a local
+  figure's. `figure.CheckSeparation` and
+  `TestPublicAndLocalNeverShareAStruct` hold that no API struct has a
+  `Public` beside a `Bytes` or `Rate`; they sit in sibling objects
+  (`public`, `local`). In the UI, `PublicFigure` is the only renderer of a
+  public value, and `<Figure>`'s props cannot type-check one (a
+  `@ts-expect-error` test).
+- **The engine.** Public signals reach the purpose-fit term and nothing
+  else: for each purpose asked, the (source, metric) pairs the map assigns
+  to it that score at least `ExternalMinCovered` (5) curated sizes give the
+  size's average position p, and that purpose's fit is multiplied by
+  `1 + ExternalWeight × (2p − 1)` (`ExternalWeight` 0.15, CHOSEN). Only
+  verified, independent and crowd values are scored; a maker's own report
+  is shown, labelled, and never scored. A size a pair does not score gets
+  exactly 1 from it — the absence of a signal. `ExternalWeight = 0`
+  reproduces step 5's outcomes byte for byte (a test), and removing public
+  data changes no fit category, speed range, memory figure or confidence (a
+  test). `Factors.Public` shows the multiplier for Advanced. Percent metrics
+  published as fractions are read ×100 before positions are taken.
+- **The API.** `GET /api/models/{id}/detail` is a size's detail view:
+  sibling `public` (entries with a position in words, the origin beneath,
+  Advanced detail as labelled strings, and a "last updated" sentence that
+  names any source whose latest check failed) and `local` (exactly
+  `/fit`'s answer). The path is `/detail` because `GET /api/models/{id}`
+  would conflict with `/api/models/installed` and `/pull` in the mux. Each
+  recommendation card carries one `public` line, filled by the server from
+  the same view — the engine scores, it does not write the line.
+- **The refresh.** `refresh.Run` reads the due sources after the sizes and
+  the installed-model mapping (`refresh.Options.External`); the report goes
+  into `catalog_refreshes.report_json` beside the model list's. Public data
+  never fails a refresh or blocks a recommendation.
+  `advisor catalog external [-force] [-report] [-capture DIR]` is the
+  curator's tool and prints the coverage report (hits and misses per
+  source, aliases never answered with, candidate names, metrics the map
+  does not list, results pending in open pull requests, dropped and
+  unreadable entries); `advisor catalog check` validates both new files;
+  `advisor recommend -detail` prints the top pick's two blocks.
+- **Also from the note's build list:** `ollama_quant` per size (optional,
+  read by hand from the Ollama library, never fetched) now picks the file
+  the engine recommends when it is stated; `released_at` comes from the
+  original repo's `createdAt` and is display only; the GGUF repo's own
+  `base_model` is checked against `hf_base_repo` and a mismatch is a
+  warning in the report.
+
+**Consequences.**
+
+- **The fixtures are shaped, not captured.** The session that built this
+  had no route to any of the three hosts. The Hugging Face parser follows
+  huggingface_hub 1.32.0's own code (both item shapes it accepts, and the
+  request it sends: a repeated `expand=`, not `expand[]` — the note's open
+  spelling question), the Arena parser the Dataset Viewer's documented
+  shape, the Epoch parser the note; every column and category name is data
+  in external.yaml, and a shape the parser does not recognise fails in
+  words rather than produce a number. `scripts/verify.command` now saves
+  every real answer to `.captures/external/`; replacing the fixtures with
+  those, and correcting whatever differs, is part of step 9b's gate.
+- **Coverage is the gate's to tell.** The metric ids, Arena categories and
+  Epoch file names marked "unconfirmed" in external.yaml, and the aliases,
+  were written without a live response; the first coverage report on the
+  M1 Pro confirms or corrects them, and decides whether Epoch stays on
+  (the note: off, with the reason recorded, if it covers nothing).
+- **Not built here:** step 10's notification bullet (the note's P-3, third
+  place) is step 10's; the curator flag for an installed model whose quant
+  differs from `ollama_quant` waits for a size that states one.
+

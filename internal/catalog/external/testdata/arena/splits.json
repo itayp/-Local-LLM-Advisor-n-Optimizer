@@ -1,0 +1,11 @@
+{
+  "splits": [
+    {"dataset": "lmarena-ai/leaderboard-dataset", "config": "text", "split": "latest"},
+    {"dataset": "lmarena-ai/leaderboard-dataset", "config": "text", "split": "full"},
+    {"dataset": "lmarena-ai/leaderboard-dataset", "config": "text_style_control", "split": "latest"},
+    {"dataset": "lmarena-ai/leaderboard-dataset", "config": "vision", "split": "latest"},
+    {"dataset": "lmarena-ai/leaderboard-dataset", "config": "webdev", "split": "latest"}
+  ],
+  "pending": [],
+  "failed": []
+}

@@ -3,6 +3,10 @@
 // their own. Step 7 adds the glossary (one-line explainers for every
 // technical term) next to this file.
 
+function capitalise(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
 export const en = {
   app: {
     title: 'Local LLM Advisor',
@@ -16,6 +20,22 @@ export const en = {
     measuredLabel: 'measured on this computer',
     estimatedPrefix: '≈',
   },
+  // Public data (step 9b): numbers others published about a model — never
+  // about this computer. research/EXTERNAL_SOURCES.md P-4 to P-7.
+  publicData: {
+    label: 'published by others',
+    title: 'Public data — how others rated this model',
+    cardTitle: 'Public data',
+    tests: (what: string, who: string) => `${capitalise(what)} — ${who}.`,
+    publishedBy: (publisher: string, date: string) => `${publisher}, ${date}.`,
+    readAtSource: 'Read it at the source',
+    none: 'No public scores for this size yet. Other people\'s results for a bigger or smaller size of the same model are not shown here: they would say little about this one.',
+    caveatBefore: 'These scores are for the original model as its maker published it. What Ollama downloads is a compressed copy (its ',
+    caveatAfter: '), which may score a little lower.',
+    whatIsIt: 'What is a',
+    notScored: 'Reported by the model\'s maker: shown, but not used to rank models, because makers test their own models in different ways.',
+    advanced: 'Details',
+  },
   nav: {
     home: 'Home',
     computer: 'Your computer',
@@ -25,6 +45,7 @@ export const en = {
     benchmarks: 'Benchmarks',
     watch: 'New models',
     settings: 'Settings',
+    modelDetail: 'Model',
   },
   screens: {
     home: {
@@ -111,6 +132,26 @@ export const en = {
         'Whether Ollama is installed and running, one button that says what it will do, and whether it is using your graphics card.',
       step: 'build plan step 3',
     },
+    modelDetail: {
+      back: 'Back to Recommend',
+      loading: 'Reading what is known about this model…',
+      failed: (message: string) => `This model could not be read: ${message}`,
+      maintainer: (who: string) => `Made by ${who}.`,
+      released: (when: string) => ` Released ${when}.`,
+      nameInOllama: 'Its name in Ollama',
+      machineTitle: 'Your machine — estimated or measured here',
+      machineLead: (words: string) => `If Ollama ran it here, keeping about ${words} words in mind:`,
+      fit: 'Fit',
+      speed: 'Speed',
+      noSpeed: 'no estimate yet',
+      memory: 'Memory it needs',
+      download: 'Download',
+      noFile: 'The model list has no file for this size yet, so the advisor cannot say how it would run here.',
+      test: 'Test it on this computer',
+      testHelp: 'Benchmarks runs a test of a model you have downloaded, and a measurement then replaces these estimates.',
+      otherFiles: 'Other downloads of this size',
+      quant: 'Quantization',
+    },
     models: {
       title: 'Models',
       lead: 'Every model Ollama has downloaded on this computer, whether it fits, and how fast it runs.',
@@ -142,6 +183,7 @@ export const en = {
         unknown: "The advisor's list does not cover this exact download, so it can't say how well it fits.",
       },
       noSpeed: 'not tested',
+      details: 'Details',
       freeSpace: (free: string) => `${free} free on the models volume`,
       freeSpaceUnknown: 'The free space on the models volume could not be read.',
       remove: 'Remove',
@@ -186,6 +228,7 @@ export const en = {
       download: 'Download',
       installed: 'already on this computer',
       keepsInMind: (words: string) => `Set up to keep about ${words} words in mind at once`,
+      details: 'Details: public data and this computer',
       why: 'Why this one',
       explainer: 'Why?',
       confidence: {
@@ -217,6 +260,10 @@ export const en = {
         score: { label: 'Ranking score', explain: 'Purpose × fit × speed × size; only the order matters.' },
         scoreValue: (score: number, p: number, f: number, sp: number, z: number) =>
           `${score} = purpose ${p} × fit ${f} × speed ${sp} × size ${z}`,
+        publicAdjust: {
+          label: 'Public scores',
+          explain: 'How much other people\'s results moved the purpose term (1 = not at all; at most 15% either way). They never touch fit or speed.',
+        },
         notes: 'Notes',
         tokens: (n: string) => `${n} tokens`,
       },

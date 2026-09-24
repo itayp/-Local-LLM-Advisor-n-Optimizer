@@ -35,9 +35,62 @@ type checker struct {
 	problems []string
 }
 
+// figureTypes are the provenance-carrying types: a local figure (Bytes,
+// Rate: estimated or measured) or a public value (Public: someone else's,
+// with its origin).
 var figureTypes = map[reflect.Type]bool{
-	reflect.TypeOf(Bytes{}): true,
-	reflect.TypeOf(Rate{}):  true,
+	reflect.TypeOf(Bytes{}):  true,
+	reflect.TypeOf(Rate{}):   true,
+	reflect.TypeOf(Public{}): true,
+}
+
+var (
+	localTypes = map[reflect.Type]bool{reflect.TypeOf(Bytes{}): true, reflect.TypeOf(Rate{}): true}
+	publicType = reflect.TypeOf(Public{})
+)
+
+// CheckSeparation walks the struct types in vals, as Check does, and
+// returns one message per struct that directly holds both a public value
+// (Public, or a pointer, slice or map of them) and a local figure (Bytes or
+// Rate, likewise). A struct that holds them in sibling sub-objects passes:
+// the rule is that no struct, and so no JSON object, puts someone else's
+// number beside one about this machine (research/EXTERNAL_SOURCES.md P-2).
+func CheckSeparation(vals ...any) []string {
+	seen := map[reflect.Type]bool{}
+	var problems []string
+	var walk func(t reflect.Type)
+	walk = func(t reflect.Type) {
+		t = leaf(t)
+		if t.Kind() != reflect.Struct || seen[t] || figureTypes[t] {
+			return
+		}
+		seen[t] = true
+		var public, local []string
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			switch ft := leaf(f.Type); {
+			case ft == publicType:
+				public = append(public, f.Name)
+			case localTypes[ft]:
+				local = append(local, f.Name)
+			default:
+				walk(f.Type)
+			}
+		}
+		if len(public) > 0 && len(local) > 0 {
+			problems = append(problems, fmt.Sprintf(
+				"%s holds public value(s) %v beside local figure(s) %v: put them in sibling sub-objects (\"public\", \"local\")",
+				t, public, local))
+		}
+	}
+	for _, v := range vals {
+		walk(reflect.TypeOf(v))
+	}
+	sort.Strings(problems)
+	return problems
 }
 
 func (c *checker) walk(t reflect.Type, path string) {

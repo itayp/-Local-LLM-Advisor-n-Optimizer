@@ -98,15 +98,22 @@ func (s *Server) observedPath(ctx context.Context, fingerprint string) (hardware
 
 // catalogueEntries is the stored catalogue in the shape the engine reads.
 func (s *Server) catalogueEntries(ctx context.Context) ([]recommend.Entry, error) {
+	entries, _, err := s.catalogue(ctx)
+	return entries, err
+}
+
+// catalogue is the stored catalogue in the shape the engine reads, and the
+// rows it came from.
+func (s *Server) catalogue(ctx context.Context) ([]recommend.Entry, []store.CatalogModelRow, error) {
 	rows, err := s.store.CatalogModels(ctx, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := make([]recommend.Entry, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, recommend.Entry{FamilyID: row.Model.FamilyID, DisplayName: row.DisplayName, Purposes: row.Purposes, Model: row.Model})
 	}
-	return out, nil
+	return out, rows, nil
 }
 
 // handleRecommend is GET /api/recommend?purposes=coding,chat — at most three
@@ -150,11 +157,17 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entries, err := s.catalogueEntries(r.Context())
+	entries, rows, err := s.catalogue(r.Context())
 	if err != nil {
 		s.log.Error("reading the catalogue", "err", err)
 		writeError(w, http.StatusInternalServerError, "store", "the model list could not be read")
 		return
+	}
+	// Public quality signals (build-plan step 9b). Unreadable public data
+	// never blocks a recommendation: it is logged and left out.
+	view, err := s.publicView(r.Context(), rows)
+	if err != nil {
+		s.log.Warn("reading public data; recommending without it", "err", err)
 	}
 	installedRows, err := s.store.AllInstalledModels(r.Context())
 	if err != nil {
@@ -179,52 +192,79 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 	// replace their configurations' estimates, the rest calibrate the speed
 	// ranges (build-plan step 6, item 6).
 	engine.Measurements = s.evidence(r.Context(), m, engine.Estimator)
-	writeJSON(w, http.StatusOK, engine.Recommend(m, purposes, installed, prefs))
+	if view != nil {
+		// Public data reaches the purpose-fit term only (recommend.Config.
+		// ExternalWeight), and each card one "Public data" line of its own.
+		engine.Public = view.Scoring()
+	}
+	res := engine.Recommend(m, purposes, installed, prefs)
+	if view != nil {
+		for i := range res.Recommendations {
+			res.Recommendations[i].Public = view.Line(res.Recommendations[i].Model.ID, res.Purposes)
+		}
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 // maxContext bounds ?ctx= and ?min_context=: above any trained context in
 // the catalogue, below anything that would overflow the arithmetic.
 const maxContext = 1 << 22
 
+// fitError is why a fit could not be answered, for writeError.
+type fitError struct {
+	status      int
+	code, words string
+}
+
 // handleModelFit is GET /api/models/{id}/fit?ctx=8192&kv=f16 — {id} is a
 // catalogue size (the "id" of a size in GET /api/catalog). Without ctx the
 // fits are for Ollama's own default context on this machine.
 func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
+	resp, _, ferr := s.modelFit(w, r)
+	if ferr != nil {
+		if ferr.status != 0 {
+			writeError(w, ferr.status, ferr.code, ferr.words)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// modelFit answers /fit for the size in the path, and returns the stored
+// catalogue rows it read. A fitError with status 0 means the response has
+// already been written (hardware still detecting) or the request is gone.
+func (s *Server) modelFit(w http.ResponseWriter, r *http.Request) (ModelFitResponse, []store.CatalogModelRow, *fitError) {
+	var resp ModelFitResponse
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		writeError(w, http.StatusBadRequest, "bad_id", "the model id must be a positive number")
-		return
+		return resp, nil, &fitError{http.StatusBadRequest, "bad_id", "the model id must be a positive number"}
 	}
 	q := r.URL.Query()
 	kv := estimate.KVF16
 	if v := q.Get("kv"); v != "" {
 		if kv = estimate.KVCacheType(v); !kv.Valid() {
-			writeError(w, http.StatusBadRequest, "bad_kv", "kv must be f16, q8_0 or q4_0")
-			return
+			return resp, nil, &fitError{http.StatusBadRequest, "bad_kv", "kv must be f16, q8_0 or q4_0"}
 		}
 	}
 	ctx, ctxSource := 0, "ollama_default"
 	if v := q.Get("ctx"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 256 || n > maxContext {
-			writeError(w, http.StatusBadRequest, "bad_context", "ctx must be a number of tokens, 256 or more")
-			return
+			return resp, nil, &fitError{http.StatusBadRequest, "bad_context", "ctx must be a number of tokens, 256 or more"}
 		}
 		ctx, ctxSource = n, "requested"
 	}
 	if s.store == nil {
-		writeError(w, http.StatusServiceUnavailable, "no_store", "the model list is not available")
-		return
+		return resp, nil, &fitError{http.StatusServiceUnavailable, "no_store", "the model list is not available"}
 	}
 	m, ok := s.machine(w, r)
 	if !ok {
-		return
+		return resp, nil, &fitError{}
 	}
-	entries, err := s.catalogueEntries(r.Context())
+	entries, rows, err := s.catalogue(r.Context())
 	if err != nil {
 		s.log.Error("reading the catalogue", "err", err)
-		writeError(w, http.StatusInternalServerError, "store", "the model list could not be read")
-		return
+		return resp, nil, &fitError{http.StatusInternalServerError, "store", "the model list could not be read"}
 	}
 	var entry *recommend.Entry
 	for i := range entries {
@@ -233,14 +273,12 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if entry == nil {
-		writeError(w, http.StatusNotFound, "not_found", "no model with that id in the list")
-		return
+		return resp, nil, &fitError{http.StatusNotFound, "not_found", "no model with that id in the list"}
 	}
 	est, err := estimate.New()
 	if err != nil {
 		s.log.Error("building the estimator", "err", err)
-		writeError(w, http.StatusInternalServerError, "estimator", "the advisor's own data could not be read: "+err.Error())
-		return
+		return resp, nil, &fitError{http.StatusInternalServerError, "estimator", "the advisor's own data could not be read: " + err.Error()}
 	}
 	measured := s.evidence(r.Context(), m, est)
 	pl := est.Place(m)
@@ -257,7 +295,10 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	defaultQuants := recommend.DefaultConfig().DefaultQuants
-	resp := ModelFitResponse{
+	if model.Size.OllamaQuant != "" {
+		defaultQuants = append([]string{model.Size.OllamaQuant}, defaultQuants...)
+	}
+	resp = ModelFitResponse{
 		FamilyID: entry.FamilyID, DisplayName: entry.DisplayName, NumCtx: ctx, NumCtxSource: ctxSource, KVCacheType: kv,
 		RuntimePath: string(pl.Path), PathSource: pl.PathSource, GPUNotUsed: pl.Unused, Fits: []FileFit{},
 	}
@@ -281,7 +322,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 	}
 	model.Files = []catalog.File{}
 	resp.Model = model
-	writeJSON(w, http.StatusOK, resp)
+	return resp, rows, nil
 }
 
 func truthy(v string) bool {
