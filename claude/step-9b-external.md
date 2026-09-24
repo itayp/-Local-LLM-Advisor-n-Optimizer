@@ -101,6 +101,21 @@ limbo, the Benchmarks picker, waits with nothing moving). `make check` and
   values for 9 sizes (Epoch for all nine, the Hub for three), before Arena
   is read whole.
 
+## Second gate run (verify.log, 2026-09-24 22:28)
+
+Public values for Hugging Face 3 sizes (GLM-4.7-Flash, Gemma 4 26B/31B),
+Epoch 9, Arena 10 — the Llama and gpt-oss aliases confirmed; recommendations
+now carry public lines ("Llama 3.1 8B: among the weaker for everyday chat of
+the 10 models here that Arena has rated", purpose term ×0.917). Arena's
+creative-writing and vision boards failed again with "index is loading".
+The run was not stuck, but Arena alone took about fifteen minutes (43
+requests) — and on Windows that looked like a hang, with Epoch waiting
+behind it. Fixed (ARCHITECTURE.md D-55): two requests per Arena board (one
+row, then the aliased names only), a three-minute deadline per source,
+Arena read last, and the progress names the board or repo being read.
+The chat top pick on the M1 Pro, Ministral 3 8B, still has no public score
+from any approved source.
+
 ## Also fixed this session (Itay, testing on Windows)
 
 - **No dead end without the model list.** `GET /api/catalog/status`, and
@@ -127,7 +142,10 @@ limbo, the Benchmarks picker, waits with nothing moving). `make check` and
 
 ## What the gate still needs (on the M1 Pro, through `scripts/verify.command`)
 
-1. **The second coverage report.** Run verify.command again. Expected:
+1. **A third run, for time.** The second report confirmed coverage; the
+   third should show the public-data step taking a minute or two, not a
+   quarter of an hour (the report now prints retries and seconds waited).
+   Earlier plan for this item: Expected:
    Hugging Face hits for GLM-4.7-Flash and the Gemma 4 26B/31B; Epoch for
    the nine sizes above; Arena — if the dataset viewer has finished loading
    — the aliased sizes on each board, and "aliases the source never

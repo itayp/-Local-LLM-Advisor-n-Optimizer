@@ -62,7 +62,21 @@ type Options struct {
 	// sources so far, how many there are, the source's name); it must not
 	// block.
 	Progress func(done, total int, name string)
+	// SourceDeadline bounds one source's read; past it the source fails in
+	// words, keeps what it stored, and is due again at the next refresh.
+	// 0 is DefaultSourceDeadline.
+	SourceDeadline time.Duration
+	// WholeBoards reads every row of Arena's boards rather than only the
+	// aliased names — slower, for the curator's list of candidate names
+	// (`advisor catalog external -whole-boards`).
+	WholeBoards bool
 }
+
+// DefaultSourceDeadline is how long one source may take in a refresh. A
+// refresh the daemon runs is a person waiting at a progress bar: a source
+// that cannot answer in this time is not waited for (Itay, 2026-09-24: the
+// Arena read took a quarter of an hour on both machines).
+const DefaultSourceDeadline = 3 * time.Minute
 
 // Report is what a run did, for the CLI, the API and catalog_refreshes.
 type Report struct {
@@ -137,6 +151,8 @@ type runner struct {
 	sizes  []sizeRef
 	byKey  map[store.CatalogKey]sizeRef
 	report *Report
+	// part tells the progress what the current source is reading now.
+	part func(what string)
 }
 
 // Run reads every enabled source that is due and returns the report. It
@@ -154,7 +170,10 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		o.Fetcher = NewFetcher(version.UserAgent(), o.Config.EnabledHosts())
 		o.Fetcher.Log = o.Log
 	}
-	r := &runner{o: o, now: o.Now().UTC(), byKey: map[store.CatalogKey]sizeRef{}}
+	if o.SourceDeadline <= 0 {
+		o.SourceDeadline = DefaultSourceDeadline
+	}
+	r := &runner{o: o, now: o.Now().UTC(), byKey: map[store.CatalogKey]sizeRef{}, part: func(string) {}}
 	rep := Report{StartedAt: r.now.Format(time.RFC3339), Trigger: o.Trigger, Sources: []SourceReport{}, Coverage: []SizeCoverage{}, Warnings: []string{}}
 	r.report = &rep
 
@@ -191,7 +210,9 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			return rep, err
 		}
 		if src.Enabled && o.Progress != nil {
-			o.Progress(read, enabled, src.Name)
+			done, name := read, src.Name
+			o.Progress(done, enabled, name)
+			r.part = func(what string) { o.Progress(done, enabled, name+" ("+what+")") }
 		}
 		if src.Enabled {
 			read++
@@ -215,7 +236,7 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		if err != nil {
 			return rep, err
 		}
-		if !o.Force && sameConfig && state.OKAt != "" && partsFailed == 0 {
+		if !o.Force && sameConfig && state.OKAt != "" && state.Error == "" && partsFailed == 0 {
 			if ok, err := time.Parse(time.RFC3339, state.OKAt); err == nil && r.now.Sub(ok) < time.Duration(src.CadenceHours)*time.Hour {
 				next := ok.Add(time.Duration(src.CadenceHours) * time.Hour)
 				sr.Status = StatusSkipped
@@ -226,14 +247,17 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 		before := o.Fetcher.Stats()
 		var runErr error
+		srcCtx, cancel := context.WithTimeout(ctx, o.SourceDeadline)
 		switch src.ID {
 		case SourceHFEvals:
-			runErr = r.hfEvals(ctx, src, &sr, sameConfig)
+			runErr = r.hfEvals(srcCtx, src, &sr, sameConfig)
 		case SourceArena:
-			runErr = r.arena(ctx, src, &sr, sameConfig)
+			runErr = r.arena(srcCtx, src, &sr, sameConfig)
 		case SourceEpoch:
-			runErr = r.epoch(ctx, src, &sr, sameConfig)
+			runErr = r.epoch(srcCtx, src, &sr, sameConfig)
 		}
+		timedOut := srcCtx.Err() != nil
+		cancel()
 		if ctx.Err() != nil {
 			return rep, ctx.Err()
 		}
@@ -241,11 +265,18 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		sr.Stats = Stats{
 			Requests: after.Requests - before.Requests, NotModified: after.NotModified - before.NotModified,
 			Retries: after.Retries - before.Retries, BytesRead: after.BytesRead - before.BytesRead,
+			WaitedSeconds: after.WaitedSeconds - before.WaitedSeconds,
 		}
 		state.Source, state.Key, state.AttemptedAt = src.ID, "", r.now.Format(time.RFC3339)
+		if timedOut {
+			// Whatever it was doing when time ran out (a request, or storing
+			// one), the source stops here; what it stored stays.
+			runErr = fmt.Errorf("%s took longer than %s to answer, so the advisor stopped waiting; what it stored before is kept, and the next refresh tries again",
+				src.Name, minutesWords(o.SourceDeadline))
+		}
 		if runErr != nil {
 			var se *storeError
-			if errors.As(runErr, &se) {
+			if errors.As(runErr, &se) && !timedOut {
 				return rep, se.err
 			}
 			sr.Status, sr.Error = StatusFailed, runErr.Error()
@@ -533,4 +564,16 @@ func Stored(ctx context.Context, st *store.Store, cat *catalog.Catalogue, cfg *C
 		}
 	}
 	return rep, nil
+}
+
+// minutesWords is a duration in whole minutes, in words.
+func minutesWords(d time.Duration) string {
+	m := int(d.Round(time.Minute) / time.Minute)
+	switch {
+	case m < 1:
+		return fmt.Sprintf("%d seconds", int(d/time.Second))
+	case m == 1:
+		return "a minute"
+	}
+	return fmt.Sprintf("%d minutes", m)
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"advisor/internal/backend"
 	"advisor/internal/catalog"
@@ -31,7 +32,7 @@ const catalogUsage = `usage:
       know. Exits 1 if any size did not resolve.
       Then reads the public benchmark sources that are due (external.yaml;
       -no-external skips them) and prints what each hit and missed.
-  advisor catalog external [-data-dir DIR] [-force] [-report] [-capture DIR] [-json]
+  advisor catalog external [-data-dir DIR] [-force] [-report] [-capture DIR] [-whole-boards] [-json]
       Read the approved public benchmark sources (build-plan step 9b:
       Hugging Face Eval Results, Arena, Epoch AI — whichever external.yaml
       switches on) into the daemon's database and print the coverage report:
@@ -40,7 +41,9 @@ const catalogUsage = `usage:
       map does not list. A source read recently is skipped until its cadence
       comes round; -force reads it now. -report prints what is stored
       without the network. -capture DIR also saves every answer to DIR, to
-      replace the test fixtures with real responses.
+      replace the test fixtures with real responses. Each source has a few
+      minutes; Arena's boards are read for the aliased names only, unless
+      -whole-boards (slow) reads every row to list candidate names.
   advisor catalog check [FILE]
       Validate families.yaml (the embedded one, or FILE), external.yaml and
       aliases.yaml without the network.
@@ -324,6 +327,7 @@ func catalogExternal(args []string, stdout, stderr io.Writer) int {
 	force := fs.Bool("force", false, "read every enabled source now, whatever its cadence")
 	reportOnly := fs.Bool("report", false, "print what is stored, without the network")
 	capture := fs.String("capture", "", "also save every answer the sources give into this folder (for test fixtures)")
+	whole := fs.Bool("whole-boards", false, "read every row of Arena's boards, not only the aliased names (slow; lists candidate names)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	verbose := fs.Bool("v", false, "log each request")
 	if err := fs.Parse(args); err != nil {
@@ -370,6 +374,7 @@ func catalogExternal(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "reading the public benchmark sources into %s ...\n", dbPath)
 		rep, err = external.Run(ctx, external.Options{
 			Catalogue: cat, Config: cfg, Aliases: al, Store: st, Fetcher: f, Log: log, Trigger: "cli", Force: *force,
+			WholeBoards: *whole, SourceDeadline: deadline(*whole),
 		})
 	}
 	if err != nil {
@@ -399,8 +404,8 @@ func printExternal(w io.Writer, rep external.Report) {
 			continue
 		}
 		if s.Stats.Requests > 0 {
-			fmt.Fprintf(w, "       %d requests (%d unchanged), %s read; %d values stored, %d gone from the source\n",
-				s.Stats.Requests, s.Stats.NotModified, mb(s.Stats.BytesRead), s.Stored, s.Absent)
+			fmt.Fprintf(w, "       %d requests (%d unchanged, %d retried after waiting %ds in all), %s read; %d values stored, %d gone from the source\n",
+				s.Stats.Requests, s.Stats.NotModified, s.Stats.Retries, s.Stats.WaitedSeconds, mb(s.Stats.BytesRead), s.Stored, s.Absent)
 		}
 		list := func(label string, items []string) {
 			if len(items) > 0 {
@@ -438,4 +443,13 @@ func printExternal(w io.Writer, rep external.Report) {
 	for _, warn := range rep.Warnings {
 		fmt.Fprintf(w, "  - %s\n", warn)
 	}
+}
+
+// deadline is how long the curator's read gives one source: the daemon's
+// own limit, or a quarter of an hour to read Arena's boards whole.
+func deadline(whole bool) time.Duration {
+	if whole {
+		return 15 * time.Minute
+	}
+	return external.DefaultSourceDeadline
 }

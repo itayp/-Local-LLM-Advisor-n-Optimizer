@@ -63,6 +63,9 @@ type Stats struct {
 	NotModified int   `json:"not_modified" source:"n/a"` // a count
 	Retries     int   `json:"retries" source:"n/a"`      // a count
 	BytesRead   int64 `json:"bytes_read" source:"n/a"`   // a count of bytes downloaded
+	// WaitedSeconds is the time spent waiting before retries (a source
+	// asking the advisor to slow down, or still loading); a count of seconds.
+	WaitedSeconds int `json:"waited_seconds" source:"n/a"`
 }
 
 // Errors a source can act on.
@@ -109,7 +112,7 @@ func NewFetcher(userAgent string, hosts []string) *Fetcher {
 	for _, h := range hosts {
 		f.hosts[strings.ToLower(h)] = true
 	}
-	f.HTTP = &http.Client{Timeout: 2 * time.Minute, CheckRedirect: f.checkRedirect}
+	f.HTTP = &http.Client{Timeout: 90 * time.Second, CheckRedirect: f.checkRedirect}
 	return f
 }
 
@@ -265,7 +268,10 @@ func (f *Fetcher) Get(ctx context.Context, rawURL string, v Validators) (*Respon
 				return nil, fmt.Errorf("%w: asked to wait %s", ErrRateLimited, wait.Round(time.Second))
 			}
 			if attempt < attempts {
-				f.count(func(s *Stats) { s.Retries++ })
+				f.count(func(s *Stats) { s.Retries++; s.WaitedSeconds += int(wait / time.Second) })
+				if wait >= 5*time.Second {
+					f.Log.Warn("external source asked the advisor to wait", "url", rawURL, "status", resp.StatusCode, "wait", wait.Round(time.Second), "answer", se.Body)
+				}
 				if err := f.Sleep(ctx, wait); err != nil {
 					return nil, err
 				}

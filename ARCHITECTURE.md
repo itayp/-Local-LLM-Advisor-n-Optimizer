@@ -1886,3 +1886,37 @@ configuration (verify.command); Arena's boards are the part still to be
 confirmed whole (their Llama and gpt-oss names lie below row 200, which the
 first run did not reach). Backlog item e (progress while fetching the list)
 is done by the second decision.
+
+## D-55. A refresh is a person waiting: Arena in two requests a board, every source on a clock
+
+**Context.** The second gate run (2026-09-24, 22:28) read all three sources
+— Hugging Face 3 sizes, Epoch 9, Arena 10 (its Llama and gpt-oss aliases
+confirmed) — but Arena alone took about fifteen minutes: 43 requests, page
+by page through boards of some 400 rows, with the dataset viewer's "index is
+loading" answers and waits between them; two boards still failed. On
+Windows the same read looked like a hang from the app, and since Epoch was
+read after Arena, no public score appeared at all while it ran.
+
+**Decision.**
+
+- **Arena reads two small answers a board**: one row of the whole board
+  (it exists, has the columns, how many rows, how recent — the "unchanged"
+  shortcut still applies), then only the rows whose model name
+  aliases.yaml lists (`"category"='…' AND ("model_name"='…' OR …)`), the
+  only rows the advisor can store. The requests remain a function of the
+  data files. Should the viewer refuse that filter, the board is read whole,
+  as before. The curator's `advisor catalog external -whole-boards` reads
+  every row, which is what lists candidate names; the daemon no longer
+  does.
+- **Every source has a deadline** (`external.DefaultSourceDeadline`, three
+  minutes; `Options.SourceDeadline`). Past it the source fails in words,
+  keeps what it stored, and — failed — is due again at the next refresh (a
+  source whose last read failed is no longer skipped for its cadence).
+- **Arena goes last** in external.yaml, so the quick sources' scores are
+  stored first.
+- **The progress names the part**: "Reading public scores from Arena
+  leaderboard dataset (the coding board)", a Hugging Face repo's size,
+  Epoch's download. The report prints retries and the seconds waited, and
+  the fetcher logs any wait of five seconds or more, so a slow source shows
+  why in verify.log.
+

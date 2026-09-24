@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -146,6 +148,7 @@ type hub struct {
 	mu       sync.Mutex
 	requests []string
 	zip      []byte
+	filters  []string                                          // every /filter where clause, in order
 	extra    func(w http.ResponseWriter, r *http.Request) bool // a test's override; true = handled
 	srv      *httptest.Server
 }
@@ -191,9 +194,24 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/splits":
 		serveFile(w, "arena/splits.json")
 	case r.URL.Path == "/filter":
-		where := r.URL.Query().Get("where")
-		if where == `"category"='overall'` && r.URL.Query().Get("config") == "text" {
-			serveFile(w, "arena/text-overall.json")
+		h.mu.Lock()
+		h.filters = append(h.filters, r.URL.Query().Get("where"))
+		h.mu.Unlock()
+		if r.URL.Query().Get("config") == "text" && strings.HasPrefix(r.URL.Query().Get("where"), `"category"='overall'`) {
+			b, err := os.ReadFile(filepath.Join("testdata", "arena", "text-overall.json"))
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			var board arenaFilterPage
+			if err := json.Unmarshal(b, &board); err != nil {
+				h.t.Fatal(err)
+			}
+			var rows []map[string]any
+			for _, rw := range board.Rows {
+				rows = append(rows, rw.Row)
+			}
+			serveFilter(w, r, `[{"name":"model_name"},{"name":"organization"},{"name":"license"},{"name":"rating"},{"name":"rating_lower"},{"name":"rating_upper"},{"name":"variance"},{"name":"vote_count"},{"name":"rank"},{"name":"category"},{"name":"leaderboard_publish_date"}]`, rows)
 			return
 		}
 		_, _ = w.Write([]byte(`{"features":[{"name":"model_name"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}],"rows":[],"num_rows_total":0}`))
@@ -214,6 +232,35 @@ func (h *hub) seen() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return append([]string(nil), h.requests...)
+}
+
+var whereName = regexp.MustCompile(`"model_name"='((?:[^']|'')*)'`)
+
+// serveFilter answers a /filter request the way the dataset viewer does:
+// the rows matching the where clause's model names (all of them when it
+// names none), the page asked for, and how many matched.
+func serveFilter(w http.ResponseWriter, r *http.Request, features string, rows []map[string]any) {
+	names := map[string]bool{}
+	for _, m := range whereName.FindAllStringSubmatch(r.URL.Query().Get("where"), -1) {
+		names[strings.ReplaceAll(m[1], "''", "'")] = true
+	}
+	var match []map[string]any
+	for _, row := range rows {
+		if n, _ := row["model_name"].(string); len(names) == 0 || names[n] {
+			match = append(match, row)
+		}
+	}
+	off, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	n, _ := strconv.Atoi(r.URL.Query().Get("length"))
+	end := min(off+n, len(match))
+	page := []map[string]any{}
+	if off < end {
+		for _, row := range match[off:end] {
+			page = append(page, map[string]any{"row": row})
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"rows": page, "num_rows_total": len(match)})
+	_, _ = fmt.Fprintf(w, `{"features":%s,%s`, features, strings.TrimPrefix(string(b), "{"))
 }
 
 func serveFile(w http.ResponseWriter, name string) {
@@ -559,20 +606,44 @@ func TestArena(t *testing.T) {
 			t.Errorf("gemma 4 31b: %+v", v)
 		}
 	}
-	// Open-licence names nothing maps are candidates, with the family they
-	// look like when there is one; the proprietary row is not listed.
-	want := map[string]string{"qwen3.5-35b-a3b": "qwen3.5", "qwen3.8-27b": ""}
-	if len(sr.Candidates) != len(want) {
-		t.Errorf("candidates = %+v", sr.Candidates)
-	}
-	for _, c := range sr.Candidates {
-		if s, ok := want[c.Name]; !ok || c.Suggest != s {
-			t.Errorf("candidate %+v", c)
+	// The daemon asks each board for one row, then for the aliased names only.
+	var overall []string
+	for _, w := range f.hub.filters {
+		if strings.HasPrefix(w, `"category"='overall'`) {
+			overall = append(overall, w)
 		}
+	}
+	if len(overall) != 2 || overall[0] != `"category"='overall'` ||
+		overall[1] != `"category"='overall' AND ("model_name"='gemma-4-31b' OR "model_name"='glm-4.7-flash' OR "model_name"='llama-3.1-8b-instruct' OR "model_name"='llama-3.3-70b-instruct' OR "model_name"='nvidia-nemotron-3-nano-30b-a3b-bf16')` {
+		t.Errorf("where clauses = %q", overall)
+	}
+	if len(sr.Candidates) != 0 {
+		t.Errorf("a narrow read lists no candidates: %+v", sr.Candidates)
 	}
 	// coding has no rows here: a failure in words; the aliases are then not judged.
 	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], `category "coding"`) {
 		t.Errorf("failures = %v", sr.Failures)
+	}
+
+	// The curator's whole-board read: open-licence names nothing maps are
+	// candidates, with the family they look like when there is one; the
+	// proprietary row is not listed.
+	fe := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
+	fe.MinInterval = 0
+	whole, err := Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe, Trigger: "test", Force: true,
+		WholeBoards: true, Now: func() time.Time { return f.clock }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"qwen3.5-35b-a3b": "qwen3.5", "qwen3.8-27b": ""}
+	if cands := source(whole, SourceArena).Candidates; len(cands) != len(want) {
+		t.Errorf("candidates = %+v", cands)
+	} else {
+		for _, c := range cands {
+			if s, ok := want[c.Name]; !ok || c.Suggest != s {
+				t.Errorf("candidate %+v", c)
+			}
+		}
 	}
 
 	// With only the overall board, the aliases the board never lists are reported.
@@ -614,26 +685,42 @@ func TestArenaWaitsOutALoadingIndex(t *testing.T) {
 func TestArenaPagesAndRefusesAMissingColumn(t *testing.T) {
 	f := newFixture(t, SourceArena)
 	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
-	var rows []string
+	var rows []map[string]any
 	for i := 0; i < 149; i++ {
-		rows = append(rows, `{"row":{"model_name":"m`+strconv.Itoa(i)+`","license":"Proprietary","rating":1000,"category":"overall","leaderboard_publish_date":"2026-09-15"}}`)
+		rows = append(rows, map[string]any{"model_name": "m" + strconv.Itoa(i), "license": "Proprietary", "rating": 1000.0, "category": "overall", "leaderboard_publish_date": "2026-09-15"})
 	}
-	rows = append(rows, `{"row":{"model_name":"llama-3.1-8b-instruct","license":"x","rating":1211.4,"category":"overall","leaderboard_publish_date":"2026-09-16"}}`)
+	rows = append(rows, map[string]any{"model_name": "llama-3.1-8b-instruct", "license": "x", "rating": 1211.4, "category": "overall", "leaderboard_publish_date": "2026-09-16"})
+	const features = `[{"name":"model_name"},{"name":"license"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}]`
 	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
 		if r.URL.Path != "/filter" {
 			return false
 		}
-		off, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-		n, _ := strconv.Atoi(r.URL.Query().Get("length"))
-		end := min(off+n, len(rows))
-		_, _ = w.Write([]byte(`{"features":[{"name":"model_name"},{"name":"license"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}],"rows":[` +
-			strings.Join(rows[off:end], ",") + `],"num_rows_total":150}`))
+		serveFilter(w, r, features, rows)
 		return true
 	}
 	sr := source(f.run(false), SourceArena)
 	vals := f.values()
 	if sr.Error != "" || len(vals) != 1 || vals[0].SourceDate != "2026-09-16" || vals[0].Detail["board_rows"] != 150.0 {
-		t.Fatalf("paged read: %+v, %+v", sr, vals)
+		t.Fatalf("narrow read: %+v, %+v", sr, vals)
+	}
+	// Two requests for the board, whatever its size: one row of it, then the aliased names.
+	if sr.Stats.Requests != 3 { // + /splits
+		t.Errorf("requests = %d, want 3", sr.Stats.Requests)
+	}
+
+	// The curator's whole-board read pages through all of it, and lists candidates.
+	f.clock = f.clock.Add(48 * time.Hour)
+	fe := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
+	fe.MinInterval = 0
+	fe.Sleep = func(context.Context, time.Duration) error { return nil }
+	rep, err := Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe, Trigger: "test", Force: true,
+		WholeBoards: true, Now: func() time.Time { return f.clock }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sr = source(rep, SourceArena); sr.Stats.Requests != 3 || len(sr.Candidates) != 0 || len(f.values()) != 1 {
+		// 150 rows: two pages of 100 after /splits; the proprietary names are not candidates.
+		t.Errorf("whole boards: %+v", sr)
 	}
 
 	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
@@ -648,6 +735,82 @@ func TestArenaPagesAndRefusesAMissingColumn(t *testing.T) {
 	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], "no column") || len(f.values()) != 1 {
 		t.Errorf("a changed shape must fail in words and keep the stored rows: %v, %d values", sr.Failures, len(f.values()))
 	}
+}
+
+// If the dataset viewer refuses the filter by model name, the board is read
+// whole instead: slower, never wrong.
+func TestArenaFallsBackToTheWholeBoard(t *testing.T) {
+	f := newFixture(t, SourceArena)
+	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
+	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == "/filter" && strings.Contains(r.URL.Query().Get("where"), "model_name") {
+			http.Error(w, `{"error":"Parameter 'where' is invalid"}`, http.StatusUnprocessableEntity)
+			return true
+		}
+		return false
+	}
+	sr := source(f.run(false), SourceArena)
+	if len(sr.Failures) != 0 || len(f.values()) != 3 {
+		t.Errorf("fallback: %+v, %d values", sr, len(f.values()))
+	}
+}
+
+// A source that cannot answer within its deadline fails in words, keeps
+// what it stored, and does not hold back the sources after it.
+func TestASlowSourceIsNotWaitedFor(t *testing.T) {
+	f := newFixture(t, SourceArena, SourceEpoch)
+	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall"), mustMetric(t, f.cfg, SourceEpoch, "epoch:gpqa_diamond")}
+	release := make(chan struct{})
+	defer close(release)
+	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == "/filter" {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			return true
+		}
+		return false
+	}
+	fe := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
+	fe.MinInterval = 0
+	fe.Sleep = func(context.Context, time.Duration) error { return nil }
+	var parts []string
+	rep, err := Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe, Trigger: "test",
+		SourceDeadline: 300 * time.Millisecond, Now: func() time.Time { return f.clock },
+		Progress: func(done, total int, name string) { parts = append(parts, fmt.Sprintf("%d/%d %s", done, total, name)) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := source(rep, SourceArena)
+	if a.Status != StatusFailed || !strings.Contains(a.Error, "took longer than") || !strings.Contains(a.Error, "next refresh tries again") {
+		t.Errorf("arena: %+v", a)
+	}
+	if e := source(rep, SourceEpoch); e.Status != StatusRead || e.Stored == 0 {
+		t.Errorf("epoch must be read, first: %+v", e)
+	}
+	// The progress names the source and what it reads now.
+	if !contains(parts, "0/2 Epoch AI Benchmarking Hub (downloading its data)") || !contains(parts, "1/2 Arena leaderboard dataset (the overall board)") {
+		t.Errorf("progress = %q", parts)
+	}
+	// Failed: due again at the next refresh, not in a day.
+	f.clock = f.clock.Add(time.Minute)
+	f.hub.extra = nil
+	fe2 := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
+	fe2.MinInterval = 0
+	rep, _ = Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe2, Trigger: "test", Now: func() time.Time { return f.clock }})
+	if a := source(rep, SourceArena); a.Status != StatusRead || a.Stored == 0 {
+		t.Errorf("the next refresh: %+v", a)
+	}
+}
+
+func mustHost(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Host
 }
 
 func TestEpochReadsOnlyEpochsOwnRuns(t *testing.T) {

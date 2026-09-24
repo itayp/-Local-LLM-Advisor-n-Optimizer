@@ -41,6 +41,7 @@ func (r *runner) hfEvals(ctx context.Context, src Source, sr *SourceReport, cond
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		r.part(s.label())
 		r.checkBaseModel(ctx, s)
 		u := strings.TrimRight(src.URL, "/") + "/api/models/" + escapeRepo(s.Size.HFBaseRepo) +
 			"?expand=evalResults&expand=cardData&expand=createdAt&expand=lastModified"

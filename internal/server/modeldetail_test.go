@@ -26,7 +26,8 @@ func arenaHub(t *testing.T) *httptest.Server {
 		case "/splits":
 			_, _ = io.WriteString(w, `{"splits":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text","split":"latest"}]}`)
 		case "/filter":
-			if r.URL.Query().Get("where") != `"category"='overall'` {
+			// The board's one-row probe and the aliased-names read both start so.
+			if !strings.HasPrefix(r.URL.Query().Get("where"), `"category"='overall'`) {
 				_, _ = io.WriteString(w, `{"features":[{"name":"model_name"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}],"rows":[],"num_rows_total":0}`)
 				return
 			}

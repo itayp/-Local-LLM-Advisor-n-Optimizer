@@ -37,8 +37,12 @@ func (r *runner) epoch(ctx context.Context, src Source, sr *SourceReport, condit
 	if conditional {
 		v = Validators{ETag: st.ETag, LastModified: st.LastModified}
 	}
+	r.part("downloading its data")
 	resp, err := r.o.Fetcher.Get(ctx, src.URL, v)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return errors.New(describe(err, "Epoch AI"))
 	}
 	if resp.NotModified {

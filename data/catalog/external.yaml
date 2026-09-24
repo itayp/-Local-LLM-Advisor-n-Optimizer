@@ -57,6 +57,9 @@
 # response had been read (no network from the session that wrote them) and
 # are confirmed or corrected from that report.
 
+# The sources are read in this order. Arena, the slowest to answer (its
+# dataset viewer can take minutes while its index loads), goes last, so a
+# slow Arena never holds back the others' scores.
 sources:
   - id: hf_evals
     name: Hugging Face Eval Results
@@ -70,6 +73,24 @@ sources:
     licence_url: https://huggingface.co/terms-of-service
     attribution: "Reported by {maker} on Hugging Face"
     cadence_hours: 24
+
+  - id: epoch
+    name: Epoch AI Benchmarking Hub
+    publisher: Epoch AI
+    enabled: true
+    url: https://epoch.ai/data/benchmark_data.zip
+    hosts: [epoch.ai]
+    terms_url: https://epoch.ai/benchmarks/use-this-data
+    terms_checked: 2026-09-24
+    licence: CC-BY-4.0
+    licence_url: https://creativecommons.org/licenses/by/4.0/
+    attribution: "Epoch AI, 'Capabilities & Benchmarking', epoch.ai, accessed {accessed}"
+    cadence_hours: 168
+    external_suffix: _external.csv
+    columns:
+      model: Model version
+      value: Best score (across scorers)
+      date: Started at
 
   - id: arena
     name: Arena leaderboard dataset
@@ -95,24 +116,6 @@ sources:
       rank: rank
       category: category
       date: leaderboard_publish_date
-
-  - id: epoch
-    name: Epoch AI Benchmarking Hub
-    publisher: Epoch AI
-    enabled: true
-    url: https://epoch.ai/data/benchmark_data.zip
-    hosts: [epoch.ai]
-    terms_url: https://epoch.ai/benchmarks/use-this-data
-    terms_checked: 2026-09-24
-    licence: CC-BY-4.0
-    licence_url: https://creativecommons.org/licenses/by/4.0/
-    attribution: "Epoch AI, 'Capabilities & Benchmarking', epoch.ai, accessed {accessed}"
-    cadence_hours: 168
-    external_suffix: _external.csv
-    columns:
-      model: Model version
-      value: Best score (across scorers)
-      date: Started at
 
 excluded_hosts:
   - artificialanalysis.ai

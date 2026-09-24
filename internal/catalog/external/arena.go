@@ -78,7 +78,8 @@ func (r *runner) arena(ctx context.Context, src Source, sr *SourceReport, condit
 		if err != nil {
 			return err
 		}
-		board, newest, fail, err := r.arenaBoard(ctx, base, src, subset, category, conditional, st.LastModified)
+		r.part(fmt.Sprintf("the %s board", strings.ReplaceAll(category, "_", " ")))
+		board, boardRows, newest, fail, err := r.arenaBoard(ctx, base, src, subset, category, conditional, st.LastModified)
 		if err != nil {
 			return err // unreachable, rate-limited: the whole source waits
 		}
@@ -130,7 +131,7 @@ func (r *runner) arena(ctx context.Context, src Source, sr *SourceReport, condit
 				continue
 			}
 			mapped[ref.ID] = true
-			detail := map[string]any{"board_rows": len(board), "category": category, "subset": subset}
+			detail := map[string]any{"board_rows": boardRows, "category": category, "subset": subset}
 			for _, k := range []string{"lower", "upper", "votes", "rank"} {
 				if c := col[k]; c != "" {
 					if v, ok := number(row[c]); ok {
@@ -163,81 +164,156 @@ func (r *runner) arena(ctx context.Context, src Source, sr *SourceReport, condit
 	return nil
 }
 
-// arenaBoard reads one (subset, category) board. It returns the rows and the
-// board's newest publish date; nil rows when the board is the one stored
-// (same newest date as stored, and conditional); fail is a sentence when
-// the board could not be used; err when the source could not be reached.
-func (r *runner) arenaBoard(ctx context.Context, base string, src Source, subset, category string, conditional bool, storedDate string) (rows []map[string]any, newest, fail string, err error) {
+// arenaFilterPage is one /filter answer, as far as E-2 reads it.
+type arenaFilterPage struct {
+	Features []struct {
+		Name string `json:"name"`
+	} `json:"features"`
+	Rows []struct {
+		Row map[string]any `json:"row"`
+	} `json:"rows"`
+	NumRowsTotal int `json:"num_rows_total"`
+}
+
+// arenaBoard reads one (subset, category) board. It returns the rows read,
+// the board's size and its newest publish date; nil rows when the board is
+// the one stored (same newest date as stored, and conditional); fail is a
+// sentence when the board could not be used; err when the source could not
+// be reached.
+//
+// The daemon reads a board in two small requests, not page by page: one
+// row of the whole board (it exists, has the columns, how many rows, how
+// recent), then only the rows whose model name aliases.yaml lists — the
+// only rows it can store. The first coverage report read every board page
+// by page, some 25 requests, and the dataset viewer's "index is loading"
+// answers and Hugging Face's rate limit stretched that to a quarter of an
+// hour (2026-09-24). Options.WholeBoards reads every row, for the curator's
+// list of candidate names.
+func (r *runner) arenaBoard(ctx context.Context, base string, src Source, subset, category string, conditional bool, storedDate string) (rows []map[string]any, total int, newest, fail string, err error) {
 	col := src.Columns
-	where := fmt.Sprintf(`"%s"='%s'`, col["category"], strings.ReplaceAll(category, "'", "''"))
-	total := -1
-	for page := 0; total < 0 || page*arenaPageRows < total; page++ {
-		if page >= arenaMaxPages {
-			return nil, "", fmt.Sprintf("the board has more than %d rows; the advisor does not read one that large", arenaMaxPages*arenaPageRows), nil
-		}
+	board := fmt.Sprintf(`"%s"='%s'`, col["category"], sqlQuote(category))
+	get := func(where string, offset, length int) (*arenaFilterPage, string, error) {
 		q := url.Values{
 			"dataset": {src.Dataset}, "config": {subset}, "split": {src.Split}, "where": {where},
-			"offset": {strconv.Itoa(page * arenaPageRows)}, "length": {strconv.Itoa(arenaPageRows)},
+			"offset": {strconv.Itoa(offset)}, "length": {strconv.Itoa(length)},
 		}
 		resp, gerr := r.o.Fetcher.Get(ctx, base+"/filter?"+q.Encode(), Validators{})
 		if gerr != nil {
+			if ctx.Err() != nil {
+				return nil, "", ctx.Err()
+			}
 			if errors.Is(gerr, ErrUnreachable) || errors.Is(gerr, ErrRateLimited) || errors.Is(gerr, ErrHost) {
-				return nil, "", "", errors.New(describe(gerr, "Hugging Face's dataset viewer"))
+				return nil, "", errors.New(describe(gerr, "Hugging Face's dataset viewer"))
 			}
-			return nil, "", describe(gerr, "Hugging Face's dataset viewer"), nil
+			return nil, describe(gerr, "Hugging Face's dataset viewer"), nil
 		}
-		var ans struct {
-			Features []struct {
-				Name string `json:"name"`
-			} `json:"features"`
-			Rows []struct {
-				Row map[string]any `json:"row"`
-			} `json:"rows"`
-			NumRowsTotal int `json:"num_rows_total"`
-		}
+		var ans arenaFilterPage
 		if err := json.Unmarshal(resp.Body, &ans); err != nil {
-			return nil, "", "the dataset viewer's answer was not the shape the advisor reads", nil
+			return nil, "the dataset viewer's answer was not the shape the advisor reads", nil
 		}
-		if page == 0 {
-			have := map[string]bool{}
-			for _, f := range ans.Features {
-				have[f.Name] = true
-			}
-			var missing []string
-			for _, k := range requiredColumns[SourceArena] {
-				if !have[col[k]] {
-					missing = append(missing, col[k])
+		return &ans, "", nil
+	}
+	// all reads every row matching where, a page at a time.
+	all := func(where string, first *arenaFilterPage) ([]map[string]any, string, error) {
+		var out []map[string]any
+		page, n := first, 0
+		for {
+			if page == nil {
+				if n >= arenaMaxPages {
+					return nil, fmt.Sprintf("the board has more than %d rows; the advisor does not read one that large", arenaMaxPages*arenaPageRows), nil
+				}
+				var f string
+				var err error
+				if page, f, err = get(where, n*arenaPageRows, arenaPageRows); err != nil || f != "" {
+					return nil, f, err
 				}
 			}
-			if len(missing) > 0 {
-				return nil, "", fmt.Sprintf("the board has no column %s — check columns in external.yaml", strings.Join(missing, ", ")), nil
+			for _, rw := range page.Rows {
+				out = append(out, rw.Row)
 			}
-			if ans.NumRowsTotal == 0 || len(ans.Rows) == 0 {
-				return nil, "", fmt.Sprintf("the board has no rows for category %q — check the metric map", category), nil
+			n++
+			if len(page.Rows) == 0 || n*arenaPageRows >= page.NumRowsTotal {
+				return out, "", nil
 			}
-			total = ans.NumRowsTotal
-			for _, rw := range ans.Rows {
-				if d := day(rw.Row[col["date"]]); d > newest {
-					newest = d
-				}
-			}
-			if conditional && newest != "" && newest == storedDate {
-				return nil, newest, "", nil
-			}
+			page = nil
 		}
-		for _, rw := range ans.Rows {
-			rows = append(rows, rw.Row)
+	}
+
+	length := 1
+	if r.o.WholeBoards {
+		length = arenaPageRows
+	}
+	probe, fail, err := get(board, 0, length)
+	if err != nil || fail != "" {
+		return nil, 0, "", fail, err
+	}
+	have := map[string]bool{}
+	for _, f := range probe.Features {
+		have[f.Name] = true
+	}
+	var missing []string
+	for _, k := range requiredColumns[SourceArena] {
+		if !have[col[k]] {
+			missing = append(missing, col[k])
 		}
-		if len(ans.Rows) == 0 {
-			break
+	}
+	if len(missing) > 0 {
+		return nil, 0, "", fmt.Sprintf("the board has no column %s — check columns in external.yaml", strings.Join(missing, ", ")), nil
+	}
+	if probe.NumRowsTotal == 0 || len(probe.Rows) == 0 {
+		return nil, 0, "", fmt.Sprintf("the board has no rows for category %q — check the metric map", category), nil
+	}
+	total = probe.NumRowsTotal
+	for _, rw := range probe.Rows {
+		if d := day(rw.Row[col["date"]]); d > newest {
+			newest = d
 		}
+	}
+	if conditional && !r.o.WholeBoards && newest != "" && newest == storedDate {
+		return nil, total, newest, "", nil
+	}
+
+	if r.o.WholeBoards {
+		rows, fail, err = all(board, probe)
+	} else if names := r.aliasNames(src.ID); len(names) > 0 {
+		parts := make([]string, len(names))
+		for i, n := range names {
+			parts[i] = fmt.Sprintf(`"%s"='%s'`, col["model"], sqlQuote(n))
+		}
+		rows, fail, err = all(board+" AND ("+strings.Join(parts, " OR ")+")", nil)
+		if err == nil && fail != "" {
+			// The viewer refused the narrower question: ask the plain one,
+			// page by page — slower, within the same deadline.
+			r.o.Log.Warn("the dataset viewer refused a filter by model name; reading the whole board", "category", category, "answer", fail)
+			rows, fail, err = all(board, nil)
+		}
+	}
+	if err != nil || fail != "" {
+		return nil, 0, "", fail, err
 	}
 	for _, rw := range rows {
 		if d := day(rw[col["date"]]); d > newest {
 			newest = d
 		}
 	}
-	return rows, newest, "", nil
+	if rows == nil {
+		rows = []map[string]any{}
+	}
+	return rows, total, newest, "", nil
+}
+
+// sqlQuote doubles single quotes for the dataset viewer's where clause.
+func sqlQuote(s string) string { return strings.ReplaceAll(s, "'", "''") }
+
+// aliasNames is the source's aliased model names, sorted: the requests stay
+// a function of aliases.yaml alone.
+func (r *runner) aliasNames(source string) []string {
+	var out []string
+	for _, a := range r.o.Aliases[source] {
+		out = append(out, a.Name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // number reads a JSON or CSV number.
