@@ -66,16 +66,11 @@ type Options struct {
 	// words, keeps what it stored, and is due again at the next refresh.
 	// 0 is DefaultSourceDeadline.
 	SourceDeadline time.Duration
-	// WholeBoards reads every row of Arena's boards rather than only the
-	// aliased names — slower, for the curator's list of candidate names
-	// (`advisor catalog external -whole-boards`).
-	WholeBoards bool
 }
 
-// DefaultSourceDeadline is how long one source may take in a refresh. A
-// refresh the daemon runs is a person waiting at a progress bar: a source
-// that cannot answer in this time is not waited for (Itay, 2026-09-24: the
-// Arena read took a quarter of an hour on both machines).
+// DefaultSourceDeadline is how long one source may take in a refresh: a
+// source that cannot answer in this time is not waited for (Itay,
+// 2026-09-24: the Arena read took a quarter of an hour on both machines).
 const DefaultSourceDeadline = 3 * time.Minute
 
 // Report is what a run did, for the CLI, the API and catalog_refreshes.

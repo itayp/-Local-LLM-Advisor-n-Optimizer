@@ -18,8 +18,8 @@ not recognise.
 | `hf/meta-llama_Llama-3.3-70B-Instruct.json`, `hf/Qwen_Qwen3.5-4B.json` | real, whole | every result pending |
 | `hf/meta-llama_Llama-3.2-3B-Instruct.json` | real, whole | a repo with no `evalResults` key at all |
 | `hf/Qwen_Qwen3.5-9B.json` | **shaped** (huggingface_hub 1.32.0's `ModelInfo` and `parse_eval_result_entries`; task ids corrected to the real ones). Values CHOSEN. | a **verified** result and one whose source is an **excluded publisher** — neither seen in a real answer yet; a metric the map does not list; a value that is not a number |
-| `arena/splits.json` | real, whole | which subsets the dataset has |
-| `arena/text-overall.json` | real rows (six of the 402 on the text board, 13 September 2026) from two captured `/filter` pages; `num_rows_total` set to six | three aliased sizes, two open-licence names nothing maps (candidates), a proprietary row (not one); ratings, ranks and vote counts as floats, as the viewer sends them |
+| `arena/text-latest.parquet` | real rows (the text board's overall and creative-writing rows the dataset viewer served on 2026-09-24, 300 of them), written as a Parquet file the way Arena writes its own — see `internal/catalog/parquet/testdata/README.md` | the file Arena publishes: three aliased sizes, open-licence names nothing maps (candidates), proprietary rows (not candidates), a board the map names that the file lacks (`coding`) |
+| `arena/text-latest-no-rating.parquet` | the same rows, the `rating` column dropped | a file without a mapped column: refused in words |
 | `epoch/gpqa_diamond.csv` | real rows (six) with the real header | an aliased run and its "_none" twin (not aliased), a name that only looks like a catalogue family, quoted fields spanning lines |
 | `epoch/aider_polyglot_external.csv` | real rows (two) with the real header | a file of other people's results, which must never be read |
 

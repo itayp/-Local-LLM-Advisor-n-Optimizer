@@ -27,7 +27,7 @@
 #                                  # {maker} the repo owner (hf_evals only)
 #       cadence_hours: 24          # the shortest gap between two reads
 #       dataset: owner/name        # arena: the Hugging Face dataset
-#       split: latest              # arena: the split read
+#       split: latest              # arena: the split read (its files: <subset>/<split>-*.parquet)
 #       external_suffix: _external.csv   # epoch: files whose names end so are other
 #                                  # people's results collected by Epoch, never read
 #       columns: {model: ..., value: ..., ...}  # arena, epoch: the column names read.
@@ -57,9 +57,7 @@
 # response had been read (no network from the session that wrote them) and
 # are confirmed or corrected from that report.
 
-# The sources are read in this order. Arena, the slowest to answer (its
-# dataset viewer can take minutes while its index loads), goes last, so a
-# slow Arena never holds back the others' scores.
+# The sources are read in this order; Arena, the largest download, last.
 sources:
   - id: hf_evals
     name: Hugging Face Eval Results
@@ -96,8 +94,11 @@ sources:
     name: Arena leaderboard dataset
     publisher: Arena (arena.ai)
     enabled: true
-    url: https://datasets-server.huggingface.co
-    hosts: [datasets-server.huggingface.co]
+    url: https://huggingface.co
+    # The files Arena publishes, not the Dataset Viewer (ARCHITECTURE.md
+    # D-56): the Hub's listing of a subset, then each file, which the Hub
+    # redirects to its CDN.
+    hosts: [huggingface.co, "*.hf.co"]
     terms_url: https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset
     terms_checked: 2026-09-24
     licence: CC-BY-4.0

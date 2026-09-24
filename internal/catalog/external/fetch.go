@@ -136,7 +136,17 @@ func (f *Fetcher) Allowed(rawURL string) bool {
 	if err != nil {
 		return false
 	}
-	return f.hosts[strings.ToLower(u.Host)] || f.hosts[strings.ToLower(u.Hostname())]
+	host, name := strings.ToLower(u.Host), strings.ToLower(u.Hostname())
+	if f.hosts[host] || f.hosts[name] {
+		return true
+	}
+	// "*.hf.co" admits any subdomain of hf.co (a CDN's regional hosts), never hf.co itself.
+	for h := range f.hosts {
+		if suffix, ok := strings.CutPrefix(h, "*"); ok && strings.HasPrefix(suffix, ".") && strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {

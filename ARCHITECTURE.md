@@ -1920,3 +1920,53 @@ read after Arena, no public score appeared at all while it ran.
   the fetcher logs any wait of five seconds or more, so a slow source shows
   why in verify.log.
 
+
+## D-56. Arena from the files it publishes, with a small Parquet reader; public scores load in the background
+
+**Supersedes** D-53's Arena access path (the Dataset Viewer's `/filter`)
+and D-55's two-requests-a-board and `-whole-boards`.
+
+**Context.** Even at two requests a board, the third gate run (2026-09-24,
+23:14) spent its three minutes on the dataset viewer's HTTP 500 "the
+dataset index is loading" and gave Arena up. The viewer builds that index
+on demand; for this dataset it was loading most of the evening. But Arena
+publishes the same leaderboard as plain files in the dataset repo:
+`text/latest-00000-of-00001.parquet` (589 KB, 10,606 rows: every category
+of the text board) and `vision/latest-…` (56 KB), served by the Hub's CDN,
+no index involved. They are Parquet, and the advisor had no reader.
+Itay chose (asked, 2026-09-24): a small reader of our own rather than a
+Parquet library, and the public scores loading in the background so a
+person is never kept waiting on them.
+
+**Decision.**
+
+- **`internal/catalog/parquet`**: the standard library only, like the GGUF
+  reader — the Thrift compact protocol for the footer and page headers,
+  Snappy, the RLE/bit-packed hybrid, flat schemas, BYTE_ARRAY/DOUBLE/FLOAT/
+  INT32/INT64, PLAIN and dictionary encodings, data pages v1 and v2.
+  Anything else is refused in words. What Arena's file uses was read from
+  its footer (Snappy; dictionary pages then RLE_DICTIONARY; every column
+  optional; row groups of 1000; parquet-cpp-arrow 19.0.1). Tested against
+  files pyarrow writes the same way from real Arena rows, value for value
+  against pyarrow's own reading (`testdata/gen.py`).
+- **Arena's client** lists a subset's files (`GET /api/datasets/{dataset}/
+  tree/main/{subset}`, which gives each file's content hash), downloads the
+  split's files (`/resolve/main/…`, redirected to `*.hf.co`), and reads
+  every category the metric map names from one file. Unchanged hashes: no
+  download. Two requests per subset, whatever the board sizes; the whole
+  board is read, so candidate names are listed again. `PermittedHosts` for
+  Arena becomes `huggingface.co` and `*.hf.co` (the fetcher admits
+  subdomains of a `*.` entry, never the bare domain);
+  `datasets-server.huggingface.co` is no longer contacted.
+- **Background public scores.** `POST /api/catalog/refresh` answers when
+  the model list is in; the public sources are then read in the background
+  (`Server.RefreshPublic`, one at a time), and `GET /api/catalog/status`
+  carries `public_running` and which source and part is being read. The
+  screens show a quiet note — "Public scores are downloading in the
+  background" — and ask for their data again when it ends. The CLI and
+  `Server.RefreshCatalog` still do both halves in one call.
+
+**Consequences.** The next verify run saves Arena's real file to
+`.captures/external/`; a cut of it should replace the pyarrow-written
+fixture. The dataset viewer's retry logic (D-54) stays in the fetcher for
+any 5xx, harmless for the Hub.

@@ -22,6 +22,7 @@ export function useCatalogStatus(onFetched?: () => void) {
   const [stopped, setStopped] = useState<string | null>(null)
   const [posting, setPosting] = useState(false)
   const wasRunning = useRef(false)
+  const wasPublic = useRef(false)
   const postingNow = useRef(false)
   const done = useRef(onFetched)
   done.current = onFetched
@@ -33,6 +34,9 @@ export function useCatalogStatus(onFetched?: () => void) {
         setStatus(s)
         if (wasRunning.current && !s.running && !postingNow.current) done.current?.()
         wasRunning.current = s.running || postingNow.current
+        // The public scores finish later, in the background: ask again then too.
+        if (wasPublic.current && !s.public_running) done.current?.()
+        wasPublic.current = s.public_running
         return s
       })
       .catch(() => null) // the status is a convenience: a screen still works without it
@@ -45,11 +49,13 @@ export function useCatalogStatus(onFetched?: () => void) {
   }, [read])
 
   const running = posting || status?.running === true
+  const publicRunning = !running && status?.public_running === true
+  const polling = running || status?.public_running === true
   useEffect(() => {
-    if (!running) return
+    if (!polling) return
     const id = window.setInterval(() => void read(), pollEvery)
     return () => window.clearInterval(id)
-  }, [running, read])
+  }, [polling, read])
 
   const fetchList = useCallback(() => {
     setFailed(null)
@@ -76,7 +82,7 @@ export function useCatalogStatus(onFetched?: () => void) {
       })
   }, [read])
 
-  return { status, running, failed, stopped, fetchList }
+  return { status, running, publicRunning, failed, stopped, fetchList }
 }
 
 /**
@@ -88,7 +94,7 @@ export function useCatalogStatus(onFetched?: () => void) {
  * fetch it again. No screen that needs the list is a dead end.
  */
 export function ModelList({ onFetched, compact = false }: { onFetched?: () => void; compact?: boolean }) {
-  const { status, running, failed, stopped, fetchList } = useCatalogStatus(onFetched)
+  const { status, running, publicRunning, failed, stopped, fetchList } = useCatalogStatus(onFetched)
   if (!status && !running) return null
   const problems = (
     <>
@@ -124,6 +130,14 @@ export function ModelList({ onFetched, compact = false }: { onFetched?: () => vo
       </div>
     )
   }
+  if (publicRunning) {
+    return (
+      <>
+        <PublicInBackground status={status} />
+        {problems}
+      </>
+    )
+  }
   if (!compact) return problems
   const when = status?.last_refresh?.finished_at || status?.last_refresh?.started_at
   return (
@@ -139,13 +153,13 @@ export function ModelList({ onFetched, compact = false }: { onFetched?: () => vo
   )
 }
 
-/** FetchProgress: the phase, what is being read now, a bar, and the time so far. */
+/** FetchProgress: what is being read now, a bar, and the time so far. */
 export function FetchProgress({ status }: { status: CatalogStatus | null }) {
   const p = status?.progress
   const s = useElapsed(p?.started_at)
   return (
     <div className="working notice" role="status" data-testid="model-list-fetching">
-      <p className="working__label">{p ? (p.phase === 'public' ? c.phasePublic : c.phaseModels) : c.starting}</p>
+      <p className="working__label">{p ? c.phaseModels : c.starting}</p>
       {p && p.total > 0 && p.done > 0 ? (
         <progress className="working__bar" aria-label={c.progressLabel} value={p.done} max={p.total} />
       ) : (
@@ -155,6 +169,26 @@ export function FetchProgress({ status }: { status: CatalogStatus | null }) {
         {p ? `${p.message}… ` : ''}
         {p && p.total > 0 ? `${c.partOf(p.done, p.total)} · ` : ''}
         {en.working.elapsed(s)}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * PublicInBackground: the public scores downloading after the list is in —
+ * quiet, not in the way: which source and what of it, a moving bar, and the
+ * time so far. The screens ask again by themselves when it ends.
+ */
+export function PublicInBackground({ status }: { status: CatalogStatus | null }) {
+  const p = status?.public_progress
+  const s = useElapsed(p?.started_at)
+  return (
+    <div className="working working--quiet" role="status" data-testid="public-background">
+      <p className="working__label">{c.publicBackground}</p>
+      <progress className="working__bar" aria-label={c.publicBackground} />
+      <p className="screen__note">
+        {p ? `${p.message}… ` : ''}
+        {en.working.elapsed(s)}. {c.publicBackgroundLead}
       </p>
     </div>
   )

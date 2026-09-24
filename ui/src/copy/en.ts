@@ -50,8 +50,10 @@ export const en = {
     refetch: 'Get the list again (a few MB)',
     fetchedOn: (when: string) => `Model list fetched ${when}.`,
     starting: 'Starting to fetch the model list…',
-    phaseModels: 'Step 1 of 2: the list of models, from Hugging Face',
-    phasePublic: 'Step 2 of 2: public scores other people published',
+    phaseModels: 'Fetching the list of models from Hugging Face',
+    publicBackground: 'Public scores are downloading in the background',
+    publicBackgroundLead:
+      'Everything else works meanwhile; recommendations pick the scores up by themselves when they arrive.',
     partOf: (done: number, total: number) => `${done} of ${total} done`,
     progressLabel: 'Fetching the model list',
     failed: (message: string) => `The model list could not be fetched: ${message}`,

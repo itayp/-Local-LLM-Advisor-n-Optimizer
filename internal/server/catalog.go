@@ -77,8 +77,12 @@ type catalogState struct {
 	// it at a fake.
 	externalFetcher func(*external.Config) *external.Fetcher
 	running         sync.Mutex
-	// progress is the running refresh's progress (GET /api/catalog/status).
-	progress refreshProgress
+	// progress is the running model-list refresh's progress, public the
+	// public scores' (GET /api/catalog/status); publicRunning keeps the
+	// latter one at a time.
+	progress      refreshProgress
+	public        refreshProgress
+	publicRunning sync.Mutex
 }
 
 func (c *catalogState) init() {
@@ -98,30 +102,76 @@ func (c *catalogState) init() {
 // in progress.
 var ErrRefreshRunning = errors.New("server: a catalogue refresh is already running")
 
-// RefreshCatalog runs a catalogue refresh (build-plan step 4) and returns
-// its report. One runs at a time; a second call meanwhile gets
+// RefreshCatalog runs a whole catalogue refresh — the model list (build-
+// plan step 4), then the public scores (step 9b) — and returns its report
+// when both are done. One runs at a time; a second call meanwhile gets
 // ErrRefreshRunning rather than a second set of requests to Hugging Face.
+// POST /api/catalog/refresh does the same in two halves: the list while
+// the person waits, the public scores in the background (D-56).
 func (s *Server) RefreshCatalog(ctx context.Context, trigger string) (refresh.Report, error) {
+	rep, cat, err := s.refreshModels(ctx, trigger)
+	if err != nil {
+		return rep, err
+	}
+	ext, err := s.RefreshPublic(ctx, cat, trigger)
+	if err != nil && !errors.Is(err, ErrRefreshRunning) {
+		return rep, err
+	}
+	rep.External = ext
+	return rep, nil
+}
+
+// refreshModels is the model list's half of a refresh: every size resolved
+// against Hugging Face, and the installed models mapped onto them.
+func (s *Server) refreshModels(ctx context.Context, trigger string) (refresh.Report, *catalog.Catalogue, error) {
 	if s.store == nil {
-		return refresh.Report{}, errors.New("server: no database, nothing to refresh into")
+		return refresh.Report{}, nil, errors.New("server: no database, nothing to refresh into")
 	}
 	if !s.cat.running.TryLock() {
-		return refresh.Report{}, ErrRefreshRunning
+		return refresh.Report{}, nil, ErrRefreshRunning
 	}
 	defer s.cat.running.Unlock()
 	s.cat.progress.begin()
 	defer s.cat.progress.end()
 	cat, err := s.cat.load()
 	if err != nil {
-		return refresh.Report{}, err
+		return refresh.Report{}, nil, err
 	}
 	client := s.cat.newClient()
 	client.Log = s.log
-	return refresh.Run(ctx, refresh.Options{
+	rep, err := refresh.Run(ctx, refresh.Options{
 		Catalogue: cat, Store: s.store, HF: client, Log: s.log, Trigger: trigger,
-		External: s.externalOptions(cat),
 		Progress: s.cat.progress.update,
 	})
+	return rep, cat, err
+}
+
+// RefreshPublic is the public scores' half of a refresh: every approved
+// source that is due. One runs at a time (ErrRefreshRunning otherwise); nil
+// report and no error when there is no public-data configuration.
+func (s *Server) RefreshPublic(ctx context.Context, cat *catalog.Catalogue, trigger string) (*external.Report, error) {
+	opts := s.externalOptions(cat)
+	if opts == nil {
+		return nil, nil
+	}
+	if !s.cat.publicRunning.TryLock() {
+		return nil, ErrRefreshRunning
+	}
+	defer s.cat.publicRunning.Unlock()
+	s.cat.public.begin()
+	s.cat.public.update(refresh.Progress{Phase: refresh.PhasePublic})
+	defer s.cat.public.end()
+	rep, err := external.Run(ctx, external.Options{
+		Catalogue: cat, Config: opts.Config, Aliases: opts.Aliases, Store: s.store, Fetcher: opts.Fetcher,
+		Log: s.log, Trigger: trigger,
+		Progress: func(done, total int, name string) {
+			s.cat.public.update(refresh.Progress{Phase: refresh.PhasePublic, Done: done, Total: total, Current: name})
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &rep, nil
 }
 
 // externalOptions is the public-data part of a refresh (build-plan step
@@ -185,8 +235,16 @@ func (s *Server) handleCatalogRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		rep, err := s.RefreshCatalog(context.WithoutCancel(r.Context()), "api")
+		ctx := context.WithoutCancel(r.Context())
+		rep, cat, err := s.refreshModels(ctx, "api")
 		done <- result{rep, err}
+		if err == nil {
+			// The public scores follow in the background: the list is
+			// usable now, and the screens show the rest arriving.
+			if _, err := s.RefreshPublic(ctx, cat, "api"); err != nil && !errors.Is(err, ErrRefreshRunning) {
+				s.log.Warn("public scores", "err", err)
+			}
+		}
 	}()
 	select {
 	case <-r.Context().Done():

@@ -78,7 +78,7 @@ function backendRunning(): BackendInfo {
 }
 
 function catalogStatus(over: Partial<CatalogStatus> = {}): CatalogStatus {
-  return { fetched: true, running: false, public_fetched: true, public_updated: 'Public scores last updated 24 September 2026.', ...over }
+  return { fetched: true, running: false, public_fetched: true, public_running: false, public_updated: 'Public scores last updated 24 September 2026.', ...over }
 }
 
 function recommendation(over: Partial<Recommendation> = {}): Recommendation {

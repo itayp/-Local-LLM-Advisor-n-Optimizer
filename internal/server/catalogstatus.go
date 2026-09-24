@@ -35,6 +35,10 @@ type CatalogStatus struct {
 	// ("Public scores last updated …", and any source whose last check failed).
 	PublicFetched bool   `json:"public_fetched"`
 	PublicUpdated string `json:"public_updated"`
+	// PublicRunning is true while the public scores download in the
+	// background; PublicProgress says which source and what of it.
+	PublicRunning  bool             `json:"public_running"`
+	PublicProgress *CatalogProgress `json:"public_progress,omitempty"`
 }
 
 // CatalogProgress is where a running refresh is.
@@ -64,7 +68,10 @@ func (rp *refreshProgress) update(p refresh.Progress) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	msg := "Reading the description of " + p.Current
-	if p.Phase == refresh.PhasePublic {
+	switch {
+	case p.Current == "":
+		msg = "Starting"
+	case p.Phase == refresh.PhasePublic:
 		msg = "Reading public scores from " + p.Current
 	}
 	rp.p.Phase, rp.p.Message, rp.p.Done, rp.p.Total = p.Phase, msg, p.Done, p.Total
@@ -87,6 +94,9 @@ func (s *Server) handleCatalogStatus(w http.ResponseWriter, r *http.Request) {
 	out := CatalogStatus{PublicUpdated: "Public scores have not been fetched yet."}
 	if p, running := s.cat.progress.snapshot(); running {
 		out.Running, out.Progress = true, &p
+	}
+	if p, running := s.cat.public.snapshot(); running {
+		out.PublicRunning, out.PublicProgress = true, &p
 	}
 	if s.store == nil {
 		writeJSON(w, http.StatusOK, out)

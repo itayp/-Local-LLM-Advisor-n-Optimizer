@@ -817,3 +817,12 @@ body {
 .bench-download {
   margin: 16px 0;
 }
+
+.working--quiet {
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+}
+
+.working--quiet .working__bar {
+  height: 6px;
+}

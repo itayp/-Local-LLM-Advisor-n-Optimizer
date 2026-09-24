@@ -33,8 +33,10 @@ const (
 // Step 12's allow-list audit reads this map beside hf.allowedHost.
 var PermittedHosts = map[string][]string{
 	SourceHFEvals: {"huggingface.co"},
-	SourceArena:   {"datasets-server.huggingface.co"},
-	SourceEpoch:   {"epoch.ai"},
+	// Arena's files: the Hub, and the CDN its downloads redirect to
+	// (us.aws.cdn.hf.co, cas-bridge.xethub.hf.co, …) — D-56.
+	SourceArena: {"huggingface.co", "*.hf.co"},
+	SourceEpoch: {"epoch.ai"},
 }
 
 // Config is data/catalog/external.yaml: the approved sources, the publishers

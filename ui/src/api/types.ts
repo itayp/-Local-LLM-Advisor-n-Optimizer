@@ -340,6 +340,9 @@ export interface CatalogStatus {
   public_fetched: boolean
   /** The detail view's sentence about the public scores' last update. */
   public_updated: string
+  /** The public scores are downloading in the background; public_progress says which source. */
+  public_running: boolean
+  public_progress?: CatalogProgress
 }
 
 export interface CatalogRefreshReport {

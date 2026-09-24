@@ -12,9 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -144,17 +142,17 @@ epoch:
 // hub is a fake of the three sources: the Hub's model API, the Dataset
 // Viewer and Epoch's download, served from testdata/.
 type hub struct {
-	t        *testing.T
-	mu       sync.Mutex
-	requests []string
-	zip      []byte
-	filters  []string                                          // every /filter where clause, in order
-	extra    func(w http.ResponseWriter, r *http.Request) bool // a test's override; true = handled
-	srv      *httptest.Server
+	t         *testing.T
+	mu        sync.Mutex
+	requests  []string
+	zip       []byte
+	arenaFile string                                            // the file served as Arena's text/latest (testdata/arena)
+	extra     func(w http.ResponseWriter, r *http.Request) bool // a test's override; true = handled
+	srv       *httptest.Server
 }
 
 func newHub(t *testing.T) *hub {
-	h := &hub{t: t, zip: buildZip(t, "gpqa_diamond.csv", "aider_polyglot_external.csv")}
+	h := &hub{t: t, zip: buildZip(t, "gpqa_diamond.csv", "aider_polyglot_external.csv"), arenaFile: "text-latest.parquet"}
 	h.srv = httptest.NewServer(http.HandlerFunc(h.serve))
 	t.Cleanup(h.srv.Close)
 	return h
@@ -191,30 +189,29 @@ func (h *hub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("ETag", etag)
 		_, _ = w.Write(b)
-	case r.URL.Path == "/splits":
-		serveFile(w, "arena/splits.json")
-	case r.URL.Path == "/filter":
+	case strings.HasPrefix(r.URL.Path, "/api/datasets/lmarena-ai/leaderboard-dataset/tree/main/"):
+		subset := strings.TrimPrefix(r.URL.Path, "/api/datasets/lmarena-ai/leaderboard-dataset/tree/main/")
 		h.mu.Lock()
-		h.filters = append(h.filters, r.URL.Query().Get("where"))
+		file := h.arenaFile
 		h.mu.Unlock()
-		if r.URL.Query().Get("config") == "text" && strings.HasPrefix(r.URL.Query().Get("where"), `"category"='overall'`) {
-			b, err := os.ReadFile(filepath.Join("testdata", "arena", "text-overall.json"))
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			var board arenaFilterPage
-			if err := json.Unmarshal(b, &board); err != nil {
-				h.t.Fatal(err)
-			}
-			var rows []map[string]any
-			for _, rw := range board.Rows {
-				rows = append(rows, rw.Row)
-			}
-			serveFilter(w, r, `[{"name":"model_name"},{"name":"organization"},{"name":"license"},{"name":"rating"},{"name":"rating_lower"},{"name":"rating_upper"},{"name":"variance"},{"name":"vote_count"},{"name":"rank"},{"name":"category"},{"name":"leaderboard_publish_date"}]`, rows)
+		if subset != "text" {
+			http.Error(w, `{"error":"Entry not found"}`, http.StatusNotFound)
 			return
 		}
-		_, _ = w.Write([]byte(`{"features":[{"name":"model_name"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}],"rows":[],"num_rows_total":0}`))
+		b, err := os.ReadFile(filepath.Join("testdata", "arena", file))
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		fmt.Fprintf(w, `[{"type":"file","oid":"f1","size":56502644,"path":"text/full-00000-of-00001.parquet","lfs":{"oid":"full-v1","size":56502644}},`+
+			`{"type":"file","oid":"f2","size":%d,"path":"text/latest-00000-of-00001.parquet","lfs":{"oid":"%s","size":%d}}]`, len(b), file, len(b))
+	case r.URL.Path == "/datasets/lmarena-ai/leaderboard-dataset/resolve/main/text/latest-00000-of-00001.parquet":
+		// The Hub answers a download with a redirect to its CDN.
+		http.Redirect(w, r, "/cdn/text-latest", http.StatusFound)
+	case r.URL.Path == "/cdn/text-latest":
+		h.mu.Lock()
+		file := h.arenaFile
+		h.mu.Unlock()
+		serveFile(w, filepath.Join("arena", file))
 	case r.URL.Path == "/data/benchmark_data.zip":
 		if r.Header.Get("If-None-Match") == `"zip-v1"` {
 			w.WriteHeader(http.StatusNotModified)
@@ -232,35 +229,6 @@ func (h *hub) seen() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return append([]string(nil), h.requests...)
-}
-
-var whereName = regexp.MustCompile(`"model_name"='((?:[^']|'')*)'`)
-
-// serveFilter answers a /filter request the way the dataset viewer does:
-// the rows matching the where clause's model names (all of them when it
-// names none), the page asked for, and how many matched.
-func serveFilter(w http.ResponseWriter, r *http.Request, features string, rows []map[string]any) {
-	names := map[string]bool{}
-	for _, m := range whereName.FindAllStringSubmatch(r.URL.Query().Get("where"), -1) {
-		names[strings.ReplaceAll(m[1], "''", "'")] = true
-	}
-	var match []map[string]any
-	for _, row := range rows {
-		if n, _ := row["model_name"].(string); len(names) == 0 || names[n] {
-			match = append(match, row)
-		}
-	}
-	off, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	n, _ := strconv.Atoi(r.URL.Query().Get("length"))
-	end := min(off+n, len(match))
-	page := []map[string]any{}
-	if off < end {
-		for _, row := range match[off:end] {
-			page = append(page, map[string]any{"row": row})
-		}
-	}
-	b, _ := json.Marshal(map[string]any{"rows": page, "num_rows_total": len(match)})
-	_, _ = fmt.Fprintf(w, `{"features":%s,%s`, features, strings.TrimPrefix(string(b), "{"))
 }
 
 func serveFile(w http.ResponseWriter, name string) {
@@ -592,166 +560,116 @@ func TestArena(t *testing.T) {
 	if sr.Error != "" {
 		t.Fatal(sr.Error)
 	}
-	// Real rows (the text board, 13 September 2026): three aliased sizes.
+	// Real rows (the text leaderboard, 13 September 2026), from the file
+	// Arena publishes: the subset's listing, then one download (and its redirect).
+	if sr.Stats.Requests != 2 {
+		t.Errorf("requests = %d", sr.Stats.Requests)
+	}
 	vals := f.values()
 	if len(vals) != 3 {
 		t.Fatalf("stored %d values, want the three aliased rows: %+v", len(vals), vals)
 	}
 	for _, v := range vals {
 		if v.Provenance != "crowd" || v.SourceDate != "2026-09-13" || v.License != "CC-BY-4.0" ||
-			!strings.Contains(v.Attribution, "2026-09-13") || v.Detail["board_rows"] != 6.0 {
+			!strings.Contains(v.Attribution, "2026-09-13") || v.Detail["board_rows"] != 200.0 || v.Metric != "arena:text/overall" {
 			t.Errorf("row %+v", v)
 		}
 		if v.SourceModel == "gemma-4-31b" && (v.Value != 1441.680670089327 || v.ModelID != f.id("gemma4", 30_700_000_000) || v.Detail["votes"] != 5894.0 || v.Detail["rank"] != 64.0) {
 			t.Errorf("gemma 4 31b: %+v", v)
 		}
 	}
-	// The daemon asks each board for one row, then for the aliased names only.
-	var overall []string
-	for _, w := range f.hub.filters {
-		if strings.HasPrefix(w, `"category"='overall'`) {
-			overall = append(overall, w)
-		}
+	// Open-licence names nothing maps are candidates, with the family they
+	// look like when there is one; a proprietary row is not listed.
+	cands := map[string]string{}
+	for _, c := range sr.Candidates {
+		cands[c.Name] = c.Suggest
 	}
-	if len(overall) != 2 || overall[0] != `"category"='overall'` ||
-		overall[1] != `"category"='overall' AND ("model_name"='gemma-4-31b' OR "model_name"='glm-4.7-flash' OR "model_name"='llama-3.1-8b-instruct' OR "model_name"='llama-3.3-70b-instruct' OR "model_name"='nvidia-nemotron-3-nano-30b-a3b-bf16')` {
-		t.Errorf("where clauses = %q", overall)
+	if s, ok := cands["qwen3.5-35b-a3b"]; !ok || s != "qwen3.5" {
+		t.Errorf("candidates = %+v", sr.Candidates)
 	}
-	if len(sr.Candidates) != 0 {
-		t.Errorf("a narrow read lists no candidates: %+v", sr.Candidates)
+	if _, ok := cands["qwen3.8-27b"]; !ok {
+		t.Errorf("qwen3.8-27b is open-licence and unmapped: %+v", sr.Candidates)
 	}
-	// coding has no rows here: a failure in words; the aliases are then not judged.
-	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], `category "coding"`) {
-		t.Errorf("failures = %v", sr.Failures)
+	if _, ok := cands["claude-fable-5.1-max"]; ok {
+		t.Error("a proprietary name was listed as a candidate")
 	}
-
-	// The curator's whole-board read: open-licence names nothing maps are
-	// candidates, with the family they look like when there is one; the
-	// proprietary row is not listed.
-	fe := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
-	fe.MinInterval = 0
-	whole, err := Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe, Trigger: "test", Force: true,
-		WholeBoards: true, Now: func() time.Time { return f.clock }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"qwen3.5-35b-a3b": "qwen3.5", "qwen3.8-27b": ""}
-	if cands := source(whole, SourceArena).Candidates; len(cands) != len(want) {
-		t.Errorf("candidates = %+v", cands)
-	} else {
-		for _, c := range cands {
-			if s, ok := want[c.Name]; !ok || c.Suggest != s {
-				t.Errorf("candidate %+v", c)
-			}
-		}
+	// coding has no rows in this file: a failure in words; the aliases are then not judged.
+	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], `no rows for category "coding"`) || len(sr.AliasesNotSeen) != 0 {
+		t.Errorf("failures = %v, not seen %v", sr.Failures, sr.AliasesNotSeen)
 	}
 
-	// With only the overall board, the aliases the board never lists are reported.
+	// With only the overall board, the aliases it never lists are reported.
 	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
 	f.clock = f.clock.Add(25 * time.Hour)
 	sr = source(f.run(false), SourceArena)
 	if strings.Join(sr.AliasesNotSeen, ",") != "llama-3.1-8b-instruct,llama-3.3-70b-instruct" {
 		t.Errorf("aliases not seen = %v", sr.AliasesNotSeen)
 	}
-	// Same config, same board date: the board is not re-stored.
+	// Same files, same config: nothing is downloaded or re-stored.
 	f.clock = f.clock.Add(25 * time.Hour)
-	if sr = source(f.run(false), SourceArena); sr.Status != StatusUnchanged || sr.Stored != 0 || len(f.values()) != 3 {
-		t.Errorf("unchanged board: %+v", sr)
+	if sr = source(f.run(false), SourceArena); sr.Status != StatusUnchanged || sr.Stored != 0 || sr.Stats.Requests != 1 || len(f.values()) != 3 {
+		t.Errorf("unchanged files: %+v", sr)
 	}
 }
 
-// The dataset viewer answers HTTP 500 "the dataset index is loading" while
-// it rebuilds (the first coverage report, 2026-09-24): the fetcher waits and
-// asks again rather than failing the board.
-func TestArenaWaitsOutALoadingIndex(t *testing.T) {
+// A file that is not what the reader expects fails in words and keeps what
+// was stored before; the next refresh tries again.
+func TestArenaRefusesAFileItCannotRead(t *testing.T) {
+	f := newFixture(t, SourceArena)
+	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
+	f.run(false)
+	if len(f.values()) != 3 {
+		t.Fatalf("values = %d", len(f.values()))
+	}
+	f.hub.mu.Lock()
+	f.hub.arenaFile = "text-latest-no-rating.parquet"
+	f.hub.mu.Unlock()
+	f.clock = f.clock.Add(25 * time.Hour)
+	sr := source(f.run(false), SourceArena)
+	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], "has no column rating") || len(f.values()) != 3 {
+		t.Errorf("a file without its columns: %v, %d values", sr.Failures, len(f.values()))
+	}
+	// Failed: due again at the next refresh, not in a day.
+	f.clock = f.clock.Add(time.Minute)
+	if sr = source(f.run(false), SourceArena); sr.Status == StatusSkipped {
+		t.Error("a source read in part must be read again at once")
+	}
+}
+
+// A server that is still loading (HTTP 500) is waited out and asked again.
+func TestAFiveHundredIsAskedAgain(t *testing.T) {
 	f := newFixture(t, SourceArena)
 	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
 	failures := 2
 	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path == "/filter" && failures > 0 {
+		if strings.Contains(r.URL.Path, "/tree/main/") && failures > 0 {
 			failures--
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"error":"the dataset index is loading, this may take longer than usual"}`))
+			_, _ = w.Write([]byte(`{"error":"loading, this may take longer than usual"}`))
 			return true
 		}
 		return false
 	}
 	sr := source(f.run(false), SourceArena)
 	if len(sr.Failures) != 0 || len(f.values()) != 3 || sr.Stats.Retries != 2 {
-		t.Errorf("a loading index must be waited out: %+v, %d values", sr, len(f.values()))
+		t.Errorf("%+v, %d values", sr, len(f.values()))
 	}
 }
 
-func TestArenaPagesAndRefusesAMissingColumn(t *testing.T) {
-	f := newFixture(t, SourceArena)
-	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
-	var rows []map[string]any
-	for i := 0; i < 149; i++ {
-		rows = append(rows, map[string]any{"model_name": "m" + strconv.Itoa(i), "license": "Proprietary", "rating": 1000.0, "category": "overall", "leaderboard_publish_date": "2026-09-15"})
-	}
-	rows = append(rows, map[string]any{"model_name": "llama-3.1-8b-instruct", "license": "x", "rating": 1211.4, "category": "overall", "leaderboard_publish_date": "2026-09-16"})
-	const features = `[{"name":"model_name"},{"name":"license"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}]`
-	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path != "/filter" {
-			return false
+func TestFetcherAdmitsACDNsSubdomainsOnly(t *testing.T) {
+	fe := NewFetcher("test-advisor/0", []string{"huggingface.co", "*.hf.co"})
+	for u, want := range map[string]bool{
+		"https://huggingface.co/api/datasets/x":       true,
+		"https://us.aws.cdn.hf.co/xet-bridge-us/abc":  true,
+		"https://cas-bridge.xethub.hf.co/x":           true,
+		"https://hf.co/x":                             false,
+		"https://evilhf.co/x":                         false,
+		"https://hf.co.example.com/x":                 false,
+		"https://datasets-server.huggingface.co/rows": false,
+	} {
+		if got := fe.Allowed(u); got != want {
+			t.Errorf("Allowed(%s) = %v", u, got)
 		}
-		serveFilter(w, r, features, rows)
-		return true
-	}
-	sr := source(f.run(false), SourceArena)
-	vals := f.values()
-	if sr.Error != "" || len(vals) != 1 || vals[0].SourceDate != "2026-09-16" || vals[0].Detail["board_rows"] != 150.0 {
-		t.Fatalf("narrow read: %+v, %+v", sr, vals)
-	}
-	// Two requests for the board, whatever its size: one row of it, then the aliased names.
-	if sr.Stats.Requests != 3 { // + /splits
-		t.Errorf("requests = %d, want 3", sr.Stats.Requests)
-	}
-
-	// The curator's whole-board read pages through all of it, and lists candidates.
-	f.clock = f.clock.Add(48 * time.Hour)
-	fe := NewFetcher("test-advisor/0", []string{mustHost(t, f.hub.srv.URL)})
-	fe.MinInterval = 0
-	fe.Sleep = func(context.Context, time.Duration) error { return nil }
-	rep, err := Run(context.Background(), Options{Catalogue: f.cat, Config: f.cfg, Aliases: f.al, Store: f.st, Fetcher: fe, Trigger: "test", Force: true,
-		WholeBoards: true, Now: func() time.Time { return f.clock }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sr = source(rep, SourceArena); sr.Stats.Requests != 3 || len(sr.Candidates) != 0 || len(f.values()) != 1 {
-		// 150 rows: two pages of 100 after /splits; the proprietary names are not candidates.
-		t.Errorf("whole boards: %+v", sr)
-	}
-
-	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path != "/filter" {
-			return false
-		}
-		_, _ = w.Write([]byte(`{"features":[{"name":"model"},{"name":"score"}],"rows":[{"row":{"model":"x"}}],"num_rows_total":1}`))
-		return true
-	}
-	f.clock = f.clock.Add(48 * time.Hour)
-	sr = source(f.run(false), SourceArena)
-	if len(sr.Failures) != 1 || !strings.Contains(sr.Failures[0], "no column") || len(f.values()) != 1 {
-		t.Errorf("a changed shape must fail in words and keep the stored rows: %v, %d values", sr.Failures, len(f.values()))
-	}
-}
-
-// If the dataset viewer refuses the filter by model name, the board is read
-// whole instead: slower, never wrong.
-func TestArenaFallsBackToTheWholeBoard(t *testing.T) {
-	f := newFixture(t, SourceArena)
-	f.cfg.Metrics = []Metric{mustMetric(t, f.cfg, SourceArena, "arena:text/overall")}
-	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path == "/filter" && strings.Contains(r.URL.Query().Get("where"), "model_name") {
-			http.Error(w, `{"error":"Parameter 'where' is invalid"}`, http.StatusUnprocessableEntity)
-			return true
-		}
-		return false
-	}
-	sr := source(f.run(false), SourceArena)
-	if len(sr.Failures) != 0 || len(f.values()) != 3 {
-		t.Errorf("fallback: %+v, %d values", sr, len(f.values()))
 	}
 }
 
@@ -763,7 +681,7 @@ func TestASlowSourceIsNotWaitedFor(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	f.hub.extra = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path == "/filter" {
+		if strings.Contains(r.URL.Path, "/tree/main/") {
 			select {
 			case <-release:
 			case <-r.Context().Done():
@@ -790,7 +708,7 @@ func TestASlowSourceIsNotWaitedFor(t *testing.T) {
 		t.Errorf("epoch must be read, first: %+v", e)
 	}
 	// The progress names the source and what it reads now.
-	if !contains(parts, "0/2 Epoch AI Benchmarking Hub (downloading its data)") || !contains(parts, "1/2 Arena leaderboard dataset (the overall board)") {
+	if !contains(parts, "0/2 Epoch AI Benchmarking Hub (downloading its data)") || !contains(parts, "1/2 Arena leaderboard dataset (the text leaderboard)") {
 		t.Errorf("progress = %q", parts)
 	}
 	// Failed: due again at the next refresh, not in a day.
@@ -977,12 +895,18 @@ func TestTheViewNeverCrossesSizesAndAlwaysSaysWhose(t *testing.T) {
 	// Gemma 4 31B: Arena's text board, where it leads the three rated sizes
 	// here, and its maker's one merged result, shown but never scored.
 	g31 := v.Entries(f.id("gemma4", 30_700_000_000))
-	if len(g31) != 2 {
+	if len(g31) != 3 { // Arena's chat and writing boards, and its maker's result
 		t.Fatalf("gemma4:31b entries = %+v", g31)
 	}
 	for _, e := range g31 {
 		switch e.SourceID {
 		case SourceArena:
+			if e.Metric == "arena:text/creative_writing" {
+				if e.Position != "No other model here has been rated by Arena yet, so it cannot be ranked for writing." {
+					t.Errorf("writing entry: %+v", e)
+				}
+				continue
+			}
 			if e.Position != "1st for everyday chat of the 3 models here that Arena has rated." || e.ProvenanceWords != "rated by people comparing answers on Arena" || !e.Scored {
 				t.Errorf("arena entry: %+v", e)
 			}

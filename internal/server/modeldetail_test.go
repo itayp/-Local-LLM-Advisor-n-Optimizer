@@ -3,10 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,24 +21,21 @@ import (
 	"advisor/internal/recommend"
 )
 
-// arenaHub is a fake Dataset Viewer with one board rating both test sizes.
+// arenaHub is a fake of Arena's files on the Hub: one text leaderboard
+// (testdata/arena-text-latest.parquet, written with pyarrow) rating both
+// test sizes; no other subset.
 func arenaHub(t *testing.T) *httptest.Server {
 	t.Helper()
+	file, err := os.ReadFile(filepath.Join("testdata", "arena-text-latest.parquet"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/splits":
-			_, _ = io.WriteString(w, `{"splits":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text","split":"latest"}]}`)
-		case "/filter":
-			// The board's one-row probe and the aliased-names read both start so.
-			if !strings.HasPrefix(r.URL.Query().Get("where"), `"category"='overall'`) {
-				_, _ = io.WriteString(w, `{"features":[{"name":"model_name"},{"name":"rating"},{"name":"category"},{"name":"leaderboard_publish_date"}],"rows":[],"num_rows_total":0}`)
-				return
-			}
-			_, _ = io.WriteString(w, `{"features":[{"name":"model_name"},{"name":"license"},{"name":"rating"},{"name":"vote_count"},{"name":"category"},{"name":"leaderboard_publish_date"}],
-				"rows":[
-				 {"row":{"model_name":"llama-3.2-3b-instruct","license":"Llama 3.2","rating":1166.2,"vote_count":12904,"category":"overall","leaderboard_publish_date":"2026-09-15"}},
-				 {"row":{"model_name":"llama-3.2-1b-instruct","license":"Llama 3.2","rating":1102.9,"vote_count":9001,"category":"overall","leaderboard_publish_date":"2026-09-15"}}],
-				"num_rows_total":2}`)
+		case "/api/datasets/lmarena-ai/leaderboard-dataset/tree/main/text":
+			fmt.Fprintf(w, `[{"type":"file","oid":"a","size":%d,"path":"text/latest-00000-of-00001.parquet"}]`, len(file))
+		case "/datasets/lmarena-ai/leaderboard-dataset/resolve/main/text/latest-00000-of-00001.parquet":
+			_, _ = w.Write(file)
 		default:
 			http.NotFound(w, r)
 		}

@@ -116,6 +116,19 @@ Arena read last, and the progress names the board or repo being read.
 The chat top pick on the M1 Pro, Ministral 3 8B, still has no public score
 from any approved source.
 
+## Third gate run (2026-09-24 23:14) — Arena from its files, in the background
+
+Arena gave up after three minutes of "the dataset index is loading". Itay
+chose a small Parquet reader of our own (no new dependency) and public
+scores loading in the background (ARCHITECTURE.md D-56): Arena is now read
+from the files it publishes on the Hub (the text leaderboard, 589 KB, all
+categories at once; two requests per subset), and `POST
+/api/catalog/refresh` answers once the list is in while the public scores
+follow, shown as a quiet note on every screen that needs the list.
+The reader is tested against pyarrow-written files of real Arena rows;
+the fourth verify run reads Arena's actual file and saves it for a real
+fixture.
+
 ## Also fixed this session (Itay, testing on Windows)
 
 - **No dead end without the model list.** `GET /api/catalog/status`, and

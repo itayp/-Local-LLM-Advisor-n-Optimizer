@@ -65,6 +65,7 @@ internal/hardware/      Profile + Detect: per-OS probes behind an env seam, runt
 internal/backend/       Backend interface + registry; internal/backend/ollama arrives in step 3
 internal/catalog/       curated families: YAML loader + validation, repo-file grouping, installed-model matching (step 4)
 internal/catalog/gguf/  the GGUF header parser (stops at the tokenizer; real header fixtures in testdata/)
+internal/catalog/parquet/  a minimal Parquet reader for Arena's leaderboard files: flat tables, plain and dictionary encodings, Snappy (D-56)
 internal/catalog/hf/    the Hugging Face client: listings with ETags, header range reads, rate limits
 internal/catalog/refresh/  Run (YAML → Hub → catalog_models/catalog_files, then the public sources) and MapInstalled
 internal/catalog/external/ public benchmark data (step 9b): the approved sources' clients (Hugging Face Eval Results, Arena, Epoch AI), a polite fetcher limited to PermittedHosts, the coverage report, and the View the screens and the engine read
@@ -120,7 +121,9 @@ a session cannot run Go itself.
   no weights), stores it, and lists installed models the catalogue does not
   know, then reads the public benchmark sources that are due
   (`-no-external` skips them); it exits 1 if a size did not resolve. The
-  daemon's `POST /api/catalog/refresh` runs the same thing.
+  daemon's `POST /api/catalog/refresh` runs the same thing, answering once
+  the list is in and reading the public sources in the background
+  (`GET /api/catalog/status` follows both).
   `advisor catalog external [-data-dir DIR] [-force] [-report] [-capture DIR]`
   reads the approved public sources alone and prints the coverage report
   (each source's hits and misses across the curated sizes); `-report` is
@@ -243,7 +246,8 @@ in the PR saying what it replaces. Nothing that needs cgo, ever.
 **Network.** Outbound requests go only to the model sources on an allow-list:
 Hugging Face (`huggingface.co` and its CDNs), the Ollama download host (step
 3), and the public-data sources step 9a approved —
-`datasets-server.huggingface.co` (Arena's dataset) and `epoch.ai` —
+Arena's dataset files on `huggingface.co` and its `*.hf.co` CDN (D-56),
+and `epoch.ai` —
 bounded by `external.PermittedHosts` and switched on in
 `data/catalog/external.yaml` (ARCHITECTURE.md D-53). The public-data
 requests are a function of the data files alone, the same on every

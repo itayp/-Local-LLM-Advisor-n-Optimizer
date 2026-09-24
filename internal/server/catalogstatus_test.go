@@ -2,12 +2,19 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"advisor/internal/backend"
 	"advisor/internal/bench"
+	"advisor/internal/catalog/external"
 	"advisor/internal/catalog/refresh"
 	"advisor/internal/estimate"
 )
@@ -108,4 +115,91 @@ func TestBenchProgressAsJSON(t *testing.T) {
 		t.Errorf("progress: %+v", p)
 	}
 	getJSON(t, ts.URL+"/api/bench/999/progress", http.StatusNotFound, nil)
+}
+
+// POST /api/catalog/refresh answers once the model list is in; the public
+// scores follow in the background, and the status says so while they do.
+func TestPublicScoresArriveInTheBackground(t *testing.T) {
+	srv, ts := newCatalogTestServer(t)
+	if err := srv.SyncCatalogue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.ReadFile(filepath.Join("testdata", "arena-text-latest.parquet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/datasets/lmarena-ai/leaderboard-dataset/tree/main/text":
+			<-release
+			fmt.Fprintf(w, `[{"type":"file","oid":"a","size":%d,"path":"text/latest-00000-of-00001.parquet"}]`, len(file))
+		case "/datasets/lmarena-ai/leaderboard-dataset/resolve/main/text/latest-00000-of-00001.parquet":
+			_, _ = w.Write(file)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer hub.Close()
+	u, _ := url.Parse(hub.URL)
+	srv.cat.loadExternal = func() (*external.Config, external.Aliases, error) {
+		cfg, err := external.DefaultConfig()
+		if err != nil {
+			return nil, nil, err
+		}
+		var ms []external.Metric
+		for _, m := range cfg.Metrics {
+			if m.Metric == "arena:text/overall" {
+				ms = append(ms, m)
+			}
+		}
+		cfg.Metrics = ms
+		for i := range cfg.Sources {
+			s := &cfg.Sources[i]
+			s.Enabled = s.ID == external.SourceArena
+			s.URL, s.Hosts = hub.URL, []string{u.Host}
+		}
+		al, err := external.ParseAliases([]byte("arena:\n  - {name: llama-3.2-1b-instruct, family: llama3.2, parameters: 1230000000, reviewed_at: 2026-09-24}\n"))
+		return cfg, al, err
+	}
+	srv.cat.externalFetcher = func(cfg *external.Config) *external.Fetcher {
+		f := external.NewFetcher("advisor-test", cfg.EnabledHosts())
+		f.MinInterval = 0
+		return f
+	}
+
+	resp, err := http.Post(ts.URL+"/api/catalog/refresh", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST: %d", resp.StatusCode)
+	}
+	var st CatalogStatus
+	waitFor(t, func() bool {
+		st = CatalogStatus{}
+		getJSON(t, ts.URL+"/api/catalog/status", http.StatusOK, &st)
+		return st.PublicRunning && st.PublicProgress != nil && strings.Contains(st.PublicProgress.Message, "Arena leaderboard dataset")
+	})
+	if !st.Fetched || st.Running {
+		t.Errorf("the list is in while the public scores download: %+v", st)
+	}
+	close(release)
+	waitFor(t, func() bool {
+		st = CatalogStatus{}
+		getJSON(t, ts.URL+"/api/catalog/status", http.StatusOK, &st)
+		return !st.PublicRunning && st.PublicFetched
+	})
+}
+
+func waitFor(t *testing.T, ok func() bool) {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if ok() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out")
 }

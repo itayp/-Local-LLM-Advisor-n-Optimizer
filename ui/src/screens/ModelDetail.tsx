@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router'
 import { api } from '../api/client'
 import type { FileFit, ModelDetailResponse } from '../api/types'
 import { Figure } from '../components/Figure'
-import { FetchProgress, useCatalogStatus } from '../components/ModelList'
+import { FetchProgress, PublicInBackground, useCatalogStatus } from '../components/ModelList'
 import { formatDay, PublicFigure } from '../components/PublicFigure'
 import { Term } from '../components/Term'
 import { Working } from '../components/Working'
@@ -126,8 +126,9 @@ export function ModelDetail() {
  * and its progress. Nothing once they have been read.
  */
 function FetchPublic({ onFetched }: { onFetched: () => void }) {
-  const { status, running, failed, fetchList } = useCatalogStatus(onFetched)
+  const { status, running, publicRunning, failed, fetchList } = useCatalogStatus(onFetched)
   if (running) return <FetchProgress status={status} />
+  if (publicRunning) return <PublicInBackground status={status} />
   if (!status || status.public_fetched) return null
   return (
     <div data-testid="public-fetch">

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -268,6 +268,38 @@ describe('Recommend', () => {
     open()
     expect(await screen.findByTestId('model-list-missing')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: en.modelList.fetch })).toBeInTheDocument()
+  })
+
+  it('shows the public scores downloading in the background, then asks for the recommendations again', async () => {
+    let publicRunning = true
+    const calls = serve(() => result())
+    const base = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) =>
+        url === '/api/catalog/status'
+          ? new Response(
+              JSON.stringify({
+                fetched: true, running: false, public_fetched: false, public_updated: '', public_running: publicRunning,
+                public_progress: publicRunning
+                  ? { phase: 'public', message: 'Reading public scores from Arena leaderboard dataset (the text leaderboard)', done: 2, total: 3, started_at: new Date().toISOString() }
+                  : undefined,
+              }),
+              { status: 200 },
+            )
+          : base(url, init),
+      ),
+    )
+    open()
+    const note = await screen.findByTestId('public-background')
+    expect(note).toHaveTextContent(en.modelList.publicBackground)
+    expect(note).toHaveTextContent('Arena leaderboard dataset (the text leaderboard)')
+    // The screen is usable meanwhile: the cards are there.
+    expect(await screen.findByRole('article', { name: 'Qwen3.5 9B' })).toBeInTheDocument()
+    const before = calls.length
+    publicRunning = false
+    await waitFor(() => expect(calls.length).toBeGreaterThan(before), { timeout: 3000 })
+    await waitFor(() => expect(screen.queryByTestId('public-background')).not.toBeInTheDocument())
   })
 
   it('links each card to a test of that model', async () => {
