@@ -350,4 +350,45 @@ describe('Recommend', () => {
     const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
     expect(within(item).queryByTestId('public-line')).toBeNull()
   })
+
+  it('seeds the purposes from a saved choice, and persists a change to it (build-plan step 10)', async () => {
+    const user = userEvent.setup()
+    const calls: { url: string; method: string; body?: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        calls.push({ url, method, body: init?.body as string | undefined })
+        if (url.startsWith('/api/recommend')) return new Response(JSON.stringify(result({ purposes: ['chat', 'coding'] })), { status: 200 })
+        if (url === '/api/settings' && method === 'GET') {
+          return new Response(
+            JSON.stringify({ advanced: false, data_dir: '/tmp', purposes: ['chat'], watch: { enabled: true, mode: 'on', interval: 0 } }),
+            { status: 200 },
+          )
+        }
+        if (url === '/api/settings' && method === 'PUT') return new Response('{}', { status: 200 })
+        return new Response(JSON.stringify({ version: 'test', os: 'linux', arch: 'amd64', go_version: 'go1.27.1' }), { status: 200 })
+      }),
+    )
+    render(
+      <MemoryRouter initialEntries={['/recommend']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    // Seeded from the daemon's saved purposes once GET /api/settings answers.
+    const chat = await screen.findByRole('checkbox', { name: c.purposes.chat })
+    await waitFor(() => expect(chat).toBeChecked())
+    expect(screen.getByRole('checkbox', { name: c.purposes.coding })).not.toBeChecked()
+
+    await user.click(screen.getByRole('checkbox', { name: c.purposes.coding }))
+    expect(screen.getByRole('checkbox', { name: c.purposes.coding })).toBeChecked()
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (x) => x.url === '/api/settings' && x.method === 'PUT' && JSON.stringify(JSON.parse(x.body ?? '{}').purposes) === JSON.stringify(['chat', 'coding']),
+        ),
+      ).toBe(true),
+    )
+  })
 })

@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { HardwareResponse, Health } from '../api/types'
+import type { HardwareResponse, Health, NotifyMode } from '../api/types'
 import { formatBytes } from '../components/Figure'
 import { en } from '../copy/en'
 import { useSettings } from '../state/settings'
 
 const c = en.screens.settings
 
+/** The order the notification mode is offered in: the everyday choice first. */
+const modeOrder: NotifyMode[] = ['on', 'quiet', 'never']
+
 /**
  * Settings (build-plan step 8): the Advanced toggle, where things live on
- * disk and a button that opens each (D-16), the version, and stub
- * sections for the two settings still to come (notifications, step 10;
- * checking for updates, step 11) — written as what they are, not left
- * blank (CLAUDE.md: "empty states are written, not blank").
+ * disk and a button that opens each (D-16), the version, the new-model
+ * watch's own settings (build-plan step 10), and a stub section for the
+ * one still to come (checking for updates, step 11) — written as what it
+ * is, not left blank (CLAUDE.md: "empty states are written, not blank").
  */
 export function Settings() {
-  const { settings, setAdvanced } = useSettings()
+  const { settings, setAdvanced, setWatch } = useSettings()
   const [health, setHealth] = useState<Health | null>(null)
   const [hw, setHw] = useState<HardwareResponse | null>(null)
   const [dataDir, setDataDir] = useState<string | null>(null)
@@ -58,7 +61,41 @@ export function Settings() {
 
       <div className="settings-section">
         <h2>{c.notificationsTitle}</h2>
-        <p className="screen__note">{en.placeholder.comingIn(c.notificationsStep)}</p>
+        <p className="screen__note">{c.notificationsHelp}</p>
+
+        <div className="setting">
+          <label className="setting__label">
+            <input
+              type="checkbox"
+              checked={settings.watch.enabled}
+              onChange={(e) => setWatch({ ...settings.watch, enabled: e.target.checked })}
+              aria-describedby="watch-enabled-help"
+            />{' '}
+            {c.watchEnabledLabel}
+          </label>
+          <p id="watch-enabled-help" className="setting__help">
+            {c.watchEnabledHelp}
+          </p>
+        </div>
+
+        <fieldset className="purposes" disabled={!settings.watch.enabled}>
+          <legend className="screen__lead">{c.watchModeLegend}</legend>
+          <ul>
+            {modeOrder.map((mode) => (
+              <li key={mode}>
+                <label>
+                  <input
+                    type="radio"
+                    name="watch-mode"
+                    checked={settings.watch.mode === mode}
+                    onChange={() => setWatch({ ...settings.watch, mode })}
+                  />{' '}
+                  {c.watchMode[mode]}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </fieldset>
       </div>
 
       <div className="settings-section">

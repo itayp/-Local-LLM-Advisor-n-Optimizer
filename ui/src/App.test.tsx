@@ -81,7 +81,11 @@ describe('the Advanced toggle', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(en.nav.models)
     expect(await screen.findByTestId('models-advanced')).toBeInTheDocument()
 
-    expect(JSON.parse(localStorage.getItem('advisor.settings.v1') ?? '{}')).toEqual({ advanced: true })
+    expect(JSON.parse(localStorage.getItem('advisor.settings.v1') ?? '{}')).toEqual({
+      advanced: true,
+      purposes: [],
+      watch: { enabled: true, mode: 'on', interval: 0 },
+    })
   })
 
   it('reads a saved choice on start', () => {

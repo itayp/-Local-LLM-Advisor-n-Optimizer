@@ -27,6 +27,8 @@ import type {
   SettingsResponse,
   SettingsUpdate,
   UnknownInstalledResponse,
+  WatchLogResponse,
+  WatchReport,
 } from './types'
 
 // The API is same-origin: the daemon serves both the UI and /api. In
@@ -194,6 +196,10 @@ export const api = {
   /** Remove an installed model from backendName; answers with the inventory as it now stands. */
   removeModel: (backendName: string, name: string, signal?: AbortSignal) =>
     send<InstalledModelsResponse>('POST', `/backends/${encodeURIComponent(backendName)}/models/remove`, signal, { name }),
+  /** The new-model watch's log (build-plan step 10): the most recent runs, newest first. */
+  watchLog: (signal?: AbortSignal) => get<WatchLogResponse>('/watch/log', signal),
+  /** Run a watch check now. 409 while one is already running. */
+  watchRun: (signal?: AbortSignal) => send<WatchReport>('POST', '/watch/run', signal),
 }
 
 /** How long a silent event stream is waited for before polling instead, and how often a poll asks. */

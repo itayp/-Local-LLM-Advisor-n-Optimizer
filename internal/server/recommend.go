@@ -49,23 +49,41 @@ type FileFit struct {
 // hardware (ARCHITECTURE.md D-5, D-31). It waits for detection like GET
 // /api/hardware does.
 func (s *Server) machine(w http.ResponseWriter, r *http.Request) (estimate.Machine, bool) {
-	select {
-	case <-s.hw.ready:
-	case <-r.Context().Done():
-		return estimate.Machine{}, false
-	case <-time.After(hardwareWait):
-		writeError(w, http.StatusServiceUnavailable, "detecting", "still reading this computer; try again in a moment")
+	m, err := s.machineFor(r.Context())
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return estimate.Machine{}, false // the request is gone; nothing to write
+		}
+		if s.hw.err != nil {
+			writeError(w, http.StatusServiceUnavailable, "detection_failed", "this computer could not be read: "+s.hw.err.Error())
+		} else {
+			writeError(w, http.StatusServiceUnavailable, "detecting", "still reading this computer; try again in a moment")
+		}
 		return estimate.Machine{}, false
 	}
+	return m, true
+}
+
+// machineFor is machine's own logic, without the HTTP response: the watch
+// scheduler (watch.go) builds a Machine the same way, but has no request to
+// wait on or write an error to — a run started before detection finishes is
+// simply skipped, and tries again on its next tick.
+func (s *Server) machineFor(ctx context.Context) (estimate.Machine, error) {
+	select {
+	case <-s.hw.ready:
+	case <-ctx.Done():
+		return estimate.Machine{}, ctx.Err()
+	case <-time.After(hardwareWait):
+		return estimate.Machine{}, errors.New("still detecting this computer")
+	}
 	if s.hw.err != nil {
-		writeError(w, http.StatusServiceUnavailable, "detection_failed", "this computer could not be read: "+s.hw.err.Error())
-		return estimate.Machine{}, false
+		return estimate.Machine{}, s.hw.err
 	}
 	m := estimate.Machine{Profile: s.hw.resp.Profile}
 	if s.store != nil {
-		m.ActualPath, m.RuntimeEnv = s.observedPath(r.Context(), s.hw.resp.Fingerprint)
+		m.ActualPath, m.RuntimeEnv = s.observedPath(ctx, s.hw.resp.Fingerprint)
 	}
-	return m, true
+	return m, nil
 }
 
 // observedPath is the path the runtime took for the primary graphics device

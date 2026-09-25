@@ -911,22 +911,95 @@ export interface ChatAppsResponse {
   apps: ChatApp[]
 }
 
+// --- New-model watch (build-plan step 10; Go: internal/watch, internal/server/watch.go) -----
+//
+// A daily, jittered scheduler refreshes the catalogue and checks every
+// curated size against this machine; a candidate that fits and beats the
+// current model on a purpose picked earns exactly one desktop notification,
+// ever. What it checked, found and suppressed (and why) is this log.
+
+/** What the watch knows about one candidate (Go: watch.Outcome). */
+export type WatchOutcome = 'notified' | 'suppressed' | 'already_seen' | 'flagged_for_curator' | 'error'
+
+/** Go: watch.NotifyMode — governs the desktop popup only; the check and the log run the same in every mode except "off" (WatchSettings.enabled). */
+export type NotifyMode = 'on' | 'quiet' | 'never'
+
+/** The watch's own settings, read from and written through /api/settings (Go: watch.Settings). */
+export interface WatchSettings {
+  /** The master switch: off runs no refresh, no check, no log line at all. */
+  enabled: boolean
+  mode: NotifyMode
+  /** Nanoseconds; 0 uses the daemon's own default. Not set from the UI today. */
+  interval: number
+}
+
+/** One line of the watch log (Go: watch.LogEntry). */
+export interface WatchLogEntry {
+  at: string
+  key: string
+  /** The model's display name, or the repo id — never the raw key. */
+  name: string
+  outcome: WatchOutcome
+  detail: string
+}
+
+/** One watch run's full report (Go: watch.Report). */
+export interface WatchReport {
+  started_at: string
+  finished_at: string
+  trigger: 'scheduler' | 'api' | 'cli' | string
+  checked: number
+  notified: number
+  suppressed: number
+  already_seen: number
+  flagged: number
+  errors: number
+  refresh_error?: string
+  maintainer_error?: string
+  entries: WatchLogEntry[]
+}
+
+/** One watch_runs row (Go: server.WatchRunSummary). */
+export interface WatchRunSummary {
+  id: number
+  created_at: string
+  finished_at: string
+  trigger: string
+  checked: number
+  notified: number
+  suppressed: number
+  flagged: number
+  report: WatchReport
+}
+
+/** GET /api/watch/log (Go: server.WatchLogResponse). */
+export interface WatchLogResponse {
+  /** Newest first. */
+  runs: WatchRunSummary[]
+}
+
 // --- Settings (Go: internal/server/settings.go) -----------------------------
 //
-// Advanced (product rule 2's toggle) is the only durable, machine-wide
-// setting the MVP has. state/settings.tsx keeps a localStorage copy for a
-// snappy first paint and reconciles it with this endpoint; this table is
-// what survives a cleared browser profile or a second window.
+// Advanced (product rule 2's toggle), the purposes picked on Recommend, and
+// the new-model watch's own settings: the durable, machine-wide settings.
+// state/settings.tsx keeps a localStorage copy for a snappy first paint and
+// reconciles it with this endpoint; this table is what survives a cleared
+// browser profile or a second window.
 
 /** GET and PUT /api/settings (Go: server.SettingsResponse). DataDir is a fact from the OS, not a Figure. */
 export interface SettingsResponse {
   advanced: boolean
   data_dir: string
+  /** The purposes chosen on Recommend, persisted so the watch has something to check against. Empty until chosen once. */
+  purposes: Purpose[]
+  watch: WatchSettings
 }
 
-/** PUT /api/settings (Go: server.SettingsUpdate). */
+/** PUT /api/settings (Go: server.SettingsUpdate). purposes and watch are optional: left out, the stored value is unchanged. */
 export interface SettingsUpdate {
   advanced: boolean
+  purposes?: Purpose[]
+  watch?: WatchSettings
 }
 
 /** POST /api/backends/{name}/models/remove (Go: server.ModelRemoveRequest). The response is InstalledModelsResponse: the inventory as it now stands. */

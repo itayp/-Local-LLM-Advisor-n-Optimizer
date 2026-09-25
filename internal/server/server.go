@@ -87,6 +87,10 @@ type Server struct {
 	// cat is the catalogue endpoints' state (catalog.go).
 	cat catalogState
 
+	// wch is the new-model watch's state (watch.go): its notifier and the
+	// one-run-at-a-time lock RunWatch and a manual trigger share.
+	wch watchState
+
 	// bench runs benchmarks (bench.go); nil without a store.
 	bench *bench.Harness
 
@@ -113,6 +117,7 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All, open: openInFileManager}
 	s.hw.ready = make(chan struct{})
 	s.cat.init()
+	s.wch.init()
 	if st != nil {
 		h, err := bench.New(st, log)
 		if err != nil {
@@ -178,6 +183,12 @@ func (s *Server) routes() {
 	// build-plan step 8): the backend deletes it, then its inventory is
 	// re-read the same way RecordBackends does after every check.
 	s.api("POST /api/backends/{name}/models/remove", s.handleModelRemove)
+	// The new-model watch (build-plan step 10): the log of what a run
+	// checked, found and suppressed, and a button to run one now — the
+	// same "detached from the request" shape POST /api/catalog/refresh
+	// already uses (watch.go).
+	s.api("GET /api/watch/log", s.handleWatchLog)
+	s.api("POST /api/watch/run", s.handleWatchRun)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

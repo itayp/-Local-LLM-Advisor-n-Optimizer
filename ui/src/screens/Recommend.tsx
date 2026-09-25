@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
@@ -7,7 +7,7 @@ import { ModelList } from '../components/ModelList'
 import { PublicLine } from '../components/PublicFigure'
 import { Working } from '../components/Working'
 import { en } from '../copy/en'
-import { useAdvanced } from '../state/settings'
+import { useAdvanced, useSettings } from '../state/settings'
 
 const c = en.screens.recommend
 
@@ -26,15 +26,33 @@ const purposeOrder: Purpose[] = ['chat', 'writing', 'coding', 'reasoning', 'long
  * where public data and this computer's numbers sit in two blocks. Every number with provenance goes through
  * <Figure>: a speed is an estimated RANGE until a test measures it, and when
  * there is no estimate the card says so in words — never a number.
+ *
+ * The purposes picked here are durable (build-plan step 10): saved through
+ * the daemon's settings table, so the new-model watch has something to
+ * check new models against even with nobody looking. A settings row that
+ * already has a choice seeds this screen with it, once — after that, only
+ * a pick made here changes either.
  */
 export function Recommend() {
   const advanced = useAdvanced()
-  const [purposes, setPurposes] = useState<Purpose[]>(['chat'])
+  const { settings, setPurposes: persistPurposes } = useSettings()
+  const [purposes, setPurposes] = useState<Purpose[]>(settings.purposes.length > 0 ? settings.purposes : ['chat'])
   const [result, setResult] = useState<RecommendResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   // Bumped after the model list has been fetched, to ask again.
   const [asked, setAsked] = useState(0)
+  // True once `purposes` has been seeded from a real saved choice (at mount,
+  // or once the daemon's answer to GET /api/settings arrives) — after that,
+  // a later change to the saved copy (which a pick made here also causes)
+  // must never overwrite what is on screen.
+  const seeded = useRef(settings.purposes.length > 0)
+
+  useEffect(() => {
+    if (seeded.current || settings.purposes.length === 0) return
+    seeded.current = true
+    setPurposes(settings.purposes)
+  }, [settings.purposes])
 
   useEffect(() => {
     if (purposes.length === 0) {
@@ -58,8 +76,11 @@ export function Recommend() {
     return () => ac.abort()
   }, [purposes, asked])
 
-  const toggle = (p: Purpose) =>
-    setPurposes((now) => (now.includes(p) ? now.filter((x) => x !== p) : purposeOrder.filter((x) => x === p || now.includes(x))))
+  const toggle = (p: Purpose) => {
+    const next = purposes.includes(p) ? purposes.filter((x) => x !== p) : purposeOrder.filter((x) => x === p || purposes.includes(x))
+    setPurposes(next)
+    persistPurposes(next)
+  }
 
   return (
     <section className="screen" aria-labelledby="screen-title">

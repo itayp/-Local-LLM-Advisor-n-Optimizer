@@ -1970,3 +1970,134 @@ person is never kept waiting on them.
 `.captures/external/`; a cut of it should replace the pyarrow-written
 fixture. The dataset viewer's retry logic (D-54) stays in the fetcher for
 any 5xx, harmless for the Hub.
+
+## D-57. The watch scores nothing of its own: a candidate qualifies by appearing in Recommend's own answer
+
+**Context.** Step 10 asks for exactly the rule PRD §12 states: a new model
+notifies only if it fits and beats the user's current model on a purpose
+they picked. `internal/recommend` already carries that rule — `Engine.
+Recommend` drops a candidate that does not fit, and (through `consider`'s
+versus-current term) one that changes nothing from the model the user has.
+Reimplementing "fits and beats current" as a second set of comparisons in
+`internal/watch` would be two places that must agree forever, and the
+values the second one needs (this machine's placement, its budget, the
+purpose weights) are `internal/recommend`'s own internals, not a public
+seam.
+
+**Decision.**
+
+- **Membership is the test.** `internal/watch.Run` asks the same `Engine.
+  Recommend` `internal/server/recommend.go` already builds for `GET /api/
+  recommend` — same catalogue, same machine, same stored purposes — once
+  per run, then for each curated size checks only whether its
+  `catalog_models.id` appears in `Result.Recommendations`. Appearing there
+  already means it fit and (Preferences.CurrentModel set through recommend
+  itself when there is one to compare against) was a real change from what
+  the user has; nothing about "fits" or "beats" is re-derived. A size that
+  is not in the answer is suppressed, its log line built from `Result.
+  Empty` (nothing fit at all) or a fixed sentence naming the current model
+  when there is one — never a claim the engine did not make.
+- **The notification's words are recommend's own, said once each.**
+  `watch.notificationFor` arranges `Recommendation.Reasons[].Text`,
+  `.VersusCurrent` and the two speed lines into PRD §12's shape ("Why it
+  may matter to you:" and a bullet per reason) — the same "what the
+  customer reads is templated" rule (CLAUDE.md, `internal/recommend/
+  reasons.go`) extends here rather than getting a second copy.
+  `card()` (item 6, "what it changes") already folds the versus-current
+  sentence into `Reasons` as a `Kind: "change"` entry whenever there is one
+  *and* sets `VersusCurrent` to that same string, so the loop over
+  `Reasons` skips `Kind == "change"` and `VersusCurrent` is added once, on
+  its own — reading both without the skip said the same sentence twice.
+  The one line this function does add itself is `publicBullet`, PRD §12's
+  "Strong coding benchmark results": gated on `Recommendation.Public.
+  Scored` (never the maker's own numbers — P-4) and on that value's
+  `Position` already starting "Among the strongest", the exact wording
+  `external.position()` computes for a size's own "Public data" block at
+  the same top-third bar — reusing that string, rather than re-deriving
+  "top third" from `Rank`/`Rated`, keeps the notification and Details
+  saying it from one place. `Recommendation.Public` is nil coming out of
+  `Engine.Recommend` (the engine only scores it, via `Engine.Public`); the
+  server fills it for the UI's cards post-hoc
+  (`handleRecommend`'s `view.Line(...)` loop), and `internal/watch` needed
+  the same thing without importing `internal/catalog/external` — see the
+  `PublicLine` bullet below.
+- **`watch.Options.PublicLine` is a closure, not a new import.**
+  `internal/recommend` does not depend on `internal/catalog/external`
+  (`Recommendation.Public` is a field the server fills, not something the
+  engine computes), and `internal/watch` keeps the same shape: `Options.
+  PublicLine func(modelID int64, purposes []catalog.Purpose)
+  *catalog.PublicEntry` is `internal/server/watch.go`'s closure over the
+  same `*external.View` `RunWatch` already builds for `Engine.Public`
+  (`view.Scoring()`); `checkOne` calls it for the one candidate it found in
+  `Result.Recommendations`, right before building the notification. A nil
+  `PublicLine` (no public data yet) means no public bullet, same as a size
+  with nothing public.
+- **Once per model, ever.** `watch_state.notified_at` starts empty and,
+  once a run sets it, a later `UpsertWatchState` can only leave it as it
+  was (`COALESCE(watch_state.notified_at, excluded.notified_at)` in the
+  upsert) — enforced in SQL, not only by the Go caller remembering to
+  check first. `Run` still checks in Go too (skips re-scoring anything
+  already `NotifiedAt`), so a size does not pay for `Engine.Recommend`'s
+  work twice in one run for nothing. `NotifyMode` is a second axis from
+  `Enabled`: `never` still checks and logs (every size logs "notifications
+  are turned off" and nothing is scored, so turning `on` again later gives
+  every size a first fair look — no size is silently marked seen while
+  notifications were off), `quiet` scores and would notify but shows no
+  popup, `on` shows one. Only `Enabled=false` is a full pause: no refresh,
+  no check, no log line, not even a recorded run.
+- **A new maintainer repo is flagged, never scored.** `hf_base_repo`'s
+  owner segment (the maker's own namespace; `hf_repo`'s owner is always the
+  GGUF quantizer, `bartowski` and the like — families.yaml's own
+  documented distinction) is who "the same maintainers" means. A new
+  `hf.Client.ListByAuthor` (`GET /api/models?author=`, the same ETag/
+  throttle/retry shape as `ModelInfo`) lists an owner's newest repos;
+  anything not already named by the catalogue (as a base repo, an alias,
+  or a GGUF repo) is logged `flagged_for_curator` and stops there — there
+  is no `recommend.Entry` for a repo families.yaml has never curated, so
+  there is nothing to fit or compare it against. Flagged once, like a
+  model (the same `watch_state` row, keyed `repo:owner/name` instead of
+  `model:id`).
+- **`internal/store` keeps its own plain row types** (`WatchStateRow`,
+  `WatchRunRow`) rather than importing `internal/watch`'s: `internal/watch`
+  already imports `internal/store` (D-11's one-way dependency graph), and
+  `internal/watch` converts between the two at its own edge (`toWatchStates`
+  in run.go) — the same shape every other domain package's store rows
+  already take.
+- **Purposes become a durable setting.** They were UI-only state
+  (`Recommend.tsx`'s `useState`) until now; a scheduler with nobody
+  watching needs to know what to check candidates against, so
+  `SettingsResponse.purposes` / `SettingsUpdate.purposes` joins `advanced`
+  in the settings table (`settings.purposes`, comma-separated), and
+  `Recommend` seeds its checkboxes from it once and writes back on every
+  change — the same table row Advanced already lives in, read the same way
+  (CLAUDE.md's own settings.go comment already said the next setting would
+  land exactly here).
+- **Desktop notifications are per-OS `exec.Command`**, the same idiom as
+  `cmd/advisor`'s `openBrowser` and `server`'s `openInFileManager`:
+  `osascript -e 'display notification'` (macOS), `notify-send` (Linux),
+  a short PowerShell script against `System.Windows.Forms.NotifyIcon`
+  (Windows, since a real toast needs an installer-registered app identity
+  that arrives in step 11). None can hand the OS a click handler back into
+  this specific daemon from a bare binary; every notification also states
+  its URL as text in the body, so it always works by hand until step 11.
+  No new dependency, matching CLAUDE.md's dependency list.
+- **The scheduler**: a background goroutine (`Server.WatchScheduler`,
+  started from `cmd/advisor/main.go` the same way `RecordHardware` and
+  `RecordBackends` are) waits a short jittered pause after start, runs a
+  check, then waits `watch.Config.DefaultInterval` (24 h) — jittered by
+  `Config.Jitter` each time — before the next. `RunWatch` (the scheduler's
+  and a manual `POST /api/watch/run`'s shared entry point) is what one
+  check actually does: `RefreshCatalog` first (so a size resolved today is
+  already a candidate this run can see), then `watch.Run`. One run at a
+  time (`ErrRefreshRunning`, the same shape a concurrent catalogue refresh
+  already answers with) — a manual "check now" and the daily tick never
+  race each other's `watch_state` writes.
+
+**Consequences.** The watch's own correctness rides on `internal/recommend`
+staying correct — a future change there (a new versus-current rule, a
+changed purpose weight) changes what gets notified without touching
+`internal/watch` at all, which is the point: one rule, one place. A
+machine not yet detected (a `POST /api/watch/run` fired moments after
+start) is handled the same way a size the engine cannot fit is — suppressed
+with a reason, never an error — rather than the scheduler needing its own
+"wait for hardware" seam.

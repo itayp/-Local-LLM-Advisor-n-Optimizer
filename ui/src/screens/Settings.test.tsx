@@ -42,7 +42,13 @@ function hardware(): HardwareResponse {
 }
 
 function settings(over: Partial<SettingsResponse> = {}): SettingsResponse {
-  return { advanced: false, data_dir: '/Users/u/Library/Application Support/advisor', ...over }
+  return {
+    advanced: false,
+    data_dir: '/Users/u/Library/Application Support/advisor',
+    purposes: [],
+    watch: { enabled: true, mode: 'on', interval: 0 },
+    ...over,
+  }
 }
 
 function serve(opts: { hw?: HardwareResponse | 'unreachable'; settings?: SettingsResponse; openDataFails?: string; openModelsFails?: string }) {
@@ -145,10 +151,35 @@ describe('Settings', () => {
     expect(within(row).queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('writes what notifications and updates will be, rather than leaving them blank', async () => {
+  it('writes what updates will be, rather than leaving it blank', async () => {
     serve({})
     open()
-    expect(await screen.findByText(en.placeholder.comingIn(c.notificationsStep))).toBeInTheDocument()
-    expect(screen.getByText(en.placeholder.comingIn(c.updatesStep))).toBeInTheDocument()
+    expect(await screen.findByText(en.placeholder.comingIn(c.updatesStep))).toBeInTheDocument()
+  })
+
+  it('shows the watch settings and persists a change to each', async () => {
+    const user = userEvent.setup()
+    const calls = serve({})
+    open()
+    await screen.findByText('/Users/u/Library/Application Support/advisor')
+
+    const enabled = screen.getByRole('checkbox', { name: c.watchEnabledLabel }) as HTMLInputElement
+    expect(enabled.checked).toBe(true)
+    const onMode = screen.getByRole('radio', { name: c.watchMode.on }) as HTMLInputElement
+    expect(onMode.checked).toBe(true)
+
+    await user.click(screen.getByRole('radio', { name: c.watchMode.quiet }))
+    await waitFor(() =>
+      expect(
+        calls.some((x) => x.url === '/api/settings' && x.method === 'PUT' && JSON.parse(x.body ?? '{}').watch?.mode === 'quiet'),
+      ).toBe(true),
+    )
+
+    await user.click(enabled)
+    await waitFor(() =>
+      expect(
+        calls.some((x) => x.url === '/api/settings' && x.method === 'PUT' && JSON.parse(x.body ?? '{}').watch?.enabled === false),
+      ).toBe(true),
+    )
   })
 })

@@ -108,6 +108,10 @@ func run() int {
 	if err := srv.SyncCatalogue(ctx); err != nil {
 		log.Warn("syncing the curated catalogue", "err", err)
 	}
+	// This start's own address, for a watch notification's deep link
+	// (build-plan step 10, item 3 — "that model's card, with 'Run
+	// benchmark'"). Set before the scheduler can possibly fire.
+	srv.SetWatchBaseURL(url)
 	// A benchmark the previous start was running did not finish: say so in
 	// its row rather than leave it "running" forever.
 	srv.RecoverBenchmarks(ctx)
@@ -154,6 +158,14 @@ func run() int {
 				"installed_version", b.InstalledVersion, "runtime_paths", b.RuntimePaths)
 		}
 	}()
+
+	// The new-model watch (build-plan step 10): a daily, jittered scheduler
+	// that refreshes the catalogue, checks every curated size against this
+	// machine, and notifies once per model, ever — see internal/watch and
+	// internal/server/watch.go. It never pulls or switches anything itself
+	// (product rule 5); the master switch and the notification mode are the
+	// Settings screen's, read fresh on every tick.
+	go srv.WatchScheduler(ctx)
 
 	// Open the browser exactly once, after the listener is up. If that fails
 	// (no desktop, no browser), the URL is in the log and the daemon runs on.
