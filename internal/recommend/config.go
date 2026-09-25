@@ -70,23 +70,23 @@ type Config struct {
 
 	// ---- speed -------------------------------------------------------------
 
-	// The speed factor is, per purpose asked, min(1, Gmid ÷ the purpose's
-	// excellent stream rate, the purpose's excellent wait ÷ wait at Gmid) —
-	// a per_step purpose (agentic) uses the wait term only, having no stream
-	// bar (ARCHITECTURE.md D-58; data/recommend/speed-needs.yaml has every
-	// number). For chat on a graphics card the wait term is 1 (the prompt is
-	// short and fast), so the factor equals the old, purpose-blind
-	// ComfortableTPS factor this replaced. Below the bar the factor falls
-	// linearly, all the way down: on a machine where everything is slow the
-	// ranking then turns on speed, which is what sends small models to weak
-	// hardware (product rule 6) instead of the largest one that happens to
-	// fit in memory. SpeedFloor only keeps the factor from reaching zero, so
-	// that a CPU-only laptop still gets a ranked list. Gmid and the wait it
-	// implies are computed at the geometric middle of the estimated range —
-	// the natural centre of a range whose ends are a ratio apart, and the
-	// cautious one where the range is wide (a processor whose memory modules
-	// the advisor cannot see) — then floored at SpeedFloor and averaged over
-	// the purposes asked.
+	// The speed factor is, per purpose asked, min(1, Gmid ÷ the excellent
+	// stream rate, the purpose's usable wait ÷ wait at Gmid) (ARCHITECTURE.md
+	// D-58 as amended by D-59; data/recommend/speed-needs.yaml has every
+	// number). The stream term applies to every purpose and is exactly the
+	// purpose-blind ComfortableTPS factor it replaced: below the skimming
+	// rate the factor falls linearly, all the way down, so on a machine where
+	// everything is slow the ranking turns on speed, which is what sends
+	// small models to weak hardware (product rule 6) instead of the largest
+	// one that happens to fit in memory. The wait term is 1 until the wait
+	// for the purpose's typical prompt passes its usable bar, then falls as
+	// usable ÷ wait: a wait the card already names does not by itself hand
+	// the pick to a much smaller model. SpeedFloor only keeps the factor from
+	// reaching zero, so that a CPU-only laptop still gets a ranked list. Gmid
+	// and the wait it implies are computed at the geometric middle of the
+	// estimated range — the natural centre of a range whose ends are a ratio
+	// apart, and the cautious one where the range is wide — then floored at
+	// SpeedFloor and averaged over the purposes asked.
 	SpeedFloor float64
 	// UnknownSpeedFactor is the factor when there is no speed estimate (the
 	// card is not in gpus.yaml): neither rewarded nor vetoed — and the

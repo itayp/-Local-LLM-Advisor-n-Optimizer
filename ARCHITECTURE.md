@@ -2194,3 +2194,38 @@ Ollama's prefix cache was seen not to work (ollama/ollama #14780), so the
 agentic and multi-turn waits may be longer than the arithmetic says. The
 trial's real counts will show it. A new model needs no row here, because
 the table is by purpose, not by model.
+
+## D-59. A wait inside the usable bar does not change the ranking (amends D-58)
+
+**Context.** Under D-58's ranking term, each purpose scored `min(1, G ÷
+excellent stream rate, excellent wait ÷ wait)`. This penalises a wait
+far more than a stream at the same grade. A stream at the `good` bar scores
+0.53, but a wait at coding's `good` bar (4 s) scored 0.25, and one at its
+`usable` bar (10 s) scored 0.1. With speed weighted at 1.5, the
+implementation moved `TestFleetTopPicks`' coding pick on the MacBook Pro M1
+Pro from Qwen3.5 9B to 0.8B, over a wait of about 7 s to read a pasted file
+(prompt 181–472 tok/s on Metal). On the Mac Pro (Vulkan) it moved from 4B to
+2B. The implementation reported this rather than re-pinning (backlog (i)).
+A 0.8B model is no coding recommendation, and a 7 s wait is inside the
+bars' own `usable`.
+
+**Decision.** Itay chose this option (2026-09-25), over giving full marks at
+`good` (which makes the M1 Pro coding pick 4B) and over leaving the tests
+failing until the trial.
+
+- The stream term applies to **every** purpose, agentic included: `min(1, G
+  ÷ skimming rate)`. This is exactly the `ComfortableTPS` factor D-58
+  replaced, and it is what still sends small models to processor-only
+  machines, for agents too.
+- The wait term is `min(1, usable wait ÷ wait)`. It costs nothing until the
+  wait passes the purpose's `usable` bar.
+- The grades and the card's words are unchanged. The card still states the
+  wait in seconds whenever the wait is what limits the grade. The ranking
+  just does not trade a much more capable model for it.
+- `TestFleetTopPicks` and every other pinned outcome hold as they were
+  before D-58.
+
+**Revisit after the fleet trial.** If the trial finds that waits inside
+`usable` feel worse than the bars say, the fix is to move the bars in
+`speed-needs.yaml`, not to steepen this term again without a test showing
+what it picks.

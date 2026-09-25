@@ -352,6 +352,16 @@ on Metal/Vulkan; does an 11 s or 5.2 s wait actually feel too slow for
 "chat-style coding help" the way the `usable` bar assumes), not a bug in
 this implementation.
 
+**Resolved (2026-09-25, ARCHITECTURE.md D-59):** the cause was D-58's
+ranking term, not the implementation. Scoring the wait against the
+*excellent* bar penalised a wait inside `usable` far more than a stream at
+the same grade. Itay chose this: the stream term applies to every purpose
+(the old `ComfortableTPS` factor, unchanged), and the wait counts in the
+ranking only past the purpose's `usable` bar. The cards still state the
+wait. Every pin holds again (M1 Pro coding: `qwen3.5:9b`; Mac Pro coding:
+`qwen3.5:4b`). Revisit after the fleet trial by moving the bars, not the
+term.
+
 ## j. Show a generic "good for" score next to the speed figure
 
 **From:** Itay, in-app testing feedback (2026-09-25). Depends on (i).

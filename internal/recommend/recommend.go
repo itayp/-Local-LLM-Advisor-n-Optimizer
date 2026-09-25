@@ -575,13 +575,16 @@ func (e *Engine) publicAdjustment(modelID int64, p catalog.Purpose) float64 {
 	return 1 + cfg.ExternalWeight*(2*sum/float64(n)-1)
 }
 
-// speedFactor is D-58's ranking term: per purpose asked, min(1, Gmid ÷ the
-// purpose's excellent stream rate, the purpose's excellent wait ÷ the wait
-// at Gmid) — a per_step purpose (agentic) has no stream bar, so it is the
-// wait term alone. Both rates are the geometric middle of the estimated
-// range, as the pre-D-58 factor also used; each purpose's term is floored at
-// SpeedFloor before the average is taken, so one purpose with nothing to go
-// on cannot drag the rest to zero.
+// speedFactor is the ranking term of D-58 as D-59 amended it: per purpose
+// asked, min(1, Gmid ÷ the excellent stream rate, the purpose's usable wait ÷
+// the wait at Gmid). The stream term applies to every purpose, per_step
+// (agentic) included — it is the purpose-blind ComfortableTPS factor D-58
+// replaced, unchanged, and what sends small models to weak hardware. The
+// wait term costs nothing until the wait passes the purpose's usable bar:
+// a wait inside it is said on the card (reasons.go) but does not overturn a
+// more capable model. Both rates are the geometric middle of the estimated
+// range; each purpose's term is floored at SpeedFloor before the average is
+// taken, so one purpose with nothing to go on cannot drag the rest to zero.
 func (e *Engine) speedFactor(est estimate.Estimate, purposes []catalog.Purpose) float64 {
 	cfg := e.Config
 	if !est.Speed.Known || est.Speed.Generation == nil || e.SpeedNeeds == nil {
@@ -605,16 +608,16 @@ func (e *Engine) speedFactor(est estimate.Estimate, purposes []catalog.Purpose) 
 			continue
 		}
 		factor := 1.0
-		if need.Mode == ModeReadAlong {
+		{
 			if rate, ok := sn.StreamRate(GradeExcellent); ok && rate > 0 {
 				factor = math.Min(factor, gMid/rate)
 			}
 		}
 		if promptKnown && promptMid > 0 {
 			if wait, ok := need.waitSeconds(promptMid, gMid); ok && wait > 0 {
-				excellentWait := need.WaitS.Excellent.Value
-				if excellentWait > 0 {
-					factor = math.Min(factor, excellentWait/wait)
+				usableWait := need.WaitS.Usable.Value
+				if usableWait > 0 {
+					factor = math.Min(factor, usableWait/wait)
 				}
 			}
 		}
