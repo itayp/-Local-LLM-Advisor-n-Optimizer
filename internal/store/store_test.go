@@ -32,6 +32,7 @@ var laterTables = []string{
 	"hf_header_cache",   // 0003, step 4
 	"hf_listing_cache",  // 0003, step 4
 	"external_state",    // 0006, step 9b
+	"watch_runs",        // 0007, step 10
 }
 
 func openTemp(t *testing.T) *Store {
