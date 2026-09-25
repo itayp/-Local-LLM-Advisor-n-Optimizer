@@ -416,3 +416,50 @@ the permission prompt Itay expected) should go with it rather than being
 left as a footnote. Until then, defaulting the watch's notification mode to
 quiet (see `watch.DefaultSettings`, changed 2026-09-25) is the mitigation:
 no popup, on any OS, until the user turns it on in Settings.
+
+## l. Already downloaded models in benchmark screen should have their sizes as well
+
+**From:** Itay, in-app testing feedback (2026-09-25).
+
+The Benchmarks screen shows a list of installed models for the user to select
+and run. Each model card in the list shows the model name and potentially other
+metadata, but currently omits the model's file size. Since the user has already
+downloaded these models and the size information is known (available in the
+catalogue), displaying it would be helpful context: running a benchmark, knowing
+how much VRAM the model will use (proportional to its file size for a given
+quantization level), matters for setting expectations about what else can run
+on the machine during the test, and whether the machine will need to offload
+to system RAM.
+
+UI location: `ui/src/screens/Benchmarks.tsx`, on the installed-models list or picker.
+API: the model size is already available in the catalogue response
+(`GET /api/models`); no new API needed.
+
+Product rule 4: the size shown must carry its source (estimated, measured, or
+from a public catalogue — currently all catalogue sizes come from Hugging Face
+and are thus measured/public).
+
+## m. Size gap between 9GB and 18GB model models in catalogue
+
+**From:** Itay, in-app testing feedback (2026-09-25).
+
+The curated catalogue has a noticeably sparse coverage of model sizes in the 9–18 GB
+range. There are models at ~9 GB and models at ~18+ GB, but very few in between.
+This gap makes recommendations harder: on machines with VRAM budgets in that
+range (e.g., 12–16 GB cards), the advisor sometimes recommends either a model
+that is smaller and less capable, or one that is larger and will barely fit,
+with no "just right" option in between.
+
+This is a data issue, not code: it means the curated families (`data/catalog/families.yaml`)
+either are missing some sizes of existing families or are missing families altogether
+in that size band. The decision on which families/sizes to add should come from:
+
+1. **Popularity and recency** of models in the 9–18 GB range on Hugging Face.
+2. **Coverage by public benchmarks** (Arena, Epoch): models in this range that
+   are scored tend to recommend better than unscored ones (backlog item f).
+3. **Ollama availability**: the model must have a published Ollama tag to be
+   runnable by the customer.
+
+Scoped as: a research task to identify 2–3 candidate models in the 9–18 GB range
+that meet the above criteria, then a catalogue PR to add them. Assign once product
+prioritizes recommendation quality on mid-size machines.
