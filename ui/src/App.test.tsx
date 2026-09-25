@@ -84,7 +84,7 @@ describe('the Advanced toggle', () => {
     expect(JSON.parse(localStorage.getItem('advisor.settings.v1') ?? '{}')).toEqual({
       advanced: true,
       purposes: [],
-      watch: { enabled: true, mode: 'on', interval: 0 },
+      watch: { enabled: true, mode: 'quiet', interval: 0 },
     })
   })
 

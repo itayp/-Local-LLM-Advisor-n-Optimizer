@@ -102,8 +102,13 @@ type Settings struct {
 	Interval time.Duration `json:"interval" source:"n/a"` // configuration
 }
 
-// DefaultSettings is what a fresh install starts with: on, and notifying.
-func DefaultSettings() Settings { return Settings{Enabled: true, Mode: NotifyOn} }
+// DefaultSettings is what a fresh install starts with: checking daily, but
+// quiet — the log fills in and the Watch screen has something to show, but
+// nothing pops up on the desktop until the user turns that on in Settings.
+// A first-run desktop popup with no OS permission prompt behind it (the
+// Windows notifier in particular has no such prompt to show — notify.go)
+// is not something to spring on someone by default (Itay, 2026-09-25).
+func DefaultSettings() Settings { return Settings{Enabled: true, Mode: NotifyQuiet} }
 
 // Report is what one watch run did — the whole check, once — for the CLI,
 // the API and watch_runs.

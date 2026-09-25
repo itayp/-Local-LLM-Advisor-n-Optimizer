@@ -9,6 +9,17 @@ const c = en.modelList
 
 /** How often a running fetch is asked how far it has got. */
 const pollEvery = 1000
+/**
+ * How often an already-open screen checks again while the list has never
+ * been fetched — slower than pollEvery, since nothing here is normally
+ * moving. The watch's own scheduled check (internal/watch) can populate
+ * the list and even fire a notification without this screen doing
+ * anything at all, so a screen left open through that has to notice on
+ * its own rather than staying stuck on "get the model list" forever
+ * (Itay: a Windows notification named a new model, but the tab he had
+ * open still said the list had never been fetched, 2026-09-25).
+ */
+const missingPollEvery = 5000
 
 /**
  * useCatalogStatus reads GET /api/catalog/status, and — while a fetch of
@@ -23,6 +34,7 @@ export function useCatalogStatus(onFetched?: () => void) {
   const [posting, setPosting] = useState(false)
   const wasRunning = useRef(false)
   const wasPublic = useRef(false)
+  const wasUnfetched = useRef(false)
   const postingNow = useRef(false)
   const done = useRef(onFetched)
   done.current = onFetched
@@ -37,6 +49,12 @@ export function useCatalogStatus(onFetched?: () => void) {
         // The public scores finish later, in the background: ask again then too.
         if (wasPublic.current && !s.public_running) done.current?.()
         wasPublic.current = s.public_running
+        // A background check (the watch, or another tab) can go from
+        // "never fetched" to fetched between two of this screen's own
+        // slow polls, with no "running" moment this screen ever saw — the
+        // gap the "waiting to be fetched" poll below exists to close.
+        if (wasUnfetched.current && s.fetched) done.current?.()
+        wasUnfetched.current = !s.fetched
         return s
       })
       .catch(() => null) // the status is a convenience: a screen still works without it
@@ -56,6 +74,17 @@ export function useCatalogStatus(onFetched?: () => void) {
     const id = window.setInterval(() => void read(), pollEvery)
     return () => window.clearInterval(id)
   }, [polling, read])
+
+  // Not fetched yet, and nothing this screen started is running: a
+  // background check (the watch, or a refresh another tab kicked off)
+  // could still fetch it. Keep checking, gently, until it does — or until
+  // there is something to poll properly above.
+  const waitingToBeFetched = status !== null && status.fetched === false && !polling
+  useEffect(() => {
+    if (!waitingToBeFetched) return
+    const id = window.setInterval(() => void read(), missingPollEvery)
+    return () => window.clearInterval(id)
+  }, [waitingToBeFetched, read])
 
   const fetchList = useCallback(() => {
     setFailed(null)

@@ -27,8 +27,9 @@ export interface Settings {
   watch: WatchSettings
 }
 
-/** A fresh install's watch: on, and notifying (Go: watch.DefaultSettings). */
-export const defaultWatchSettings: WatchSettings = { enabled: true, mode: 'on', interval: 0 }
+/** A fresh install's watch: checking, but quiet — no popups until the user
+ * turns them on in Settings (Go: watch.DefaultSettings). */
+export const defaultWatchSettings: WatchSettings = { enabled: true, mode: 'quiet', interval: 0 }
 
 export const defaultSettings: Settings = { advanced: false, purposes: [], watch: defaultWatchSettings }
 

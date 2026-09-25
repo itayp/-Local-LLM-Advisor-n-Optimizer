@@ -478,6 +478,42 @@ describe('Recommendations', () => {
     expect(screen.queryByTestId('model-list-missing')).not.toBeInTheDocument()
   })
 
+  it(
+    'picks up a list the watch fetched in the background, with no running state this screen ever saw',
+    async () => {
+      // Itay: a Windows notification named a new model, but the tab he had open
+      // still said the list had never been fetched until he pressed the button.
+      let fetched = false
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          if (url.startsWith('/api/recommend'))
+            return fetched
+              ? json(recommendResult())
+              : json(
+                  recommendResult({
+                    recommendations: [],
+                    empty: 'The list of models has not been fetched yet, so there is nothing to recommend from.',
+                    empty_code: 'catalogue_empty',
+                  }),
+                )
+          if (url === '/api/catalog/status') return json(catalogStatus({ fetched }))
+          return json({ error: { code: 'not_found', message: 'unexpected in this test: ' + url } }, 404)
+        }),
+      )
+      render(<Recommendations purposes={['chat']} onDownload={() => undefined} />)
+      expect(await screen.findByTestId('model-list-missing')).toBeInTheDocument()
+
+      // The watch's own background check fetches the list on its own — this screen never
+      // POSTs /api/catalog/refresh and never sees `running: true`. It should still notice,
+      // on its own slower poll, rather than staying stuck until the button is pressed.
+      fetched = true
+      expect(await screen.findByRole('heading', { name: 'Qwen3.5 9B' }, { timeout: 7000 })).toBeInTheDocument()
+      expect(screen.queryByTestId('model-list-missing')).not.toBeInTheDocument()
+    },
+    10000,
+  )
+
   it('reports a failed fetch in words and leaves the button there to try again', async () => {
     const user = userEvent.setup()
     vi.stubGlobal(

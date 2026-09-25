@@ -301,3 +301,33 @@ matching how the app already keeps local and public numbers apart
 
 Not scoped further than this until (i) has real numbers — the visual
 treatment is the easy part; the data it displays is the open question.
+
+## k. Windows notifications never ask permission — the balloon API doesn't have one
+
+**From:** Itay, in-app testing feedback (2026-09-25).
+
+Itay noticed the Windows build's desktop notification popped up with no OS
+permission prompt beforehand, and asked whether that's expected. It is, given
+today's implementation: `internal/watch/notify_windows.go` shows the
+notification via `System.Windows.Forms.NotifyIcon.ShowBalloonTip` — the
+legacy system-tray "balloon tip" API. That API predates Windows' app
+permission model and was never gated by it; any process can call it with no
+prompt, then or ever. It is not a bug or an oversight in this code, just the
+API's own behaviour.
+
+The modern replacement — `Windows.UI.Notifications` "toast" notifications,
+the ones that do show a permission-style entry in Windows' notification
+settings — needs the app to have a registered identity (an AUMID), which in
+turn needs an installer (`notify.go`'s own comment already flags this,
+tied to build-plan step 11 packaging). macOS's `osascript display
+notification` (notify_darwin.go) already goes through the real
+`NSUserNotificationCenter`-style permission system and macOS does prompt for
+it; Linux's `notify-send` (notify_linux.go) is closer to Windows — desktop
+environments vary, most don't prompt either.
+
+So: nothing to fix in the balloon-tip code itself, but when step 11
+packages a real Windows installer, switching to the toast API (and getting
+the permission prompt Itay expected) should go with it rather than being
+left as a footnote. Until then, defaulting the watch's notification mode to
+quiet (see `watch.DefaultSettings`, changed 2026-09-25) is the mitigation:
+no popup, on any OS, until the user turns it on in Settings.
