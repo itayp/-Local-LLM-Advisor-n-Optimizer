@@ -205,6 +205,10 @@ type Engine struct {
 	// purpose (internal/catalog/external's View.Scoring). It reaches the
 	// purpose-fit term and nothing else; nil or empty changes nothing.
 	Public map[catalog.Purpose][]catalog.PublicMetric
+	// SpeedNeeds is the speed a purpose needs (ARCHITECTURE.md D-58,
+	// data/recommend/speed-needs.yaml): what the speed factor and the speed
+	// reason both grade a candidate's estimated speed against.
+	SpeedNeeds *SpeedNeeds
 }
 
 // MeasurementKey identifies a benchmarked configuration on this machine.
@@ -219,7 +223,11 @@ func New(catalogue []Entry) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{Estimator: est, Config: DefaultConfig(), Catalogue: catalogue}, nil
+	sn, err := DefaultSpeedNeeds()
+	if err != nil {
+		return nil, err
+	}
+	return &Engine{Estimator: est, Config: DefaultConfig(), Catalogue: catalogue, SpeedNeeds: sn}, nil
 }
 
 // candidate is one catalogue size, fitted and scored.
@@ -474,7 +482,7 @@ func (e *Engine) consider(m estimate.Machine, pl estimate.Placement, entry Entry
 		Purpose: purposeFit,
 		Public:  public,
 		Fit:     cfg.FitFactor[c.est.Category],
-		Speed:   e.speedFactor(c.est),
+		Speed:   e.speedFactor(c.est, purposes),
 		Size:    e.sizeFactor(entry.Model.Size, file.Header),
 	}
 	if c.factors.Purpose == 0 || c.factors.Fit == 0 {
@@ -567,17 +575,66 @@ func (e *Engine) publicAdjustment(modelID int64, p catalog.Purpose) float64 {
 	return 1 + cfg.ExternalWeight*(2*sum/float64(n)-1)
 }
 
-func (e *Engine) speedFactor(est estimate.Estimate) float64 {
+// speedFactor is D-58's ranking term: per purpose asked, min(1, Gmid ÷ the
+// purpose's excellent stream rate, the purpose's excellent wait ÷ the wait
+// at Gmid) — a per_step purpose (agentic) has no stream bar, so it is the
+// wait term alone. Both rates are the geometric middle of the estimated
+// range, as the pre-D-58 factor also used; each purpose's term is floored at
+// SpeedFloor before the average is taken, so one purpose with nothing to go
+// on cannot drag the rest to zero.
+func (e *Engine) speedFactor(est estimate.Estimate, purposes []catalog.Purpose) float64 {
 	cfg := e.Config
-	if !est.Speed.Known || est.Speed.Generation == nil {
+	if !est.Speed.Known || est.Speed.Generation == nil || e.SpeedNeeds == nil {
 		return cfg.UnknownSpeedFactor
 	}
+	sn := e.SpeedNeeds
 	g := est.Speed.Generation
-	middle := g.Value
-	if g.Low > 0 && g.High > g.Low {
-		middle = math.Sqrt(g.Low * g.High)
+	gMid := geometricMiddle(g.Low, g.High, g.Value)
+
+	promptKnown := est.Speed.Prompt != nil
+	var promptMid float64
+	if promptKnown {
+		p := est.Speed.Prompt
+		promptMid = geometricMiddle(p.Low, p.High, p.Value)
 	}
-	return math.Max(cfg.SpeedFloor, math.Min(1, middle/cfg.ComfortableTPS))
+
+	sum, n := 0.0, 0
+	for _, purpose := range purposes {
+		need, ok := sn.Purpose(purpose)
+		if !ok {
+			continue
+		}
+		factor := 1.0
+		if need.Mode == ModeReadAlong {
+			if rate, ok := sn.StreamRate(GradeExcellent); ok && rate > 0 {
+				factor = math.Min(factor, gMid/rate)
+			}
+		}
+		if promptKnown && promptMid > 0 {
+			if wait, ok := need.waitSeconds(promptMid, gMid); ok && wait > 0 {
+				excellentWait := need.WaitS.Excellent.Value
+				if excellentWait > 0 {
+					factor = math.Min(factor, excellentWait/wait)
+				}
+			}
+		}
+		sum += math.Max(cfg.SpeedFloor, math.Min(1, factor))
+		n++
+	}
+	if n == 0 {
+		return cfg.UnknownSpeedFactor
+	}
+	return sum / float64(n)
+}
+
+// geometricMiddle is the natural centre of a range whose ends are a ratio
+// apart; value is the fallback for a point (low == high, or a range too
+// narrow to matter).
+func geometricMiddle(low, high, value float64) float64 {
+	if low > 0 && high > low {
+		return math.Sqrt(low * high)
+	}
+	return value
 }
 
 // effectiveBillions is the parameter count a model is "worth" (Config.

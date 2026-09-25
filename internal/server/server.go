@@ -146,6 +146,7 @@ func (s *Server) routes() {
 	s.api("GET /api/catalog/unknown", s.handleCatalogUnknown)
 	s.api("GET /api/catalog/status", s.handleCatalogStatus) // has the model list been fetched; a running fetch's progress
 	s.api("GET /api/recommend", s.handleRecommend)
+	s.api("GET /api/speed-needs", s.handleSpeedNeeds) // the curated table behind the tokens_per_sec glossary explainer (D-58, backlog b)
 	s.api("GET /api/models/{id}/fit", s.handleModelFit)
 	s.api("GET /api/models/{id}/detail", s.handleModelDetail) // step 9b: public data and this machine, side by side, apart
 	s.api("POST /api/bench", s.handleBenchStart)

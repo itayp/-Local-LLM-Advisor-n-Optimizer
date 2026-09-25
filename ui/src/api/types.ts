@@ -548,6 +548,37 @@ export interface RecommendResult {
   path_source: 'established' | 'expected'
 }
 
+// Every number below is a curated configuration value (ARCHITECTURE.md
+// D-58, data/recommend/speed-needs.yaml) — never a measurement of this
+// machine and never a publisher's figure about a model — so none of them
+// render through <Figure> or <PublicFigure>; the tokens_per_sec glossary
+// explainer (components/Term.tsx) turns them into words instead.
+
+/** The three grades every speed-needs bar states (Go: server.SpeedLevels). */
+export interface SpeedLevels {
+  excellent: number
+  good: number
+  usable: number
+}
+
+/** One purpose's row of the table (Go: server.SpeedNeedPurpose). */
+export interface SpeedNeedPurpose {
+  purpose: Purpose
+  /** read_along: a person reads the answer as it streams. per_step (agentic): nobody reads along, so there is no stream bar. */
+  mode: 'read_along' | 'per_step'
+  /** Answer speed, tokens a second, that earns each grade — read_along only. */
+  stream?: SpeedLevels
+  /** Seconds before the first word (or, per_step, one whole step) that still earns each grade. */
+  wait_s: SpeedLevels
+}
+
+/** GET /api/speed-needs (Go: server.SpeedNeedsResponse): what a speed is good for, per purpose. */
+export interface SpeedNeedsResponse {
+  /** Turns a tokens-a-second number into the words a second the rest of the UI shows. */
+  words_per_token: number
+  purposes: SpeedNeedPurpose[]
+}
+
 /** Go: server.FileFit. */
 export interface FileFit {
   file: CatalogFile

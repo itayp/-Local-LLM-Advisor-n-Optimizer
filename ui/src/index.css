@@ -595,6 +595,32 @@ body {
   color: var(--muted);
 }
 
+/* tokens_per_sec's extra content (backlog b): every node stays a <span>
+   (phrasing content, valid wherever <Term> sits inside a sentence); these
+   rules are what give each one its own line. */
+.term__speedneeds,
+.term__speedneeds-heading,
+.term__speedneeds-intro,
+.term__speedneeds-row,
+.term__speedneeds-line,
+.term__speedneeds-note {
+  display: block;
+}
+
+.term__speedneeds {
+  margin-top: 8px;
+  max-width: 32em;
+}
+
+.term__speedneeds-heading {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.term__speedneeds-row {
+  margin-top: 6px;
+}
+
 /* Home (build-plan step 8): the machine's own sentence, the model you've
    measured (if any), and one card for the single most useful next step. */
 .home__lead {

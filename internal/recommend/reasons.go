@@ -23,10 +23,6 @@ import (
 // says about this machine.
 const ExplainerGPUNotUsed = "gpu_not_used"
 
-// wordsPerToken turns tokens into the words a person thinks in: English
-// text runs at about three words to four tokens.
-const wordsPerToken = 0.75
-
 var purposeWords = map[catalog.Purpose]string{
 	catalog.PurposeCoding:      "coding",
 	catalog.PurposeChat:        "everyday chat",
@@ -112,8 +108,8 @@ func (e *Engine) card(c candidate, pl estimate.Placement, m estimate.Machine, pu
 	if pr, ok := purposeReason(c.entry, purposes); ok {
 		r.Reasons = append(r.Reasons, pr)
 	}
-	// 4. How fast.
-	r.Reasons = append(r.Reasons, speedReason(c.est))
+	// 4. How fast, for each purpose asked (D-58).
+	r.Reasons = append(r.Reasons, e.speedReasons(c, purposes)...)
 	// 5. What it costs.
 	r.Reasons = append(r.Reasons, costReasons(r, m)...)
 	// 6. What it changes.
@@ -170,7 +166,7 @@ func (e *Engine) fitReasons(c candidate, pl estimate.Placement, m estimate.Machi
 		out = append(out, Reason{Kind: "fit", Text: "Too big for " + device + " alone: part of it runs on the processor, which makes it much slower."})
 	}
 	if c.wanted > 0 && c.ctx < c.wanted {
-		words := int(math.Round(float64(c.ctx)*wordsPerToken/1000)) * 1000
+		words := int(math.Round(float64(c.ctx)*e.SpeedNeeds.WordsPerToken()/1000)) * 1000
 		out = append(out, Reason{Kind: "fit", Text: fmt.Sprintf(
 			"Here it can keep only about %s words in mind at once, which is short for %s.", commas(words), purposeWords[longestWanting(e.Config, purposes)])})
 	}
@@ -220,34 +216,112 @@ func purposeReason(entry Entry, purposes []catalog.Purpose) (Reason, bool) {
 	return Reason{Kind: "purpose", Text: fmt.Sprintf("%s handles %s too, though it is best known for %s.", family, list(served), purposeWords[entry.Purposes[0]])}, true
 }
 
-func speedReason(est estimate.Estimate) Reason {
-	g := est.Speed.Generation
-	if !est.Speed.Known || g == nil {
+// speedReasons is D-58's "how fast" line, one templated sentence per purpose
+// asked: naming the grade, the words a second, and — when the wait bar is
+// what limits the grade — roughly how long that purpose's typical prompt
+// takes to start answering ("about half a minute to read a pasted file").
+// Product rule 6 holds: a slow grade reads as a tier ("on the slow side"),
+// never a failure. When there is no speed estimate at all, this is the one
+// old sentence naming why, said once (it does not depend on the purpose).
+func (e *Engine) speedReasons(c candidate, purposes []catalog.Purpose) []Reason {
+	est := c.est
+	if !est.Speed.Known || est.Speed.Generation == nil {
 		why := strings.TrimPrefix(est.Speed.Unknown, "no speed estimate: ")
 		if why == "" {
 			why = "the advisor has nothing to base one on"
 		}
-		return Reason{Kind: "speed", Text: "No speed estimate: " + why}
+		return []Reason{{Kind: "speed", Text: "No speed estimate: " + why}}
 	}
-	pace := func(wordsPerSecond float64) string {
-		switch {
-		case wordsPerSecond >= 15:
-			return "much faster than you can read"
-		case wordsPerSecond >= 5:
-			return "about as fast as you read"
-		}
-		return "slower than you read: fine for short answers, slow for long ones"
+	out := make([]Reason, 0, len(purposes))
+	for _, p := range purposes {
+		out = append(out, e.speedReasonFor(est, p))
+	}
+	return out
+}
+
+func (e *Engine) speedReasonFor(est estimate.Estimate, p catalog.Purpose) Reason {
+	g := est.Speed.Generation
+	wpt := e.SpeedNeeds.WordsPerToken()
+	grade := e.gradePurpose(est, p)
+	clause := ""
+	if grade.Known {
+		clause = " — " + gradeClause(grade, purposeWords[p])
 	}
 	if g.Source == figure.Measured {
-		w := g.Value * wordsPerToken
-		return Reason{Kind: "speed", Text: fmt.Sprintf("Measured on this computer at about %s words a second — %s.", num(w), pace(w))}
+		w := g.Value * wpt
+		return Reason{Kind: "speed", Text: fmt.Sprintf("Measured on this computer at about %s words a second%s.", num(w), clause)}
 	}
-	lo, hi := g.Low*wordsPerToken, g.High*wordsPerToken
+	lo, hi := g.Low*wpt, g.High*wpt
 	if est.Speed.Calibrated && est.Speed.CalibratedFrom != "" {
-		return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated from the test of %s on this computer to answer at roughly %s to %s words a second — %s.",
-			est.Speed.CalibratedFrom, num(lo), num(hi), pace((lo+hi)/2))}
+		return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated from the test of %s on this computer to answer at roughly %s to %s words a second%s.",
+			est.Speed.CalibratedFrom, num(lo), num(hi), clause)}
 	}
-	return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated to answer at roughly %s to %s words a second — %s.", num(lo), num(hi), pace((lo+hi)/2))}
+	return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated to answer at roughly %s to %s words a second%s.", num(lo), num(hi), clause)}
+}
+
+// gradeClause is the grade half of a speed reason: "excellent for coding",
+// "usable to good for everyday chat", "on the slow side for looking through
+// hard problems, about half a minute to work through the question" — the
+// wait is named only when it is what limits the grade (D-58).
+func gradeClause(g PurposeGrade, label string) string {
+	adj := gradeAdjective(g.Low)
+	if g.Low != g.High {
+		adj = gradeAdjective(g.Low) + " to " + gradeAdjective(g.High)
+	}
+	s := adj + " for " + label
+	if g.WaitKnown && g.WaitLimits {
+		if action, ok := waitAction[g.Purpose]; ok {
+			s += ", " + waitPhrase(g.WaitSeconds) + " " + action
+		}
+	}
+	return s
+}
+
+// gradeAdjective is product rule 6 in one word: a slow grade reads as a
+// tier, never a failure.
+func gradeAdjective(g Grade) string {
+	switch g {
+	case GradeExcellent:
+		return "excellent"
+	case GradeGood:
+		return "good"
+	case GradeUsable:
+		return "usable"
+	default:
+		return "on the slow side"
+	}
+}
+
+// waitAction is what a purpose's typical prompt is spent doing, for the
+// wait clause ("about half a minute to read a pasted file").
+var waitAction = map[catalog.Purpose]string{
+	catalog.PurposeChat:        "to answer",
+	catalog.PurposeWriting:     "to get started",
+	catalog.PurposeCoding:      "to read a pasted file",
+	catalog.PurposeVision:      "to look at the image",
+	catalog.PurposeReasoning:   "to work through the question",
+	catalog.PurposeLongContext: "to read a long document",
+	catalog.PurposeAgentic:     "for one step",
+}
+
+// waitPhrase turns a wait, in seconds, into the words a person would use.
+func waitPhrase(seconds float64) string {
+	switch {
+	case seconds < 1:
+		return "under a second"
+	case seconds < 45:
+		n := int(math.Round(seconds))
+		if n == 1 {
+			return "about 1 second"
+		}
+		return "about " + strconv.Itoa(n) + " seconds"
+	case seconds < 90:
+		return "about half a minute"
+	case seconds < 150:
+		return "about a minute"
+	default:
+		return "about " + strconv.Itoa(int(math.Round(seconds/60))) + " minutes"
+	}
 }
 
 func costReasons(r Recommendation, m estimate.Machine) []Reason {

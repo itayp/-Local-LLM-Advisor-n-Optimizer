@@ -26,6 +26,7 @@ import type {
   RecommendResult,
   SettingsResponse,
   SettingsUpdate,
+  SpeedNeedsResponse,
   UnknownInstalledResponse,
   WatchLogResponse,
   WatchReport,
@@ -86,6 +87,8 @@ export const api = {
   /** At most three recommendations for this machine and these purposes (none = everyday chat). */
   recommend: (purposes: Purpose[], signal?: AbortSignal) =>
     get<RecommendResult>(`/recommend?purposes=${encodeURIComponent(purposes.join(','))}`, signal),
+  /** The curated table behind the tokens_per_sec glossary explainer: what a speed is good for, per purpose (D-58). */
+  speedNeeds: (signal?: AbortSignal) => get<SpeedNeedsResponse>('/speed-needs', signal),
   /** How every tracked variant of one catalogue size fits; without ctx, at Ollama's own default context. */
   modelFit: (modelId: number, ctx?: number, signal?: AbortSignal) =>
     get<ModelFitResponse>(`/models/${modelId}/fit${ctx ? `?ctx=${ctx}` : ''}`, signal),

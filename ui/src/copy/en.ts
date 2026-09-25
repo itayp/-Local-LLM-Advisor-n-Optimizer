@@ -7,6 +7,25 @@ function capitalise(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
+// Formatting for speedNeeds below: a words-a-second number the way the rest
+// of the UI writes one (whole numbers from 10 up, one decimal below), and a
+// seconds figure the way a person would say it. No threshold lives here —
+// every number these take is an argument, read from GET /api/speed-needs.
+function roundedWords(words: number): string {
+  return words >= 10 ? String(Math.round(words)) : String(Math.round(words * 10) / 10)
+}
+
+function waitWords(seconds: number): string {
+  if (seconds < 1) return 'under a second'
+  if (seconds < 45) {
+    const n = Math.round(seconds)
+    return n === 1 ? '1 second' : `${n} seconds`
+  }
+  if (seconds < 90) return 'half a minute'
+  if (seconds < 150) return 'a minute'
+  return `${Math.round(seconds / 60)} minutes`
+}
+
 export const en = {
   app: {
     title: 'Local LLM Advisor',
@@ -47,6 +66,24 @@ export const en = {
       const s = Math.floor(raw)
       return s < 60 ? `${s} s so far` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s so far`
     },
+  },
+  // The tokens_per_sec glossary explainer's extra content
+  // (components/Term.tsx, GET /api/speed-needs): what a speed is good
+  // *for*, not just what it is (ARCHITECTURE.md D-58, backlog item (b)).
+  // Every number a line names arrives as an argument — none is a threshold
+  // of its own, so the numbers still come from the file, never from copy.
+  speedNeeds: {
+    heading: 'What a speed like this is good for',
+    intro:
+      "The bars the advisor's own recommendations are graded against, purpose by purpose, in the words a second this app shows everywhere else.",
+    loading: 'Reading the advisor’s speed table…',
+    failed: 'This computer could not read the advisor’s speed table.',
+    streamLine: (label: string, excellent: number, good: number, usable: number) =>
+      `${label}: ${roundedWords(excellent)}+ words a second feels excellent, ${roundedWords(good)}+ is good, and ${roundedWords(usable)}+ is still usable.`,
+    waitLine: (label: string, excellent: number, good: number, usable: number) =>
+      `${label}, first word: within ${waitWords(excellent)} feels excellent, within ${waitWords(good)} is good, within ${waitWords(usable)} is still usable.`,
+    stepLine: (label: string, excellent: number, good: number, usable: number) =>
+      `${label} (a whole step — nobody reads along in between): finishing within ${waitWords(excellent)} feels excellent, within ${waitWords(good)} is good, within ${waitWords(usable)} is still usable.`,
   },
   // The model list, on every screen that needs it (GET /api/catalog/status).
   modelList: {

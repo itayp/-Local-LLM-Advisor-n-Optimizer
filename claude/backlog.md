@@ -304,6 +304,54 @@ or marked `chosen` along with what would settle it. Next steps: the
 implementation (Sonnet, from D-58), and separately the fleet trial in D-58,
 which settles the `chosen` values before this ships.
 
+**Done (2026-09-25, Sonnet, from D-58):** `internal/recommend/speedneeds.go`
+loads and strictly validates `speed-needs.yaml` (unchanged — every number in
+it is still `chosen` or cited exactly as the research left it; nothing was
+tuned to make a test pass); `grade.go` grades a purpose per D-58's arithmetic
+(wait vs. the reading anchors' stream bars, worse of the two, graded at both
+ends of the estimated range); `speedFactor` now uses the per-purpose formula
+in `recommend.Config`'s doc comment in place of `ComfortableTPS`/`pace()`/the
+hard-coded `wordsPerToken`; `reasons.go` names the grade, the words a second
+and — only when it is what limits the grade — the wait, per purpose asked;
+`GET /api/speed-needs` (figure-tagged `source:"n/a"`, since every value is
+curated configuration, not a measurement or a publisher's figure) feeds the
+`tokens_per_sec` glossary explainer's new "what a speed is good for" table
+(`ui/src/components/Term.tsx`), which closes (b). The chosen values still
+await the fleet trial D-58 calls for; nothing here settles them early.
+
+**Pinned-outcome finding, reported rather than fixed (2026-09-25):**
+`TestFleetTopPicks`'s coding pick moved on the two non-CUDA fleet machines,
+exactly the kind of move the task that implemented this flagged in advance
+and asked to be reported, not silently re-pinned or tuned away:
+
+- **MacBook Pro M1 Pro 16 GB (Metal), coding:** was `qwen3.5:9b`, now
+  `qwen3.5:0.8b`. 9B's own generation speed is fine (19–28 tok/s; the old,
+  purpose-blind `ComfortableTPS` factor gave it a full 1.0), but its prompt
+  speed on Metal (181–472 tok/s) is what D-58 newly grades: coding's typical
+  2,000-token prompt then takes 2000⁄181 ≈ 11 s at the cautious end of the
+  range — past coding's own `usable` bar (10 s, `wait_s.usable`) — against
+  0.98 s for 0.8B. Old score 0.513 vs. 0.131 (9B ahead); new score 0.029 vs.
+  0.131 (0.8B ahead). Old speed factor 1.000 → new 0.146 for 9B; 0.8B's stays
+  1.000 either way.
+- **Mac Pro 2× D700 6 GB (Vulkan), coding:** was `qwen3.5:4b`, now
+  `qwen3.5:2b`. 4B's prompt speed (384–3,892 tok/s) puts its wait at the
+  cautious end at 2000⁄384 ≈ 5.2 s — `usable`, not `good` — against 2.6 s
+  (`good`) for 2B. Old score 0.359 vs. 0.245 (4B ahead); new score 0.171 vs.
+  0.245 (2B ahead). Old speed factor 1.000 → new 0.611 for 4B; 2B's stays
+  1.000 either way.
+
+Both are the same shape: not a slow processor-only machine (the usual case
+this kind of move comes from), but a non-CUDA GPU path (Metal, Vulkan) whose
+prompt processing is comparatively weak next to its own generation speed —
+an asymmetry `ComfortableTPS` could never see, because it only ever looked
+at generation. Per the task's instruction, the pin in `recommend_test.go`
+was left exactly as written and no weight was retuned to chase it; whether
+`qwen3.5:9b`/`qwen3.5:4b` should still win coding on these machines is a
+product question for the fleet trial (do their prompts really run this slow
+on Metal/Vulkan; does an 11 s or 5.2 s wait actually feel too slow for
+"chat-style coding help" the way the `usable` bar assumes), not a bug in
+this implementation.
+
 ## j. Show a generic "good for" score next to the speed figure
 
 **From:** Itay, in-app testing feedback (2026-09-25). Depends on (i).

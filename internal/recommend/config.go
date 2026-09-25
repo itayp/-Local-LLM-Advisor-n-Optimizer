@@ -25,12 +25,13 @@ type Config struct {
 	MaxRecommendations int
 
 	// Weights are the exponents of the four factors. Purpose, fit and size
-	// are 1. Speed is 1.5: above ComfortableTPS the factor is 1 and the
-	// exponent changes nothing, but below it — a model that answers slower
-	// than its owner reads — being bigger is not worth it to a beginner, and
-	// without the extra weight a 22 GB mixture-of-experts model at three
-	// words a second out-scores a 2 GB model at reading speed on a laptop
-	// with no graphics card.
+	// are 1. Speed is 1.5: above the speed a purpose needs (D-58: data/
+	// recommend/speed-needs.yaml) the factor is 1 and the exponent changes
+	// nothing, but below it — a model that answers slower than its owner
+	// reads — being bigger is not worth it to a beginner, and without the
+	// extra weight a 22 GB mixture-of-experts model at three words a second
+	// out-scores a 2 GB model at reading speed on a laptop with no graphics
+	// card.
 	Weights Weights
 
 	// ---- purpose fit -------------------------------------------------------
@@ -69,20 +70,24 @@ type Config struct {
 
 	// ---- speed -------------------------------------------------------------
 
-	// ComfortableTPS is the generation speed at which faster stops mattering
-	// to a person reading the answer: 10 tokens a second is about 7 words a
-	// second, comfortably above reading speed. Below it the factor falls linearly,
-	// all the way down: on a machine where everything is slow the ranking
-	// then turns on speed, which is what sends small models to weak hardware
-	// (product rule 6) instead of the largest one that happens to fit in
-	// memory. SpeedFloor only keeps the factor from reaching zero, so that a
-	// CPU-only laptop still gets a ranked list. The speed
-	// scored is the geometric middle of the estimated range — the natural
-	// centre of a range whose ends are a ratio apart, and the cautious one
-	// where the range is wide (a processor whose memory modules the advisor
-	// cannot see).
-	ComfortableTPS float64
-	SpeedFloor     float64
+	// The speed factor is, per purpose asked, min(1, Gmid ÷ the purpose's
+	// excellent stream rate, the purpose's excellent wait ÷ wait at Gmid) —
+	// a per_step purpose (agentic) uses the wait term only, having no stream
+	// bar (ARCHITECTURE.md D-58; data/recommend/speed-needs.yaml has every
+	// number). For chat on a graphics card the wait term is 1 (the prompt is
+	// short and fast), so the factor equals the old, purpose-blind
+	// ComfortableTPS factor this replaced. Below the bar the factor falls
+	// linearly, all the way down: on a machine where everything is slow the
+	// ranking then turns on speed, which is what sends small models to weak
+	// hardware (product rule 6) instead of the largest one that happens to
+	// fit in memory. SpeedFloor only keeps the factor from reaching zero, so
+	// that a CPU-only laptop still gets a ranked list. Gmid and the wait it
+	// implies are computed at the geometric middle of the estimated range —
+	// the natural centre of a range whose ends are a ratio apart, and the
+	// cautious one where the range is wide (a processor whose memory modules
+	// the advisor cannot see) — then floored at SpeedFloor and averaged over
+	// the purposes asked.
+	SpeedFloor float64
 	// UnknownSpeedFactor is the factor when there is no speed estimate (the
 	// card is not in gpus.yaml): neither rewarded nor vetoed — and the
 	// confidence says low.
@@ -183,7 +188,6 @@ func DefaultConfig() Config {
 			estimate.NeedsCPUOffload:  0.35,
 		},
 
-		ComfortableTPS:     10,
 		SpeedFloor:         0.02,
 		UnknownSpeedFactor: 0.6,
 
