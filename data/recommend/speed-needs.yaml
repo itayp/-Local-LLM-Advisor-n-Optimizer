@@ -1,0 +1,233 @@
+# What speed each purpose needs, and at what bar — the table backlog item
+# (i) asked for (ARCHITECTURE.md D-58). internal/recommend reads it to grade
+# a model's speed for the purposes the user picked, to score speed in the
+# ranking, and to word the speed reason on each card.
+#
+# A purpose's speed is judged on two things, never on tok/s alone:
+#
+#   wait    seconds before the first visible word:
+#             prompt_tokens ÷ prompt tok/s  +  thinking_tokens ÷ answer tok/s
+#           (model loading is not counted: it happens once, not per answer)
+#   stream  for a read_along purpose, answer tok/s against how fast a person
+#           takes the words in (the `reading` anchors below);
+#           a per_step purpose (agentic) has no one reading along, so its
+#           wait bar is the time for one whole step instead:
+#             step_prompt_tokens ÷ prompt tok/s + step_output_tokens ÷ answer tok/s
+#
+# A purpose's grade is the WORSE of its two grades. Grades, best first:
+# excellent, good, usable, too_slow (below the usable bar).
+#
+# EVERY value is one of:
+#   basis: public   a published figure; `source:` names it (below), `note:`
+#                   says how the value was taken from it
+#   basis: trial    settled by the fleet trial (D-58); `trial:` is its date
+#   basis: chosen   a judgement, not a measurement; `settle:` says what would
+#                   replace it. Every chosen value is on the fleet trial's list.
+# A value never carries both a source and a settle, and the loader refuses
+# one with neither. When the trial changes a value, bump `version`.
+#
+# This file is DATA. It is embedded in the binary (package advisor/data) and
+# decoded strictly into internal/recommend's SpeedNeeds type; unknown keys
+# are errors. speedneeds_test.go is its contract: exactly one row per
+# catalog.Purpose; wait bars excellent < good < usable; reading anchors
+# rising listening < reading < skimming; every source a value names exists;
+# and the derived tok/s below (wpm ÷ 60 ÷ words_per_token) are checked.
+#
+# Schema:
+#
+#   version: N                 # bump when a value changes what a grade says
+#   checked: YYYY-MM-DD        # the date a person last reviewed the file
+#   words_per_token: 0.75      # English words per token; the one value
+#                              # reasons.go uses to turn tok/s into words
+#   sources:
+#     some-id: citation, URL
+#   reading:                   # words a minute; tok/s = wpm ÷ 60 ÷ words_per_token
+#     listening|reading|skimming: {wpm, basis, source|settle, note}
+#   stream_bars:               # which reading anchor each read_along grade needs
+#     excellent|good|usable: {anchor: listening|reading|skimming, basis, source|settle}
+#   purposes:                  # one per catalog.Purpose
+#     - purpose: chat
+#       mode: read_along | per_step
+#       prompt_tokens:       {value, basis, ...}   # read_along: new tokens read before answering
+#       thinking_tokens:     {value, basis, ...}   # optional; hidden tokens written before the answer
+#       step_prompt_tokens:  {value, basis, ...}   # per_step only
+#       step_output_tokens:  {value, basis, ...}   # per_step only
+#       wait_s:                                     # seconds; for per_step, one step's total
+#         excellent|good|usable: {value, basis, ...}
+#       note: ...
+#
+# Token counts come from the sources' own tokenizers (LMSYS used Llama 2's);
+# a curated model's tokenizer differs by some percent, which is well inside
+# what these bars can resolve.
+
+version: 1
+checked: 2026-09-25
+words_per_token: 0.75
+
+sources:
+  brysbaert-2019: >-
+    Brysbaert, M. (2019). How many words do we read per minute? A review and
+    meta-analysis of reading rate. Journal of Memory and Language 109, 104047.
+    https://doi.org/10.1016/j.jml.2019.104047
+  andes-2024: >-
+    Liu, J. et al. (2024). Andes: Defining and Enhancing Quality-of-Experience
+    in LLM-Based Text Streaming Services. arXiv:2404.16283.
+    https://arxiv.org/abs/2404.16283
+  nielsen-1993: >-
+    Nielsen, J. (1993, updated 2014). Response Times: The 3 Important Limits
+    (after Miller 1968 and Card et al. 1991). Nielsen Norman Group.
+    https://www.nngroup.com/articles/response-times-3-important-limits/
+  lmsys-chat-1m: >-
+    Zheng, L. et al. (2024). LMSYS-Chat-1M: A Large-Scale Real-World LLM
+    Conversation Dataset. ICLR 2024, Table 1. https://arxiv.org/abs/2309.11998
+  overthinking-2024: >-
+    Chen, X. et al. (2024). Do NOT Think That Much for 2+3=? On the
+    Overthinking of o1-Like LLMs. arXiv:2412.21187.
+    https://arxiv.org/abs/2412.21187
+  gemma3-report: >-
+    Gemma Team (2025). Gemma 3 Technical Report, §2.1 (vision encoder).
+    arXiv:2503.19786. https://arxiv.org/abs/2503.19786
+  qwen2-vl: >-
+    Qwen team. Qwen2-VL model card and discussion #47: one visual token per
+    28 × 28 pixels, 4–16384 tokens per image.
+    https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct/discussions/47
+  distserve-2024: >-
+    Zhong, Y. et al. (2024). DistServe: Disaggregating Prefill and Decoding
+    for Goodput-optimized LLM Serving. OSDI 2024, Table 1 (SLOs "set
+    empirically"). https://arxiv.org/abs/2401.09670
+  anthropic-multiagent-2025: >-
+    Anthropic (2025-06-13). How we built our multi-agent research system.
+    https://www.anthropic.com/engineering/multi-agent-research-system
+  ollama-14780: >-
+    ollama/ollama issue #14780: prefix KV-cache reuse across /api/chat
+    requests works on the GPU backend, not on the CPU backend of the new
+    engine. https://github.com/ollama/ollama/issues/14780
+
+reading:
+  listening:
+    wpm: 160
+    basis: public
+    source: brysbaert-2019
+    note: >-
+      Audiobooks run at 140–180 wpm; 160 is the midpoint (3.56 tok/s). Andes
+      uses 3.3 tok/s for listening, which agrees.
+  reading:
+    wpm: 238
+    basis: public
+    source: brysbaert-2019
+    note: >-
+      Silent reading of English non-fiction, meta-analysis mean (individuals
+      175–300 wpm); 5.29 tok/s. Andes uses 4.8 tok/s. Slower for second-
+      language readers and older adults, which the bars do not model.
+  skimming:
+    wpm: 450
+    basis: public
+    source: brysbaert-2019
+    note: >-
+      Carver's skimming rate, as the review reports it (with the warning that
+      comprehension drops); 10.0 tok/s. Andes: text delivered faster than a
+      person takes it in adds nothing to their experience.
+
+stream_bars:
+  usable:
+    anchor: listening
+    basis: chosen
+    settle: >-
+      Fleet trial: is text at the pace of speech still usable to read along
+      for each read_along purpose? (Itay's hypothesis: coding tolerates a
+      slower stream than chat; DistServe's own SLOs, set empirically, allow
+      code 5 tok/s against chat's 10.)
+  good:
+    anchor: reading
+    basis: chosen
+    settle: Fleet trial, as above; the anchor is public, the label is the judgement.
+  excellent:
+    anchor: skimming
+    basis: chosen
+    settle: >-
+      Fleet trial: does anything above skimming speed still feel better?
+      The same 10 tok/s was recommend.Config.ComfortableTPS before D-58.
+
+# The wait bars share two public anchors: 1 s keeps a person's flow of
+# thought, 10 s is the limit of their attention (nielsen-1993). The purposes
+# where a person expects to wait (reasoning, long documents, an agent at work)
+# start at 10 s instead.
+purposes:
+  - purpose: chat
+    mode: read_along
+    prompt_tokens: {value: 70, basis: public, source: lmsys-chat-1m, note: "mean 69.5 tokens per prompt (Llama 2 tokenizer); with prefix caching only the new turn is read"}
+    wait_s:
+      excellent: {value: 1, basis: public, source: nielsen-1993}
+      good: {value: 4, basis: chosen, settle: "Fleet trial: the longest wait before an answer that still feels good for chat (Andes uses 1.3 s as a target)."}
+      usable: {value: 10, basis: public, source: nielsen-1993}
+
+  - purpose: writing
+    mode: read_along
+    prompt_tokens: {value: 300, basis: chosen, settle: "A brief plus notes, a few paragraphs. Fleet trial: Itay's own writing prompts, counted."}
+    wait_s:
+      excellent: {value: 1, basis: public, source: nielsen-1993}
+      good: {value: 4, basis: chosen, settle: "As chat."}
+      usable: {value: 10, basis: public, source: nielsen-1993}
+
+  - purpose: coding
+    mode: read_along
+    prompt_tokens: {value: 2000, basis: chosen, settle: "A pasted file of about 200 lines at about 10 tokens a line; the same size as the benchmark suite's long prompt. Fleet trial: Itay's own coding prompts, counted."}
+    wait_s:
+      excellent: {value: 1, basis: public, source: nielsen-1993}
+      good: {value: 4, basis: chosen, settle: "As chat."}
+      usable: {value: 10, basis: public, source: nielsen-1993}
+    note: >-
+      Chat-style coding help, not inline completion (which needs well under a
+      second and is not what the advisor sets up).
+
+  - purpose: vision
+    mode: read_along
+    prompt_tokens: {value: 1000, basis: chosen, settle: "Fleet trial: the prompt tokens Ollama reports for a typical photo or screenshot with each curated vision family."}
+    wait_s:
+      excellent: {value: 1, basis: public, source: nielsen-1993}
+      good: {value: 4, basis: chosen, settle: "As chat."}
+      usable: {value: 10, basis: public, source: nielsen-1993}
+    note: >-
+      Image tokens depend on the family: Gemma 3 condenses every image to 256
+      (gemma3-report); Qwen2-VL spends one per 28 × 28 pixels, about 1,340 for
+      a 1024 × 1024 image (qwen2-vl). 1,000 sits between. The time the
+      image encoder itself takes is not in the estimate yet.
+
+  - purpose: reasoning
+    mode: read_along
+    prompt_tokens: {value: 70, basis: public, source: lmsys-chat-1m, note: "as chat"}
+    thinking_tokens: {value: 1000, basis: chosen, settle: "Fleet trial: the thinking tokens the curated reasoning families write on Itay's own questions."}
+    wait_s:
+      excellent: {value: 10, basis: public, source: nielsen-1993}
+      good: {value: 30, basis: chosen, settle: "Fleet trial: how long a person asking a hard question will wait for the answer to start."}
+      usable: {value: 120, basis: chosen, settle: "As good."}
+    note: >-
+      Thinking is written at answer speed but not shown, so to the person it
+      is waiting. overthinking-2024: o1-like models write 2.4–4.9× the tokens
+      of an ordinary model for the same answer (QwQ 773 against 220–317 on
+      GSM8K, about 500 hidden; 2,408 against 553–593 on MATH500, about 1,850
+      hidden). 1,000 sits between easy and hard questions.
+
+  - purpose: long_context
+    mode: read_along
+    prompt_tokens: {value: 20000, basis: chosen, settle: "About thirty pages (recommend.Config.LongContextMin counts 32k as fifty). Fleet trial: the documents Itay actually gives it."}
+    wait_s:
+      excellent: {value: 10, basis: public, source: nielsen-1993}
+      good: {value: 30, basis: chosen, settle: "Fleet trial: how long a person will wait for a model to read a long document. DistServe set 15 s for summarisation, empirically."}
+      usable: {value: 120, basis: chosen, settle: "As good."}
+
+  - purpose: agentic
+    mode: per_step
+    step_prompt_tokens: {value: 1000, basis: chosen, settle: "Fleet trial: the new prompt tokens per step (tool output) in a real agent loop."}
+    step_output_tokens: {value: 150, basis: chosen, settle: "Fleet trial: the tokens per step of a tool call and a short thought."}
+    wait_s:
+      excellent: {value: 10, basis: public, source: nielsen-1993, note: "one step within a person's attention: they can watch the agent work"}
+      good: {value: 30, basis: chosen, settle: "Fleet trial: the step time at which watching an agent stops being worth it."}
+      usable: {value: 120, basis: chosen, settle: "As good."}
+    note: >-
+      No one reads along, so there is no stream bar. Agents use about 4× the
+      tokens of a chat (anthropic-multiagent-2025), most of it re-read
+      context; only the new part is read each step when the prefix is
+      cached, which Ollama does on a graphics card and did not on the
+      processor in ollama-14780. A processor-only machine may therefore be
+      slower per step than this table's arithmetic says.

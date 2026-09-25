@@ -2101,3 +2101,96 @@ machine not yet detected (a `POST /api/watch/run` fired moments after
 start) is handled the same way a size the engine cannot fit is — suppressed
 with a reason, never an error — rather than the scheduler needing its own
 "wait for hardware" seam.
+
+## D-58. What speed a purpose needs: two bars per purpose, graded from a data file, settled by a fleet trial
+
+**Context.** Backlog items (b) and (i). Two thresholds decide what the
+advisor says about speed today, and neither knows about purpose:
+`reasons.go`'s `pace()` (15 and 5 words a second, a number that lives in
+code rather than a config) and `recommend.Config.ComfortableTPS` (10 tok/s,
+the same for every purpose). Answer speed alone is also the wrong measure
+for several purposes. For coding, long documents and agents, the wait
+while the model reads the prompt often matters more than answer speed.
+Reasoning models write hidden thinking before the answer, and to the person
+that is waiting. An agent has no one reading along. The estimator already
+produces both rates (`estimate.Speed.Generation` and `.Prompt`), and the
+benchmark measures both. Itay scoped the item on 2026-09-25
+(`claude/backlog.md`, (i)).
+
+**Decision.**
+
+- **The table is data:** `data/recommend/speed-needs.yaml`. It has one row per
+  `catalog.Purpose`. Every value in it is `public` (with a source),
+  `trial` (with the date of the fleet trial) or `chosen` (with what would
+  settle it). No value has neither. The file's header holds the schema and
+  the arithmetic, and `internal/recommend` decodes it strictly.
+- **Two bars per purpose.** *Wait* is the seconds before the first visible
+  word: `prompt_tokens ÷ prompt tok/s + thinking_tokens ÷ answer tok/s`.
+  Model loading is excluded because it happens once, not per answer.
+  *Stream* compares answer tok/s with how fast a person takes words in, for
+  the purposes someone reads along with. Agentic is `per_step`: its one bar
+  is the time for a whole step (new tool output read, plus a tool call
+  written). Grades, best first, are `excellent`, `good`, `usable` and
+  `too_slow`. A purpose's grade is the worse of its two.
+- **Anchors, not inventions.** The stream bars are set by three reading
+  rates from Brysbaert (2019): listening 160 wpm (3.56 tok/s), reading 238
+  wpm (5.29), skimming 450 wpm (10.0). Andes (2024) agrees within 10%:
+  3.3 and 4.8 tok/s. The wait bars come from Nielsen's limits: 1 s keeps
+  a person's flow, 10 s is the limit of their attention. Purposes where the
+  person expects to wait (reasoning, long documents, agents) start at 10 s.
+  Typical prompt sizes come from LMSYS-Chat-1M (70 tokens) and, for
+  reasoning, from the overthinking paper's measurements (about 500 to
+  1,850 hidden tokens). Every other number, and the mapping from each
+  anchor to a grade label, is `chosen` and on the fleet trial's list.
+  `words_per_token` (0.75) moves from `reasons.go` into the file.
+- **Estimated ranges grade at both ends.** Wait and stream are computed at
+  the rate range's low and high ends. When the two grades differ, the words
+  say so ("good to excellent"). A grade is never stated more firmly than
+  the rates it came from: a grade built from an estimated rate is estimated,
+  and one built from measured rates is measured (product rule 4).
+  When `Speed.Prompt` is absent, the wait bar is unknown, not zero, and
+  the grade says what it rests on. (j) will give the grade its own `figure`
+  treatment on screen. In (i) it reaches the customer only inside the
+  templated reason, and that reason already names its source.
+- **The ranking uses the same bars.** Per purpose asked: `min(1, G ÷
+  excellent-stream rate, excellent-wait ÷ wait)`, with rates at the
+  geometric middle of the range, as before. It is floored at `SpeedFloor`
+  and averaged over the purposes asked. For chat on a graphics card the
+  wait term is 1, so the factor equals today's `ComfortableTPS` factor.
+  `ComfortableTPS` and `pace()` are removed.
+- **Reasons are templated per purpose** in `reasons.go`. There is one
+  sentence per purpose asked, naming the grade, the words a second and,
+  when it limits the grade, the wait in seconds for that purpose's typical
+  prompt ("about half a minute to read a pasted file"). Product rule 6
+  holds: a slow grade reads as a tier, not a failure.
+- **The glossary shows the table.** `GET /api/speed-needs` serves the
+  bars in words and numbers. Its numeric fields are configuration
+  (`source:"n/a"`, "curated threshold from speed-needs.yaml"), not figures
+  about this machine or a model. The `tokens_per_sec` explainer shows
+  them. That closes (b).
+
+**The fleet trial (settles every `chosen` value; required before release).**
+
+1. *Controlled playback.* A page streams the benchmark suite's own text
+   (`data/bench/text.txt`) at set speeds after a set wait. Itay rates each
+   clip on the four grades for each purpose, framed by a prompt of that
+   purpose. Stream grid, with a 1 s wait: 2, 3.5, 5.3, 7, 10, 15 and 25
+   tok/s. Wait grid, streaming at 10 tok/s: 0.5, 1, 2, 4, 8, 15, 30, 60
+   and 120 s. A bar becomes the slowest speed, or the longest wait, that
+   still earns its grade.
+2. *Real counts.* On the fleet, Itay sends five of his own prompts per
+   purpose to curated models through Ollama. `prompt_eval_count` and
+   `eval_count` (thinking included) from each response settle
+   `prompt_tokens`, `thinking_tokens`, the vision image tokens and the
+   agentic step sizes.
+
+Each settled value becomes `basis: trial` with the trial date and a note
+giving the number of raters (one, to start). `version` is bumped.
+
+**Consequences.** The pinned outcomes in `recommend_test.go` can move where
+a golden profile's prompt speed is slow, mostly on processor-only machines.
+A moved pin is a finding to report, not a test to update. On the processor,
+Ollama's prefix cache was seen not to work (ollama/ollama #14780), so the
+agentic and multi-turn waits may be longer than the arithmetic says. The
+trial's real counts will show it. A new model needs no row here, because
+the table is by purpose, not by model.

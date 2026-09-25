@@ -277,6 +277,33 @@ but not exciting."
 Once it exists, it both answers (b) properly and is the data table (g) asks
 for.
 
+**Scoped (2026-09-25, Itay):**
+
+- **Columns:** the app's own purposes (`catalog.Purpose`), one row each.
+  No translation purpose.
+- **A cell has two bars:** answer (generation) speed, and seconds before
+  the first word for a typical prompt of that purpose (prompt processing,
+  already modelled by `estimate.Config.PromptRatio`). Reasoning also gets a
+  thinking-token factor. Agentic is not tied to reading speed.
+- **Evidence:** research first, with cited anchors and the rest marked
+  CHOSEN along with what would settle it. Then a fleet trial: Itay rates real
+  sessions at a few speeds, and that settles the CHOSEN cells before it
+  ships.
+- **This item covers:** an ARCHITECTURE.md decision (D-58), the data file
+  plus its strict Go type and tests, replacing `reasons.go`'s `pace()` (15
+  and 5 words a second) and `recommend.Config.ComfortableTPS` with the
+  per-purpose bars, a templated reason per purpose, and a glossary entry
+  that closes (b). The per-figure score and the UI are (j).
+- **Model split:** the research and D-58 need judgement (Opus). The
+  implementation after D-58 follows the `gpus.yaml` and
+  `runtime-support.yaml` patterns and suits Sonnet.
+
+**Research done (2026-09-25):** the decision is ARCHITECTURE.md D-58, and the
+table is `data/recommend/speed-needs.yaml`. Every value in it is either cited
+or marked `chosen` along with what would settle it. Next steps: the
+implementation (Sonnet, from D-58), and separately the fleet trial in D-58,
+which settles the `chosen` values before this ships.
+
 ## j. Show a generic "good for" score next to the speed figure
 
 **From:** Itay, in-app testing feedback (2026-09-25). Depends on (i).
