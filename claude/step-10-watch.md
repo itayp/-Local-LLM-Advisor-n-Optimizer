@@ -1,18 +1,42 @@
 # Step 10: the new-model watch — open
 
-**Status (2026-09-25): code complete, not yet run through `scripts/verify.command`.**
-This session has no working Go toolchain for the full module graph — network
-egress to `proxy.golang.org` is blocked at the org level, confirmed again
-this session (a direct `go build` gets a 403, and the agent proxy's own
-status endpoint shows the block is not a local misconfiguration) — so
-`internal/watch`, `internal/store` and `internal/server` were written and
-checked by `gofmt`, `go vet`/`go build` of the zero-dependency subset
-(`internal/catalog/hf`, `internal/catalog/gguf`, `internal/figure`,
-`internal/version`, all passing), and careful manual cross-referencing of
-every signature against the real source. The UI half has real, iterative
-verification: `npm run check` (tsc), `npm test` (vitest, 103/103), and
-`npm run build` all pass. **Itay's run of `scripts/verify.command` on a real
-machine is the next step** — see "What the gate needs" below.
+**Status (2026-09-25): the gate has run once on Itay's Mac and failed on one
+line; fixed, waiting for the second run.** This session has no working Go
+toolchain for the full module graph — network egress to `proxy.golang.org`
+is blocked at the org level (a direct `go build` gets a 403, and the agent
+proxy's own status endpoint shows the block is not a local
+misconfiguration) — so `internal/watch`, `internal/store` and
+`internal/server` were written and checked by `gofmt`, `go vet`/`go build`
+of the zero-dependency subset, and careful manual cross-referencing of
+every signature against the real source, before the first real
+`scripts/verify.command` run. The UI half had real, iterative verification
+throughout: `npm run check` (tsc), `npm test` (vitest, 103/103), and
+`npm run build` all pass. See "First gate run" below for what the real
+toolchain found.
+
+## First gate run (verify.log, 2026-09-25 09:14) — what it showed, what changed
+
+One failure, everywhere else clean: `go mod tidy` verified every hash,
+`make test`'s UI build passed, and every package's `go test` passed —
+`internal/watch` included — except `internal/store`:
+
+```
+--- FAIL: TestOpenAppliesSchemaV0 (0.02s)
+    store_test.go:62: tables after migration:
+     got [... watch_runs watch_state]
+    want [... watch_state]
+```
+
+`TestOpenAppliesSchemaV0` pins every table by name (`store_test.go`'s
+`schemaV0Tables` + `laterTables`) so a migration can never silently drop or
+rename one — exactly the check this session's own oversight tripped:
+migration `0007_watch.sql` added `watch_runs` without adding it to
+`laterTables`. One line fixed it (`"watch_runs", // 0007, step 10`),
+committed separately (`925e878`) since the first commit (`8b9a736`) was
+already pushed to `main`. Nothing else about the design was wrong — this
+was a missed line in a test fixture that exists specifically to catch a
+missed line, not a bug in `internal/watch`, `internal/server` or the
+migration itself.
 
 ## What exists
 
@@ -72,11 +96,12 @@ machine is the next step** — see "What the gate needs" below.
   `ui/src/screens/Settings.test.tsx` gained a real test of the watch
   settings UI (replacing a placeholder). None of `internal/store/watch.go`,
   the per-OS notifiers, or `internal/server/watch.go` has a test yet — see
-  "Carried forward".
-- **Seen rendered.** Not this session — no daemon could be started (Go
-  cannot build here). Itay's `scripts/verify.command` run is what shows the
-  Watch screen, the Settings notifications section and a real notification
-  for the first time.
+  "Carried forward". All of `internal/watch`'s tests (including
+  `reasons_test.go`) passed for real on the first gate run.
+- **Seen rendered.** Not yet — `scripts/verify.command` builds and tests,
+  it does not start the daemon or open a browser. The Watch screen, the
+  Settings notifications section and a real notification are still first
+  seen by hand, running `advisor` locally.
 
 ## The PRD §12 fidelity check, and what it found
 
@@ -132,17 +157,22 @@ this doc) turned up two real problems, both fixed this session:
   functional updater in development, which would have called the
   side-effecting `persistPurposes` twice.
 
-## What the gate needs
+## What the gate still needs
 
-`scripts/verify.command` on a real Go toolchain, then the "done when":
-add a model to the catalogue that qualifies (fits this machine, beats the
-current one on a selected purpose) and confirm it produces exactly one
-notification with a reason; add one that does not qualify and confirm it
-produces a log line — visible on `/watch` — and nothing else (no popup, no
-second log line on the next run). Also worth checking by hand:
-`advisor recommend`'s own top pick, if it has a public score in the top
-third, should show the new bullet consistently with what `/models/{id}`'s
-Details already says.
+1. **A second `scripts/verify.command` run**, to confirm the `laterTables`
+   fix is the only thing that was wrong — expected: `go mod tidy`, the UI
+   build and every package's tests (including `internal/store`'s own,
+   this time) all green.
+2. **The done-when itself**, still to run by hand: add a model to the
+   catalogue that qualifies (fits this machine, beats the current one on a
+   selected purpose) and confirm it produces exactly one notification with
+   a reason; add one that does not qualify and confirm it produces a log
+   line — visible on `/watch` — and nothing else (no popup, no second log
+   line on the next run).
+3. Also worth checking by hand: `advisor recommend`'s own top pick, if it
+   has a public score in the top third, should show the new "Strong …
+   benchmark results" bullet consistently with what `/models/{id}`'s
+   Details already says.
 
 ## Carried forward
 
