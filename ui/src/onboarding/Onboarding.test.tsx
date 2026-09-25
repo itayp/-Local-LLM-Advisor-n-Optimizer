@@ -157,7 +157,7 @@ function benchRun(over: Partial<BenchRun> = {}): BenchRun {
     request: { model: 'qwen3.5:9b', prompts: ['500'] },
     config: {
       hardware_profile_id: 1, hardware_fingerprint: 'fp', backend: 'ollama', backend_version: '0.34.2', runtime_path: 'metal',
-      model: 'qwen3.5:9b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 6.2e9, catalog_file_id: 41, num_ctx: 16384,
+      model: 'qwen3.5:9b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 6.2e9, catalog_file_id: 41, catalog_model_id: 41, num_ctx: 16384,
       effective_ctx: 16384, kv_cache_type: 'f16', flash_attention: true, flash_attention_known: true, parallel: 1, suite_version: '1',
       suite_digest: 'e8fe8f89', completion_tokens: 256, repeats: 3, daemon_version: 'test',
     },

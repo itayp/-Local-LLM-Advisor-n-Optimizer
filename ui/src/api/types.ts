@@ -650,6 +650,8 @@ export interface BenchConfig {
   quantization: string
   weights_bytes: number
   catalog_file_id: number
+  /** The catalogue size this file belongs to; 0 when the catalogue does not know this model. */
+  catalog_model_id: number
   num_ctx: number
   effective_ctx: number
   /** "f16", "q8_0", … or "unknown" when the runtime's output could not be read. */

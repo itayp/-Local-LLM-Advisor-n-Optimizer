@@ -200,15 +200,27 @@ func (h *Harness) prepare(ctx context.Context, t Target, req Request) (*prepared
 
 	// Which prompts fit the context the runtime will run (it clamps to the
 	// model's trained context), with the answer and a margin beside them.
-	effective := numCtx
+	// The two ways a prompt can fail to fit read differently to the person
+	// running the test: this test's own context setting is theirs to raise
+	// (the selector above offers larger ones), but the model's own trained
+	// ceiling is not — no context they pick changes it (Itay, testing step
+	// 10's verify run, 2026-09-25: the skip message alone didn't say which
+	// one it was, against context sizes seen elsewhere in the same run).
+	effective, limitedByModel := numCtx, false
 	if trained := p.facts.ContextLength; trained > 0 && trained < effective {
-		effective = trained
+		effective, limitedByModel = trained, true
 	}
 	for _, spec := range h.selected(req.Prompts) {
 		pp := PlannedPrompt{ID: spec.ID, Tokens: spec.Tokens}
 		need := spec.Tokens + h.suite.CompletionTokens + h.cfg.ContextMargin
 		if need > effective {
-			pp.Skip = fmt.Sprintf("needs a context of at least %s tokens to hold the prompt and its answer", commas(need))
+			if limitedByModel {
+				pp.Skip = fmt.Sprintf("needs a context of at least %s tokens to hold the prompt and its answer, more than this model's own maximum context of %s tokens",
+					commas(need), commas(effective))
+			} else {
+				pp.Skip = fmt.Sprintf("needs a context of at least %s tokens to hold the prompt and its answer; this test is set to %s tokens — pick a larger context above to include it",
+					commas(need), commas(effective))
+			}
 		} else {
 			pp.Runs = h.suite.Repeats
 			p.prompts = append(p.prompts, spec)

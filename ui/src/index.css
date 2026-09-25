@@ -86,6 +86,7 @@ body {
   background: var(--accent-bg);
   color: var(--accent);
   border: 1px solid var(--accent);
+  white-space: nowrap;
 }
 
 .shell__nav {

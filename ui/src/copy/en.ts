@@ -38,8 +38,15 @@ export const en = {
   },
   // Every wait shows what is happening and that it is still happening: a
   // moving bar and the time so far (Itay, testing on Windows, 2026-09-24).
+  // Always whole seconds: the daemon's own elapsed_seconds ticks in tenths
+  // (TestProgress.tsx folds it in with the client's own whole-second clock),
+  // and a fractional second here made the text shift width every tick
+  // (Itay, testing step 10, 2026-09-25).
   working: {
-    elapsed: (s: number) => (s < 60 ? `${s} s so far` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s so far`),
+    elapsed: (raw: number) => {
+      const s = Math.floor(raw)
+      return s < 60 ? `${s} s so far` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s so far`
+    },
   },
   // The model list, on every screen that needs it (GET /api/catalog/status).
   modelList: {
@@ -319,6 +326,7 @@ export const en = {
       downloaded: 'Downloaded. Working out the test…',
       startingTest: 'Starting the test: freeing memory, then loading the model — loading can take a minute.',
       model: 'Model',
+      details: 'Details',
       context: 'How much text it keeps in mind',
       contextHelp: 'More lets it read longer documents, and needs more memory.',
       contextDefault: (n: string) => `What Ollama uses here (${n} words)`,
@@ -416,6 +424,7 @@ export const en = {
       loading: 'Reading the watch log…',
       loadFailed: (message: string) => `The watch log could not be read: ${message}`,
       empty: 'No checks yet. The first one runs shortly after the advisor starts, then about once a day.',
+      nothingForYou: 'Checked — nothing new here for you yet.',
       disabledNotice: 'Notifications are turned off in Settings. The advisor still checks and logs what it finds; it just does not show a popup.',
       pausedNotice: 'The watch itself is paused in Settings. Turn it back on there to resume checking.',
       settingsLink: 'Change this in Settings',

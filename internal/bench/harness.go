@@ -128,7 +128,7 @@ func (h *Harness) Start(ctx context.Context, t Target, req Request) (Run, error)
 			HardwareProfileID: t.ProfileID, HardwareFingerprint: t.Fingerprint,
 			Backend: t.Backend.Name(), BackendVersion: p.status.Version, RuntimePath: hardware.PathUnknown,
 			Model: p.installed.Name, ModelDigest: p.installed.Digest, Quantization: p.installed.Quantization,
-			WeightsBytes: p.installed.SizeBytes, CatalogFileID: p.facts.CatalogFileID,
+			WeightsBytes: p.installed.SizeBytes, CatalogFileID: p.facts.CatalogFileID, CatalogModelID: p.row.CatalogModelID,
 			NumCtx: p.plan.NumCtx, KVCacheType: "unknown",
 			SuiteVersion: h.suite.Version, SuiteDigest: h.suite.Digest(), CompletionTokens: h.suite.CompletionTokens,
 			Repeats: h.suite.Repeats, DaemonVersion: version.Version,

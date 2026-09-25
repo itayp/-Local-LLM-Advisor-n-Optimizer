@@ -108,6 +108,11 @@ type RunConfig struct {
 	Quantization  string `json:"quantization"`
 	WeightsBytes  uint64 `json:"weights_bytes" source:"n/a"`   // the model's size as the runtime lists it: a fact about the file
 	CatalogFileID int64  `json:"catalog_file_id" source:"n/a"` // a row id; 0 when the catalogue does not know this model
+	// CatalogModelID is the catalogue size this file belongs to (its
+	// families.yaml entry, not the exact quant) — what /models/{id} wants,
+	// so the UI can link a run straight to that model's detail view. 0 when
+	// the catalogue does not know this model.
+	CatalogModelID int64 `json:"catalog_model_id" source:"n/a"`
 
 	NumCtx int `json:"num_ctx" source:"n/a"` // configuration: the context asked for
 	// EffectiveCtx is the context the runtime ran (it clamps to the model's

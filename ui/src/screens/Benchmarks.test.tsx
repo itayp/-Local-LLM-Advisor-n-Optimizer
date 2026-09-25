@@ -66,7 +66,7 @@ function run(over: Partial<BenchRun> = {}): BenchRun {
     request: { model: 'llama3.2:3b' },
     config: {
       hardware_profile_id: 1, hardware_fingerprint: 'fp', backend: 'ollama', backend_version: '0.34.2', runtime_path: 'metal',
-      model: 'llama3.2:3b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 2e9, catalog_file_id: 3, num_ctx: 4096,
+      model: 'llama3.2:3b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 2e9, catalog_file_id: 3, catalog_model_id: 3, num_ctx: 4096,
       effective_ctx: 4096, kv_cache_type: 'f16', flash_attention: true, flash_attention_known: true, parallel: 1, suite_version: '1',
       suite_digest: 'e8fe8f89b46d9a09', completion_tokens: 256, repeats: 3, daemon_version: 'test',
     },
@@ -185,10 +185,14 @@ describe('Benchmarks', () => {
     expect(es?.url).toBe('/api/bench/7')
     const live = run({ status: 'running', phase: 'measuring', results: [] })
     es?.push({ run_id: 7, status: 'running', phase: 'measuring', message: 'Timing the 475-token prompt, 2 of 3', step: 2, steps: 7,
-      elapsed_seconds: 31, remaining: { value: 80, low: 40, high: 120, unit: 's', source: 'estimated' }, run: live })
+      elapsed_seconds: 31.6, remaining: { value: 80, low: 40, high: 120, unit: 's', source: 'estimated' }, run: live })
     expect(await screen.findByText('Timing the 475-token prompt, 2 of 3')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: c.progressLabel })).toHaveAttribute('value', '2')
     expect(screen.getByRole('button', { name: c.cancel })).toBeInTheDocument()
+    // A fractional elapsed_seconds from the daemon (it ticks in tenths)
+    // never leaks a decimal into the label — it would shift width every
+    // tick otherwise (Itay, testing step 10, 2026-09-25).
+    expect(screen.getByText(/31 s so far/)).toBeInTheDocument()
 
     const plans = () => calls.filter((x) => x.url.startsWith('/api/bench/plan')).length
     const plansBefore = plans()
@@ -201,6 +205,9 @@ describe('Benchmarks', () => {
     expect(within(result).getByText(c.replaced)).toBeInTheDocument()
     expect(within(result).getByText(c.unloaded)).toBeInTheDocument()
     expect(within(result).getByText(/administrator/)).toBeInTheDocument()
+    // The model's own detail view is one click away from its test result
+    // (Itay, testing step 10, 2026-09-25: "a way to see more info about the model").
+    expect(within(result).getByRole('link', { name: c.details })).toHaveAttribute('href', '/models/3')
     expect(screen.queryByTestId('bench-running')).not.toBeInTheDocument()
     expect(es?.closed).toBe(true)
     // The technical columns stay behind the Advanced toggle.

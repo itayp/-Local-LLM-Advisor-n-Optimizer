@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { ApiRequestError, api } from '../api/client'
 import type { BenchModel, BenchModelsResponse, BenchPlan, BenchProgress, BenchRun, PullStatus } from '../api/types'
 import { Figure } from '../components/Figure'
@@ -512,7 +512,17 @@ function RunView({ run, advanced }: { run: BenchRun; advanced: boolean }) {
   return (
     <article className="card bench-run" aria-label={`${c.result}: ${run.config.model}`} data-testid="bench-run">
       <header className="card__head">
-        <h2>{run.config.model}</h2>
+        <h2>
+          {run.config.model}
+          {run.config.catalog_model_id ? (
+            <>
+              {' '}
+              <Link className="screen__note" to={`/models/${run.config.catalog_model_id}`}>
+                {c.details}
+              </Link>
+            </>
+          ) : null}
+        </h2>
         <span className={`confidence bench-status--${run.status}`}>{c.status[run.status]}</span>
       </header>
       {run.error ? <p className="notice notice--warning">{run.error}</p> : null}

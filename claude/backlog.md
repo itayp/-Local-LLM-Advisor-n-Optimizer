@@ -241,3 +241,63 @@ Outline for step assignment (not a full scope, just what it unlocks):
 Worth a dedicated build-plan step once product prioritizes multi-GPU support
 or the number of "can I use [tool] instead?" questions hits a threshold.
 For now, scoped as a backlog idea and a feeder to (c) and (d)'s scope.
+
+## i. A matrix of the speed a purpose actually needs, by quality bar
+
+**From:** Itay, in-app testing feedback (2026-09-25). Needs research before it's built.
+
+Backlog item (b) already flagged that `tokens_per_sec`'s glossary entry says
+what a speed *is* but not what it is *good for*, and that
+`internal/recommend/reasons.go` only does one coarse, hard-coded comparison
+("much faster than you can read") on one sentence of one card. This item is
+the concrete shape (b) was missing: a real table/ladder of purpose × quality
+bar, e.g.
+
+|            | Coding | Visual (vision) | Text (chat) | Translation |
+|---|---|---|---|---|
+| Excellent  | ? tok/s | ? tok/s | ? tok/s | ? tok/s |
+| Good       | ? tok/s | ? tok/s | ? tok/s | ? tok/s |
+| Usable     | ? tok/s | ? tok/s | ? tok/s | ? tok/s |
+| Too slow   | below ? | below ? | below ? | below ? |
+
+Itay: coding and translation plausibly tolerate a slower rate than chat
+before it stops being "excellent" (you read the output more slowly, or
+paste it rather than watch it stream); a vision/visual purpose may be
+capped less by tok/s and more by whether the model is any good at the task
+at all. None of that is more than a guess yet.
+
+**Explicitly needs research, not a UI-layer invention** (same flag (b)
+raised): real thresholds per purpose, not numbers picked to make the table
+look plausible. Candidate anchors: reading speed (~200–250 wpm, ~3–4 tok/s)
+as a "keeps up with reading" floor for chat, already noted in (b); beyond
+that, real user reaction per purpose is probably needed rather than a
+desk-derived guess, especially for where "excellent" tips into "good enough
+but not exciting."
+
+Once it exists, it both answers (b) properly and is the data table (g) asks
+for.
+
+## j. Show a generic "good for" score next to the speed figure
+
+**From:** Itay, in-app testing feedback (2026-09-25). Depends on (i).
+
+Once (i)'s matrix exists, surface it next to every generation-speed
+`<Figure>` a person sees for a purpose — not just the one templated
+sentence `reasons.go` builds for a card's top line today. Two parts to this,
+matching how the app already keeps local and public numbers apart
+(figure/public.go, `TestPublicAndLocalNeverShareAStruct`):
+
+1. **A score or colour**, computed from (i)'s table against the model's own
+   measured-or-estimated speed for the purposes it's being shown for
+   ("excellent for coding," "usable for translation but not more"). This is
+   a local, sourced figure (estimated or measured, like every other speed on
+   this screen) scored against public/curated thresholds — needs its own
+   `figure` treatment, not a bare adjective, so product rule 4's estimated/
+   measured split still holds for it.
+2. **"What is this good for"**, a tap-away explainer (product rule 2) in the
+   same spirit as the glossary: which purposes this model's speed clears,
+   and at what bar, from the same matrix — possibly the matrix itself,
+   rendered for this one model's numbers rather than the abstract table.
+
+Not scoped further than this until (i) has real numbers — the visual
+treatment is the easy part; the data it displays is the open question.

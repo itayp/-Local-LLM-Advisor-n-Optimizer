@@ -475,7 +475,8 @@ func TestPromptsThatDoNotFitAreSkippedWithAReason(t *testing.T) {
 	if plan.NumCtx != 4096 || plan.NumCtxSource != "ollama_default" {
 		t.Fatalf("plan context %d (%s)", plan.NumCtx, plan.NumCtxSource)
 	}
-	if plan.Prompts[0].Runs != 3 || plan.Prompts[1].Runs != 3 || plan.Prompts[2].Runs != 0 || !strings.Contains(plan.Prompts[2].Skip, "7,792") {
+	if plan.Prompts[0].Runs != 3 || plan.Prompts[1].Runs != 3 || plan.Prompts[2].Runs != 0 || !strings.Contains(plan.Prompts[2].Skip, "7,792") ||
+		!strings.Contains(plan.Prompts[2].Skip, "test is set to 4,096") {
 		t.Fatalf("prompts %+v", plan.Prompts)
 	}
 	if plan.Requests != 7 || plan.Duration == nil || plan.Duration.Source != figure.Estimated || plan.Duration.Unit != "s" {
@@ -498,6 +499,26 @@ func TestPromptsThatDoNotFitAreSkippedWithAReason(t *testing.T) {
 	}
 	if _, err := r.h.Plan(context.Background(), r.t, Request{Model: "llama3.1:8b", Prompts: []string{"9000"}}); !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("unknown prompt: %v", err)
+	}
+}
+
+// A prompt can also fail to fit because the model's own trained context is
+// the real ceiling, not this test's setting — the skip message says which
+// one it is, since only one of them is something the person can change by
+// picking a larger context above (Itay, testing step 10, 2026-09-25). Only
+// the shortest prompt (need 824) fits a 1,000-token ceiling; the longer two
+// are skipped for the model's own reason, not the test's.
+func TestSkipMessageDistinguishesTestSettingFromModelCeiling(t *testing.T) {
+	r := newRig(t)
+	r.b.info.Details["llama.context_length"] = float64(1000) // this model's own real ceiling
+	plan, err := r.h.Plan(context.Background(), r.t, Request{Model: "llama3.1:8b", NumCtx: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Prompts[0].Runs != 3 || plan.Prompts[1].Runs != 0 ||
+		!strings.Contains(plan.Prompts[1].Skip, "model's own maximum context of 1,000") ||
+		strings.Contains(plan.Prompts[1].Skip, "pick a larger context") {
+		t.Fatalf("prompts %+v", plan.Prompts)
 	}
 }
 

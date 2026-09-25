@@ -100,7 +100,34 @@ describe('Watch', () => {
     expect(table).toHaveTextContent(c.outcome.notified)
     expect(table).toHaveTextContent('faster than what you have')
     expect(table).toHaveTextContent(c.outcome.suppressed)
+    // A repo flagged only for the curator has nothing an ordinary person
+    // can act on, so it stays out of the plain view (see the dedicated
+    // test below) — this is the everyday case, Advanced off.
+    expect(table).not.toHaveTextContent('Acme/new')
+  })
+
+  it('hides a new-repo flag from the plain view, and shows it once Advanced is on', async () => {
+    const entries = [
+      { at: '2026-09-25T08:00:00Z', key: 'model:1', name: 'Qwen3.5 8B', outcome: 'notified' as const, detail: 'faster than what you have' },
+      { at: '2026-09-25T08:00:02Z', key: 'repo:Acme/new', name: 'Acme/new', outcome: 'flagged_for_curator' as const, detail: 'a new repo from Acme, not yet in the catalogue' },
+    ]
+    serve({ log: { runs: [run({ report: report({ checked: 2, notified: 1, flagged: 1, entries }) })] }, settings: { advanced: true } })
+    open()
+
+    const table = await screen.findByTestId('watch-table')
+    expect(table).toHaveTextContent('Acme/new')
     expect(table).toHaveTextContent(c.outcome.flagged_for_curator)
+    expect(table).toHaveTextContent('a new repo from Acme, not yet in the catalogue')
+  })
+
+  it('says so, rather than "no checks yet", when a run found only a curator flag', async () => {
+    const entries = [
+      { at: '2026-09-25T08:00:02Z', key: 'repo:Acme/new', name: 'Acme/new', outcome: 'flagged_for_curator' as const, detail: 'a new repo from Acme, not yet in the catalogue' },
+    ]
+    serve({ log: { runs: [run({ report: report({ checked: 1, flagged: 1, entries }) })] } })
+    open()
+    expect(await screen.findByTestId('watch-empty')).toHaveTextContent(c.nothingForYou)
+    expect(screen.queryByTestId('watch-table')).not.toBeInTheDocument()
   })
 
   it('surfaces a refresh error from the latest run without hiding its entries', async () => {

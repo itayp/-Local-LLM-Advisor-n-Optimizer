@@ -69,7 +69,7 @@ function benchRun(over: Partial<BenchRun> = {}): BenchRun {
     request: { model: 'llama3.2:3b' },
     config: {
       hardware_profile_id: 1, hardware_fingerprint: 'fp', backend: 'ollama', backend_version: '0.34.2', runtime_path: 'metal',
-      model: 'llama3.2:3b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 2e9, catalog_file_id: 3, num_ctx: 4096,
+      model: 'llama3.2:3b', model_digest: 'sha256:a', quantization: 'Q4_K_M', weights_bytes: 2e9, catalog_file_id: 3, catalog_model_id: 3, num_ctx: 4096,
       effective_ctx: 4096, kv_cache_type: 'f16', flash_attention: true, flash_attention_known: true, parallel: 1, suite_version: '1',
       suite_digest: 'e8fe8f89', completion_tokens: 256, repeats: 3, daemon_version: 'test',
     },

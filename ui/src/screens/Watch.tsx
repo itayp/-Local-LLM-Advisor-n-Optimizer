@@ -4,7 +4,7 @@ import { api, ApiRequestError } from '../api/client'
 import type { WatchLogEntry, WatchRunSummary } from '../api/types'
 import { Working } from '../components/Working'
 import { en } from '../copy/en'
-import { useSettings } from '../state/settings'
+import { useAdvanced, useSettings } from '../state/settings'
 
 const c = en.screens.watch
 
@@ -41,6 +41,7 @@ function rows(runs: WatchRunSummary[]): Row[] {
  */
 export function Watch() {
   const { settings } = useSettings()
+  const advanced = useAdvanced()
   const [runs, setRuns] = useState<WatchRunSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
@@ -84,7 +85,16 @@ export function Watch() {
   }
 
   const latest = runs && runs.length > 0 ? runs[0] : null
-  const entries = runs ? rows(runs) : []
+  // A repo flagged for the curator's own attention (a maker's new
+  // repository, not yet in the catalogue) has nothing an ordinary person
+  // can act on — it's not a model, so there's no card, no download, no
+  // fit to show (Itay, in-app feedback, 2026-09-25: "it's odd to show
+  // models you can't do nothing with"). Advanced still sees it, the same
+  // way it sees every other technical/curator-facing detail (product
+  // rule 2).
+  const allEntries = runs ? rows(runs) : []
+  const entries = advanced ? allEntries : allEntries.filter((row) => row.entry.outcome !== 'flagged_for_curator')
+  const checkedButNothingForYou = allEntries.length > 0 && entries.length === 0
 
   return (
     <section className="screen" aria-labelledby="screen-title">
@@ -120,6 +130,10 @@ export function Watch() {
         </p>
       ) : runs === null ? (
         <Working label={c.loading} />
+      ) : checkedButNothingForYou ? (
+        <p className="notice" data-testid="watch-empty">
+          {c.nothingForYou}
+        </p>
       ) : entries.length === 0 ? (
         <p className="notice" data-testid="watch-empty">
           {c.empty}
