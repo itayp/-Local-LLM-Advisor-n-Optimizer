@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Purpose, Recommendation, RecommendResult } from '../api/types'
-import { Figure } from '../components/Figure'
 import { ModelList } from '../components/ModelList'
 import { PublicLine } from '../components/PublicFigure'
+import { SpeedWithVerdict } from '../components/SpeedVerdict'
 import { Term } from '../components/Term'
 import { Working } from '../components/Working'
 import { en } from '../copy/en'
@@ -78,7 +78,7 @@ function Card({ r, onDownload }: { r: Recommendation; onDownload: (r: Recommenda
 
       <dl className="card__figures">
         <dt>{c.speed}</dt>
-        <dd>{r.speed ? <Figure rate={r.speed} /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
+        <dd>{r.speed ? <SpeedWithVerdict rate={r.speed} verdicts={r.verdicts} compact /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
         <dt>{c.download}</dt>
         <dd>{r.installed ? c.installed : formatDownload(r.download_bytes)}</dd>
       </dl>

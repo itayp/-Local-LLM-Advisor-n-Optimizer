@@ -621,6 +621,36 @@ body {
   margin-top: 6px;
 }
 
+/* The speed verdict (backlog j, components/SpeedVerdict.tsx): each line
+   carries its source; the chips reuse the two figure treatments. */
+.verdicts {
+  display: block;
+  margin: 6px 0 0;
+}
+
+.verdict {
+  display: block;
+  line-height: 1.6;
+}
+
+.verdict__label {
+  color: var(--muted);
+}
+
+.verdict__chip {
+  white-space: normal;
+}
+
+.verdict__wait {
+  color: var(--muted);
+}
+
+.verdict__note {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* Home (build-plan step 8): the machine's own sentence, the model you've
    measured (if any), and one card for the single most useful next step. */
 .home__lead {

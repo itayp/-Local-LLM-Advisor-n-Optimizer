@@ -42,6 +42,9 @@ type FileFit struct {
 	// recommendation would name.
 	Default  bool              `json:"default"`
 	Estimate estimate.Estimate `json:"estimate"`
+	// Verdicts grade the estimate's speed — or the measurement that
+	// replaced it — for the purposes saved in settings (backlog (j)).
+	Verdicts []recommend.SpeedVerdict `json:"verdicts,omitempty"`
 }
 
 // machine assembles what the estimator plans against: this start's hardware
@@ -299,6 +302,7 @@ func (s *Server) modelFit(w http.ResponseWriter, r *http.Request) (ModelFitRespo
 		return resp, nil, &fitError{http.StatusInternalServerError, "estimator", "the advisor's own data could not be read: " + err.Error()}
 	}
 	measured := s.evidence(r.Context(), m, est)
+	purposes := s.verdictPurposes(r.Context())
 	pl := est.Place(m)
 	if ctx == 0 {
 		ctx = estimate.OllamaDefaultContext(pl)
@@ -329,6 +333,7 @@ func (s *Server) modelFit(w http.ResponseWriter, r *http.Request) (ModelFitRespo
 		if meas, ok := measured[recommend.MeasurementKey{CatalogFileID: f.ID, NumCtx: ctx}]; ok && kv == estimate.KVF16 {
 			fit.Estimate = fit.Estimate.WithMeasurement(meas)
 		}
+		fit.Verdicts = estimateVerdicts(fit.Estimate, purposes)
 		resp.Fits = append(resp.Fits, fit)
 	}
 	for _, want := range defaultQuants {

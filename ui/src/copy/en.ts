@@ -82,8 +82,17 @@ export const en = {
       `${label}: ${roundedWords(excellent)}+ words a second feels excellent, ${roundedWords(good)}+ is good, and ${roundedWords(usable)}+ is still usable.`,
     waitLine: (label: string, excellent: number, good: number, usable: number) =>
       `${label}, first word: within ${waitWords(excellent)} feels excellent, within ${waitWords(good)} is good, within ${waitWords(usable)} is still usable.`,
+    provisional:
+      'These bars are provisional: a starting point taken from research on reading speed and waiting, until they have been tested on real use.',
     stepLine: (label: string, excellent: number, good: number, usable: number) =>
       `${label} (a whole step — nobody reads along in between): finishing within ${waitWords(excellent)} feels excellent, within ${waitWords(good)} is good, within ${waitWords(usable)} is still usable.`,
+  },
+  // The speed verdict beside a speed (backlog (j), components/SpeedVerdict.tsx).
+  // The verdicts' own words come from the API; these are the labels.
+  verdict: {
+    measured: 'Measured',
+    estimated: 'Estimated',
+    explain: 'what these grades mean',
   },
   // The model list, on every screen that needs it (GET /api/catalog/status).
   modelList: {
@@ -198,9 +207,18 @@ export const en = {
     },
     ollama: {
       title: 'Ollama',
-      placeholder:
-        'Whether Ollama is installed and running, one button that says what it will do, and whether it is using your graphics card.',
-      step: 'build plan step 3',
+      lead: 'Ollama is the free program that runs AI models on this computer. The advisor uses it to download, test and run them.',
+      loading: 'Looking for Ollama…',
+      failed: (message: string) => `Ollama could not be checked: ${message}`,
+      stateLabel: 'Status',
+      versionLabel: 'Version',
+      states: {
+        running: 'Installed and running',
+        installed_not_running: 'Installed, not running',
+        not_installed: 'Not installed',
+        unsupported: 'Cannot run on this computer',
+      } as Record<string, string>,
+      checkAgain: 'Check again',
     },
     modelDetail: {
       back: 'Back to Recommend',

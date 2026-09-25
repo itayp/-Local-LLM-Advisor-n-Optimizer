@@ -28,73 +28,108 @@ func worseGrade(a, b Grade) Grade {
 	return b
 }
 
+// Limit is which of a purpose's two bars decided its grade (D-58): the
+// answer speed (the stream bar) or the wait before the first word.
+type Limit string
+
+const (
+	LimitAnswerSpeed Limit = "answer_speed"
+	LimitWait        Limit = "wait"
+)
+
 // PurposeGrade is how a model's speed suits one purpose, at both ends of an
 // estimated range (D-58's "grade at the range's low and high ends"). Low and
 // High are equal for a measurement (a point, not a range) or when both ends
-// land on the same grade. Known is false only when there is no speed
-// estimate at all for this model — never a made-up grade (CLAUDE.md,
-// "unknown is unknown").
+// land on the same grade. Known is false only when there is nothing to grade
+// with — never a made-up grade (CLAUDE.md, "unknown is unknown").
 type PurposeGrade struct {
 	Purpose catalog.Purpose
 	Known   bool
 	Low     Grade
 	High    Grade
-	// WaitKnown is false when Speed.Prompt is nil: there is nothing to grade
-	// the wait bar with, so the grade (when Known) rests on the stream bar
-	// alone — or, for a per_step purpose with no stream bar to fall back on,
-	// Known itself is false.
+	// WaitKnown is false when there is no prompt speed: there is nothing to
+	// grade the wait bar with, so the grade (when Known) rests on the stream
+	// bar alone — or, for a per_step purpose with no stream bar to fall back
+	// on, Known itself is false.
 	WaitKnown bool
 	// WaitSeconds is the wait at the low (slower, more cautious) end, for
 	// the reason to quote when WaitLimits says the wait is what limits the
-	// grade rather than the stream.
-	WaitSeconds float64
-	WaitLimits  bool
+	// grade rather than the stream; WaitSecondsFast is the wait at the high
+	// end (equal for a measurement).
+	WaitSeconds     float64
+	WaitSecondsFast float64
+	WaitLimits      bool
+	// Limit is which bar decided Low, the grade a verdict leads with:
+	// LimitWait when the wait did (always, for a per_step purpose; also on a
+	// tie), LimitAnswerSpeed otherwise. Empty when Known is false.
+	// WaitLimits, the reasons' older rule, also counts the high end.
+	Limit Limit
 	// Source is estimated unless every rate the grade used was measured
 	// (product rule 4: the grade inherits estimated/measured from its inputs).
 	Source figure.Source
 }
 
-// gradePurpose grades one candidate's speed for one purpose, D-58's
-// arithmetic: wait = prompt_tokens ÷ prompt tok/s + thinking_tokens ÷ answer
-// tok/s (per_step: step_prompt_tokens ÷ prompt tok/s + step_output_tokens ÷
-// answer tok/s); stream (read_along only) compares answer tok/s with the
-// reading anchors. The purpose's grade is the worse of the two.
-func (e *Engine) gradePurpose(est estimate.Estimate, p catalog.Purpose) PurposeGrade {
+// GradeSpeed grades a speed for one purpose — the one grading function
+// every screen uses (the engine through gradePurpose, the benchmark and the
+// model detail through the verdicts in verdict.go). gen is the answer
+// (generation) speed and prompt the prompt-reading speed, each a low–high
+// range in tokens a second; a measurement is a range of one point
+// (figure.MeasuredRate). prompt may be nil: the wait is then unknown, never
+// zero, and the grade rests on the stream bar alone.
+//
+// D-58's arithmetic: wait = prompt_tokens ÷ prompt tok/s + thinking_tokens ÷
+// answer tok/s (per_step: step_prompt_tokens ÷ prompt tok/s +
+// step_output_tokens ÷ answer tok/s); stream (read_along only) compares
+// answer tok/s with the reading anchors. The purpose's grade is the worse of
+// the two, computed at both ends of the range.
+func (sn *SpeedNeeds) GradeSpeed(gen figure.Rate, prompt *figure.Rate, p catalog.Purpose) PurposeGrade {
 	pg := PurposeGrade{Purpose: p}
-	sn := e.SpeedNeeds
-	if sn == nil || !est.Speed.Known || est.Speed.Generation == nil {
+	if sn == nil {
 		return pg
 	}
 	need, ok := sn.Purpose(p)
 	if !ok {
 		return pg
 	}
-	g := est.Speed.Generation
-	promptKnown := est.Speed.Prompt != nil
+	promptKnown := prompt != nil
 	var pLow, pHigh float64
 	if promptKnown {
-		pLow, pHigh = est.Speed.Prompt.Low, est.Speed.Prompt.High
+		pLow, pHigh = prompt.Low, prompt.High
 	}
 
-	lowGrade, lowWait, lowWaitOK, lowLimits, lowOK := sn.gradeOneEnd(need, g.Low, pLow, promptKnown)
+	lowGrade, lowWait, lowWaitOK, lowLimits, lowOK := sn.gradeOneEnd(need, gen.Low, pLow, promptKnown)
 	if !lowOK {
 		return pg
 	}
-	highGrade, _, _, highLimits, _ := sn.gradeOneEnd(need, g.High, pHigh, promptKnown)
+	highGrade, highWait, _, highLimits, _ := sn.gradeOneEnd(need, gen.High, pHigh, promptKnown)
 
 	pg.Known = true
 	pg.Low, pg.High = lowGrade, highGrade
 	pg.WaitKnown = lowWaitOK
 	pg.WaitLimits = lowWaitOK && (lowLimits || highLimits)
 	pg.WaitSeconds = lowWait
+	pg.WaitSecondsFast = highWait
+	pg.Limit = LimitAnswerSpeed
+	if lowWaitOK && lowLimits {
+		pg.Limit = LimitWait
+	}
 	pg.Source = figure.Measured
-	if g.Source != figure.Measured {
+	if gen.Source != figure.Measured {
 		pg.Source = figure.Estimated
 	}
-	if promptKnown && est.Speed.Prompt.Source != figure.Measured {
+	if promptKnown && prompt.Source != figure.Measured {
 		pg.Source = figure.Estimated
 	}
 	return pg
+}
+
+// gradePurpose grades one candidate's estimate for one purpose, through
+// GradeSpeed. No speed estimate at all is an unknown grade.
+func (e *Engine) gradePurpose(est estimate.Estimate, p catalog.Purpose) PurposeGrade {
+	if !est.Speed.Known || est.Speed.Generation == nil {
+		return PurposeGrade{Purpose: p}
+	}
+	return e.SpeedNeeds.GradeSpeed(*est.Speed.Generation, est.Speed.Prompt, p)
 }
 
 // gradeOneEnd grades one end of the range (generation tok/s genTPS, prompt

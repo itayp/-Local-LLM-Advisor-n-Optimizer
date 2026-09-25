@@ -179,6 +179,7 @@ func (s *Server) handleBenchStart(w http.ResponseWriter, r *http.Request) {
 		s.writeBenchError(w, err)
 		return
 	}
+	withVerdicts(&run, s.verdictPurposes(r.Context()))
 	w.Header().Set("Location", fmt.Sprintf("/api/bench/%d", run.ID))
 	writeJSON(w, http.StatusAccepted, run)
 }
@@ -204,6 +205,7 @@ func (s *Server) handleBenchRun(w http.ResponseWriter, r *http.Request) {
 		s.writeBenchError(w, err)
 		return
 	}
+	withVerdicts(&run, s.verdictPurposes(r.Context()))
 	writeJSON(w, http.StatusOK, run)
 }
 
@@ -225,7 +227,9 @@ func (s *Server) streamBench(w http.ResponseWriter, r *http.Request, id int64) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	purposes := s.verdictPurposes(r.Context())
 	send := func(p bench.Progress) bool {
+		withVerdicts(&p.Run, purposes)
 		b, err := json.Marshal(p)
 		if err != nil {
 			s.log.Error("encoding benchmark progress", "err", err)
@@ -288,6 +292,7 @@ func (s *Server) handleBenchCancel(w http.ResponseWriter, r *http.Request) {
 		s.writeBenchError(w, err)
 		return
 	}
+	withVerdicts(&run, s.verdictPurposes(r.Context()))
 	writeJSON(w, http.StatusOK, run)
 }
 
@@ -311,6 +316,10 @@ func (s *Server) handleBenchHistory(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("reading benchmark history", "err", err)
 		writeError(w, http.StatusInternalServerError, "store", "the history of tests could not be read")
 		return
+	}
+	purposes := s.verdictPurposes(r.Context())
+	for i := range h.Runs {
+		withVerdicts(&h.Runs[i], purposes)
 	}
 	writeJSON(w, http.StatusOK, h)
 }

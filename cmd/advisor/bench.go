@@ -20,6 +20,7 @@ import (
 	"advisor/internal/bench"
 	"advisor/internal/catalog"
 	"advisor/internal/figure"
+	"advisor/internal/recommend"
 	"advisor/internal/server"
 )
 
@@ -538,6 +539,15 @@ func printRun(w io.Writer, r bench.Run) {
 			est = rate(*g)
 		}
 		fmt.Fprintf(w, "  estimated before: %s → measured %s; estimate replaced: %s\n", est, rate(*r.GenTPS), yesNo(r.Replaced))
+	}
+	// Backlog (j): what the measured speeds are good for, per saved purpose.
+	for _, line := range recommend.VerdictLine(r.Verdicts) {
+		fmt.Fprintf(w, "  %s\n", line)
+	}
+	for _, v := range r.Verdicts {
+		if v.Note != "" {
+			fmt.Fprintf(w, "    %s\n", v.Note)
+		}
 	}
 	if r.Comparison != nil {
 		fmt.Fprintf(w, "  against the previous run of this configuration (run %d, %s): %+.1f%%\n", r.Comparison.RunID, rate(r.Comparison.GenTPS), r.Comparison.DiffPct)

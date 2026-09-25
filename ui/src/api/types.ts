@@ -511,6 +511,8 @@ export interface Recommendation {
   installed: boolean
   /** The headline speed; absent when there is no estimate. */
   speed?: Rate
+  /** What that speed is good for, per purpose asked (backlog (j)). */
+  verdicts?: SpeedVerdict[]
   reasons: Reason[]
   confidence: Confidence
   confidence_why: string
@@ -546,6 +548,36 @@ export interface RecommendResult {
   empty_code?: 'blocked' | 'budget_unknown' | 'catalogue_empty' | 'nothing_fits' | 'nothing_changes'
   runtime_path: RuntimePath
   path_source: 'established' | 'expected'
+}
+
+// --- Speed verdicts (Go: recommend.SpeedVerdict, backlog (j)) --------------
+//
+// What a speed on this computer is good for, per purpose. A verdict is
+// derived from a local number and inherits its source (product rule 4):
+// <SpeedVerdict> renders estimated and measured with the same two
+// treatments <Figure> uses. The words come from the API.
+
+export type SpeedGrade = 'excellent' | 'good' | 'usable' | 'too_slow'
+
+/** Go: recommend.SpeedVerdict. */
+export interface SpeedVerdict {
+  purpose: Purpose
+  /** False when there is nothing to grade with; text and note say so. */
+  known: boolean
+  /** The grade at the slower end of the range, and at the faster end (equal for a measurement). */
+  low?: SpeedGrade
+  high?: SpeedGrade
+  /** Which bar decided the grade. */
+  limit?: 'answer_speed' | 'wait'
+  /** Seconds before the first word for this purpose's typical prompt. */
+  wait?: Rate
+  source: Source
+  /** "excellent for everyday chat" */
+  text: string
+  /** "about 4 seconds to read a pasted file" — only when the wait holds the grade below excellent. */
+  wait_text?: string
+  /** What the verdict rests on when it is less than both bars. */
+  note?: string
 }
 
 // Every number below is a curated configuration value (ARCHITECTURE.md
@@ -585,6 +617,8 @@ export interface FileFit {
   /** The file the size's Ollama tag pulls. */
   default: boolean
   estimate: Estimate
+  /** What its speed is good for, per saved purpose (backlog (j)). */
+  verdicts?: SpeedVerdict[]
 }
 
 /** GET /api/models/{id}/fit (Go: server.ModelFitResponse). */
@@ -782,6 +816,8 @@ export interface BenchRun {
   replaced: boolean
   unloaded?: boolean
   comparison?: BenchComparison
+  /** What the measured speeds are good for, per saved purpose (backlog (j)). */
+  verdicts?: SpeedVerdict[]
   notes?: string[]
   error?: string
   samples?: BenchSample[]

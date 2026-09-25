@@ -82,6 +82,9 @@ function SpeedNeedsExplainer({ data, failed }: { data: SpeedNeedsResponse | null
     <span className="term__speedneeds" data-testid="speed-needs">
       <span className="term__speedneeds-heading">{c.heading}</span>
       <span className="term__speedneeds-intro">{c.intro}</span>
+      <span className="term__speedneeds-intro" data-testid="speed-needs-provisional">
+        {c.provisional}
+      </span>
       {data.purposes.map((row) => {
         const label = purposeLabel[row.purpose] ?? row.purpose
         return (

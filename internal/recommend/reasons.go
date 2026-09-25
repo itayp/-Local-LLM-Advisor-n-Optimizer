@@ -84,6 +84,7 @@ func (e *Engine) card(c candidate, pl estimate.Placement, m estimate.Machine, pu
 		Estimate:    c.est,
 		Installed:   c.installed,
 		Speed:       c.est.Speed.Generation,
+		Verdicts:    e.verdicts(c.est, purposes),
 		Score:       round3(c.score),
 		Factors: Factors{
 			Purpose: round3(c.factors.Purpose), Fit: round3(c.factors.Fit), Speed: round3(c.factors.Speed),
@@ -257,6 +258,15 @@ func (e *Engine) speedReasonFor(est estimate.Estimate, p catalog.Purpose) Reason
 			est.Speed.CalibratedFrom, num(lo), num(hi), clause)}
 	}
 	return Reason{Kind: "speed", Text: fmt.Sprintf("Estimated to answer at roughly %s to %s words a second%s.", num(lo), num(hi), clause)}
+}
+
+// verdicts is a card's verdict chips: GradeSpeed over the card's estimate,
+// the same grading its speed reasons state.
+func (e *Engine) verdicts(est estimate.Estimate, purposes []catalog.Purpose) []SpeedVerdict {
+	if !est.Speed.Known {
+		return nil
+	}
+	return e.SpeedNeeds.Verdicts(est.Speed.Generation, est.Speed.Prompt, purposes)
 }
 
 // gradeClause is the grade half of a speed reason: "excellent for coding",

@@ -73,12 +73,18 @@ func TestPrintRunReadsLikeTheGate(t *testing.T) {
 		Estimate:    &estimate.Estimate{Speed: estimate.Speed{Known: true, Generation: &est}},
 		Skipped:     []bench.Skipped{{Prompt: "8000", Why: "needs a context of at least 7,728 tokens"}},
 		SamplerNote: "temperature and power are not read on a Mac",
+		Verdicts: []recommend.SpeedVerdict{
+			{Purpose: catalog.PurposeChat, Known: true, Source: figure.Measured, Text: "excellent for everyday chat"},
+			{Purpose: catalog.PurposeLongContext, Known: true, Source: figure.Measured, Text: "excellent for long documents",
+				Note: "Graded on answer speed alone: the test has no prompt as long as a long document."},
+		},
 	}
 	var out bytes.Buffer
 	printRun(&out, run)
 	for _, want := range []string{"Run 7: llama3.2:3b (Q4_K_M) at a context of 4096 — done", "path metal · f16 cache · flash attention on",
 		"500         481        812.4          41.3      256       612 ms", "estimated before: ≈ 35–48 tok/s (estimated) → measured 41.3 tok/s (measured); estimate replaced: yes",
-		"skipped 8000", "not sampled: temperature", "unloaded afterwards: yes"} {
+		"skipped 8000", "not sampled: temperature", "unloaded afterwards: yes",
+		"Measured: excellent for everyday chat · excellent for long documents.", "    Graded on answer speed alone: the test has no prompt as long as a long document."} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in:\n%s", want, out.String())
 		}

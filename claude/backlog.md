@@ -362,7 +362,7 @@ wait. Every pin holds again (M1 Pro coding: `qwen3.5:9b`; Mac Pro coding:
 `qwen3.5:4b`). Revisit after the fleet trial by moving the bars, not the
 term.
 
-## j. Show a generic "good for" score next to the speed figure
+## j. Show a generic "good for" score next to the speed figure — part 1 done (2026-09-25)
 
 **From:** Itay, in-app testing feedback (2026-09-25). Depends on (i).
 
@@ -386,6 +386,67 @@ matching how the app already keeps local and public numbers apart
 
 Not scoped further than this until (i) has real numbers — the visual
 treatment is the easy part; the data it displays is the open question.
+
+**Part 1 done (2026-09-25):** the verdict beside every speed, measured on
+Benchmarks; plus the Ollama menu entry.
+
+- **One grading function.** `(*SpeedNeeds).GradeSpeed(gen, prompt, purpose)`
+  (`internal/recommend/grade.go`) takes the answer and prompt-reading speeds
+  as `figure.Rate` ranges (a measurement is a range of one point) and returns
+  the grade at both ends, the wait, and which bar limits it
+  (`Limit`: `answer_speed` | `wait`). D-58's arithmetic unchanged; the
+  engine's `gradePurpose` is now a thin wrapper, and every pin in
+  `recommend_test.go` and `TestFleetTopPicks` passed unchanged.
+- **`recommend.SpeedVerdict`** (`verdict.go`, a sibling of `reasons.go`, same
+  wording pieces): purpose, grades, limit, the wait as a `figure.Rate` (unit
+  `s`), `source` inherited from the rates used, and the words (`text`,
+  `wait_text` only when the wait holds the grade below excellent, `note`
+  when it rests on less than both bars). In `server.APITypes()`, mirrored in
+  `ui/src/api/types.ts`; never beside a `figure.Public`.
+- **Where it is served**, for the purposes saved in settings (chat when
+  none): `Recommendation.verdicts` (every card), `FileFit.verdicts`
+  (`/api/models/{id}/fit` and `/detail` — measured once tested), and
+  `bench.Run.verdicts` on every run the server serves (start, get, stream,
+  cancel, history; filled by `internal/server/verdicts.go`, not stored).
+  A benchmark grades each purpose at the suite prompt whose nominal size is
+  the shortest at least the purpose's typical prompt
+  (`recommend.MeasuredVerdicts` says it in code: chat/reasoning/writing →
+  500, coding/vision/agent step → 2000, long documents → none); an unmeasured
+  or absent prompt grades on answer speed alone and the note says so.
+- **`advisor bench`** prints `Measured: … — …` under each run, and each
+  note beneath.
+- **UI:** `<SpeedVerdict>` / `<SpeedWithVerdict>` (`ui/src/components/`)
+  on Benchmarks (the run with notes, each history row compact, and the plan's
+  speed), Recommend and onboarding's cards (compact chip), the model detail
+  page's "Your machine" block, and TryIt. Chips take `<Figure>`'s two
+  treatments; every speed has the `tokens_per_sec` explainer one tap away
+  (through the verdict line, or a `<Term>` beside the number when there is
+  no verdict — Home's "your model" line too). The explainer now says the
+  bars are provisional until tested on real use. No value in
+  `speed-needs.yaml` was changed.
+- **Ollama screen:** the placeholder is replaced by the backend status Home
+  reads (state, version, detail) with Home's install and start cards,
+  extracted to `ui/src/components/OllamaActions.tsx` (a small extraction, so
+  the entry stays in the navigation). `Placeholder.tsx` is gone.
+
+**Left for (j):**
+
+- **Models screen:** not done. It lists installed models from
+  `/api/models/installed`, which carries no estimate or measurement, so a
+  verdict there needs new data on that endpoint (the fit of each installed
+  catalogue file) — out of part 1's scope.
+- **Measured verdicts outside Benchmarks grade every purpose at the
+  headline prompt's speed** (the 500 prompt: `WithMeasurement` stores one
+  prompt rate per configuration), so a tested model's coding verdict on
+  Recommend or its detail page can read better than on Benchmarks, which
+  uses the 2000 prompt. Storing the per-prompt rates in the evidence would
+  make them agree.
+- Not yet shown: the Compare view on Benchmarks, `advisor recommend`'s text,
+  the "model you have" (`Current`) on Recommend.
+- "What is this good for" as the matrix rendered for one model's numbers
+  (part 2 of the original item) — the verdict line covers the purposes the
+  user saved; the full per-purpose table for one model is not built.
+- The fleet trial (D-58) still settles every `chosen` bar.
 
 ## k. Windows notifications never ask permission — the balloon API doesn't have one
 

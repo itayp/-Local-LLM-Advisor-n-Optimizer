@@ -30,6 +30,7 @@ import (
 	"advisor/internal/estimate"
 	"advisor/internal/figure"
 	"advisor/internal/hardware"
+	"advisor/internal/recommend"
 )
 
 // Status of a run.
@@ -272,6 +273,11 @@ type Run struct {
 	// the runtime's list of loaded models; false when it was still there;
 	// absent when that could not be checked.
 	Unloaded *bool `json:"unloaded,omitempty"`
+
+	// Verdicts are what the measured speeds are good for, per purpose the
+	// user saved (backlog (j)). The server fills them when it serves a run
+	// (internal/server/verdicts.go); they are not stored.
+	Verdicts []recommend.SpeedVerdict `json:"verdicts,omitempty"`
 
 	Comparison *Comparison `json:"comparison,omitempty"`
 	Notes      []string    `json:"notes,omitempty"`

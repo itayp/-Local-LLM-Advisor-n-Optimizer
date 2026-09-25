@@ -148,6 +148,35 @@ describe('Recommend', () => {
     expect(screen.queryByTestId('recommend-advanced')).not.toBeInTheDocument()
   })
 
+  it('shows the estimated verdict chip beside the speed, and the speed explainer is a tap away', async () => {
+    serve(() =>
+      result({
+        recommendations: [
+          card({
+            verdicts: [
+              { purpose: 'chat', known: true, low: 'good', high: 'excellent', limit: 'answer_speed', source: 'estimated', text: 'good to excellent for everyday chat' },
+            ],
+          }),
+        ],
+      }),
+    )
+    open()
+    const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
+    const chip = within(item).getByTestId('speed-verdict')
+    expect(chip).toHaveAttribute('data-source', 'estimated')
+    expect(chip).toHaveTextContent(`${en.verdict.estimated}: good to excellent for everyday chat`)
+    await userEvent.click(within(chip).getByRole('button', { name: 'What is tok/s?' }))
+    expect(within(chip).getByRole('note')).toHaveTextContent(/tokens per second/)
+  })
+
+  it('keeps the explainer beside the speed when a card has no verdict', async () => {
+    serve(() => result())
+    open()
+    const item = await screen.findByRole('article', { name: 'Qwen3.5 9B' })
+    expect(within(item).queryByTestId('speed-verdict')).not.toBeInTheDocument()
+    expect(within(item).getByRole('button', { name: 'What is tok/s?' })).toBeInTheDocument()
+  })
+
   it('shows the confidence on every card, with why', async () => {
     serve(() =>
       result({

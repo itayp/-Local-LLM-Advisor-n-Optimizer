@@ -46,6 +46,7 @@ func APITypes() []any {
 		estimate.Estimate{},
 		recommend.Result{},
 		recommend.Preferences{},
+		recommend.SpeedVerdict{}, // backlog (j): a grade inherits its speed's source
 		SpeedNeedsResponse{},
 		SpeedNeedPurpose{},
 		SpeedLevels{},

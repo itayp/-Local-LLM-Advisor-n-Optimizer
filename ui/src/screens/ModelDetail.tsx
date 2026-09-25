@@ -5,6 +5,7 @@ import type { FileFit, ModelDetailResponse } from '../api/types'
 import { Figure } from '../components/Figure'
 import { FetchProgress, PublicInBackground, useCatalogStatus } from '../components/ModelList'
 import { formatDay, PublicFigure } from '../components/PublicFigure'
+import { SpeedWithVerdict } from '../components/SpeedVerdict'
 import { Term } from '../components/Term'
 import { Working } from '../components/Working'
 import { en } from '../copy/en'
@@ -162,7 +163,7 @@ function Machine({ detail, advanced }: { detail: ModelDetailResponse; advanced: 
           </span>
         </dd>
         <dt>{c.speed}</dt>
-        <dd>{e.speed.generation ? <Figure rate={e.speed.generation} /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
+        <dd>{e.speed.generation ? <SpeedWithVerdict rate={e.speed.generation} verdicts={fit.verdicts} /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
         <dt>{c.memory}</dt>
         <dd>
           <Figure bytes={e.memory.total} />

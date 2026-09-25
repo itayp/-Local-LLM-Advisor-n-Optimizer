@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { ApiRequestError, api } from '../api/client'
 import type { BenchModel, BenchModelsResponse, BenchPlan, BenchProgress, BenchRun, PullStatus } from '../api/types'
 import { Figure } from '../components/Figure'
+import { SpeedWithVerdict } from '../components/SpeedVerdict'
 import { ModelList } from '../components/ModelList'
 import { minutes, TestProgress } from '../components/TestProgress'
 import { Working } from '../components/Working'
@@ -463,14 +464,14 @@ function Plan({ plan, busy, onRun }: { plan: BenchPlan; busy: boolean; onRun: (a
           <>
             <dt>{c.lastMeasured}</dt>
             <dd>
-              <Figure rate={plan.measured.generation_tps} />
+              <SpeedWithVerdict rate={plan.measured.generation_tps} />
             </dd>
           </>
         ) : gen ? (
           <>
             <dt>{c.estimateBefore}</dt>
             <dd>
-              <Figure rate={gen} />
+              <SpeedWithVerdict rate={gen} />
             </dd>
           </>
         ) : null}
@@ -531,7 +532,7 @@ function RunView({ run, advanced }: { run: BenchRun; advanced: boolean }) {
           <>
             <dt>{c.answering}</dt>
             <dd>
-              <Figure rate={run.generation_tps} />
+              <SpeedWithVerdict rate={run.generation_tps} verdicts={run.verdicts} />
             </dd>
           </>
         ) : null}
@@ -720,7 +721,9 @@ function History({
                   <td>{when}</td>
                   <td>{r.config.model}</td>
                   <td>{c.contextOption(words(r.config.num_ctx))}</td>
-                  <td>{r.generation_tps ? <Figure rate={r.generation_tps} /> : c.status[r.status]}</td>
+                  <td>
+                    {r.generation_tps ? <SpeedWithVerdict rate={r.generation_tps} verdicts={r.verdicts} compact /> : c.status[r.status]}
+                  </td>
                   <td>
                     <button type="button" className="link-button" onClick={() => onShow(r)}>
                       {c.show}

@@ -109,8 +109,12 @@ type Recommendation struct {
 	// Speed is the headline number on the card: the estimated range, or the
 	// measurement once one exists. Absent when there is no estimate — the
 	// speed reason says so in words.
-	Speed   *figure.Rate `json:"speed,omitempty"`
-	Reasons []Reason     `json:"reasons"`
+	Speed *figure.Rate `json:"speed,omitempty"`
+	// Verdicts grade Speed for each purpose asked (backlog (j)): the
+	// compact chip every screen shows beside a speed. The same grading as
+	// the speed reasons; absent when there is no speed estimate.
+	Verdicts []SpeedVerdict `json:"verdicts,omitempty"`
+	Reasons  []Reason       `json:"reasons"`
 
 	Confidence Confidence `json:"confidence"`
 	// ConfidenceWhy says, in plain words, which inputs limit the confidence.

@@ -88,6 +88,15 @@ function run(over: Partial<BenchRun> = {}): BenchRun {
   }
 }
 
+// Backlog (j): what the daemon attaches to a finished run, per saved purpose.
+const verdicts: BenchRun['verdicts'] = [
+  { purpose: 'chat', known: true, low: 'excellent', high: 'excellent', limit: 'wait', source: 'measured', text: 'excellent for everyday chat' },
+  { purpose: 'coding', known: true, low: 'good', high: 'good', limit: 'wait', source: 'measured', text: 'good for coding',
+    wait_text: 'about 3 seconds to read a pasted file', wait: measured(2.5, 's') },
+  { purpose: 'long_context', known: true, low: 'excellent', high: 'excellent', limit: 'answer_speed', source: 'measured',
+    text: 'excellent for long documents', note: 'Graded on answer speed alone: the test has no prompt as long as a long document.' },
+]
+
 /** FakeEventSource stands in for the browser's: a test pushes events. */
 class FakeEventSource {
   static last: FakeEventSource | null = null
@@ -212,6 +221,28 @@ describe('Benchmarks', () => {
     expect(es?.closed).toBe(true)
     // The technical columns stay behind the Advanced toggle.
     expect(screen.queryByTestId('bench-advanced')).not.toBeInTheDocument()
+  })
+
+  it('says what the measured speed is good for, after a run and in the history, with the explainer a tap away', async () => {
+    serve({ history: [run({ verdicts }), run({ id: 6, generation_tps: measured(40.9) })] })
+    open()
+    const table = await screen.findByTestId('bench-history')
+    const row = within(table).getAllByTestId('speed-verdict')
+    expect(row).toHaveLength(1) // the run without verdicts shows only its speed
+    expect(row[0]).toHaveAttribute('data-source', 'measured')
+    expect(row[0]).toHaveTextContent(`${en.verdict.measured}: excellent for everyday chat · good for coding · excellent for long documents — about 3 seconds to read a pasted file`)
+    // The history row is compact: the notes wait for the run itself.
+    expect(within(table).queryByText(/answer speed alone/)).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Run a 1–4 minute test' }))
+    FakeEventSource.last?.push({ run_id: 7, status: 'done', phase: 'finished', message: 'Finished', step: 7, steps: 7, elapsed_seconds: 130, run: run({ verdicts }) })
+    const result = await screen.findByTestId('bench-run')
+    const line = within(result).getByTestId('speed-verdict')
+    expect(line).toHaveAttribute('data-source', 'measured')
+    for (const chip of line.querySelectorAll('.verdict__chip')) expect(chip).toHaveClass('figure--measured')
+    expect(within(result).getByText(/Graded on answer speed alone/)).toBeInTheDocument()
+    await userEvent.click(within(line).getByRole('button', { name: "What is tok/s?" }))
+    expect(within(line).getByRole('note')).toHaveTextContent(/tokens per second/)
   })
 
   it('stops a running test, and says the memory was freed', async () => {

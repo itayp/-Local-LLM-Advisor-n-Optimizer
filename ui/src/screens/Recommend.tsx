@@ -5,6 +5,7 @@ import type { Purpose, Recommendation, RecommendResult } from '../api/types'
 import { Figure, formatBytes } from '../components/Figure'
 import { ModelList } from '../components/ModelList'
 import { PublicLine } from '../components/PublicFigure'
+import { SpeedWithVerdict } from '../components/SpeedVerdict'
 import { Working } from '../components/Working'
 import { en } from '../copy/en'
 import { useAdvanced, useSettings } from '../state/settings'
@@ -164,7 +165,7 @@ function Card({ r, pathSource, advanced }: { r: Recommendation; pathSource: Reco
 
       <dl className="card__figures">
         <dt>{c.speed}</dt>
-        <dd>{r.speed ? <Figure rate={r.speed} /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
+        <dd>{r.speed ? <SpeedWithVerdict rate={r.speed} verdicts={r.verdicts} compact /> : <span className="card__unknown">{c.noSpeed}</span>}</dd>
         <dt>{c.memory}</dt>
         <dd>
           <Figure bytes={r.estimate.memory.total} />

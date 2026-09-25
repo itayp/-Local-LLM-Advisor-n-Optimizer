@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { BenchProgress, BenchRun, Rate } from '../api/types'
 import { Figure } from '../components/Figure'
 import { Term } from '../components/Term'
+import { SpeedWithVerdict } from '../components/SpeedVerdict'
 import { TestProgress } from '../components/TestProgress'
 import { en } from '../copy/en'
 
@@ -94,7 +95,7 @@ export function TryIt({ modelName, priorEstimate, onNext }: { modelName: string;
               ) : null}
               <dt>{c.measured}</dt>
               <dd>
-                <Figure rate={run.generation_tps} />
+                <SpeedWithVerdict rate={run.generation_tps} verdicts={run.verdicts} />
               </dd>
             </dl>
             <button type="button" className="button" onClick={onNext}>

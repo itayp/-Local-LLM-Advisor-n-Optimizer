@@ -15,9 +15,11 @@ import (
 
 	"advisor/internal/backend"
 	"advisor/internal/bench"
+	"advisor/internal/catalog"
 	"advisor/internal/estimate"
 	"advisor/internal/figure"
 	"advisor/internal/hardware"
+	"advisor/internal/recommend"
 )
 
 // benchOllama is a fake Ollama that can run a benchmark: it loads a model
@@ -206,6 +208,26 @@ func TestBenchmarkEndpoints(t *testing.T) {
 		t.Fatalf("history %+v", hist)
 	}
 
+	// Backlog (j): a finished run, its last event and its history row each
+	// carry a MEASURED verdict per saved purpose — chat when none is saved.
+	for where, vs := range map[string][]recommend.SpeedVerdict{"run": run.Verdicts, "last event": last.Run.Verdicts, "history": hist.Runs[0].Verdicts} {
+		if len(vs) != 1 || vs[0].Purpose != catalog.PurposeChat || !vs[0].Known || vs[0].Source != figure.Measured || vs[0].Text == "" {
+			t.Errorf("%s verdicts: %+v", where, vs)
+		}
+	}
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(`{"purposes":["coding","long_context"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("saving purposes: %v %v", err, resp)
+	}
+	getJSON(t, ts.URL+"/api/bench/history", http.StatusOK, &hist)
+	if vs := hist.Runs[0].Verdicts; len(vs) != 2 || vs[0].Purpose != catalog.PurposeCoding || vs[1].Purpose != catalog.PurposeLongContext {
+		t.Fatalf("verdicts follow the saved purposes: %+v", vs)
+	} else if vs[0].Note != "" || !strings.Contains(vs[1].Note, "answer speed alone") {
+		// The suite times a 2000 prompt (coding's) and nothing as long as a long document.
+		t.Errorf("which prompt each purpose reads at: %+v", vs)
+	}
+
 	// Product rule 4's second sentence: the estimate of the measured
 	// configuration is the measurement now; another context is still an
 	// estimate, calibrated by it.
@@ -218,10 +240,16 @@ func TestBenchmarkEndpoints(t *testing.T) {
 	if g.Source != figure.Measured || g.Value != 150 || fit.Fits[0].Estimate.Basis.SpeedSource != estimate.SpeedMeasured {
 		t.Fatalf("measured configuration: %+v", fit.Fits[0].Estimate.Speed)
 	}
+	if vs := fit.Fits[0].Verdicts; len(vs) != 2 || vs[0].Source != figure.Measured {
+		t.Fatalf("a measured configuration's verdict is measured: %+v", vs)
+	}
 	getJSON(t, ts.URL+"/api/models/"+id+"/fit?ctx=16384", http.StatusOK, &fit)
 	s := fit.Fits[0].Estimate.Speed
 	if s.Generation.Source != figure.Estimated || !s.Calibrated || s.CalibratedFrom != "llama3.2:1b" {
 		t.Fatalf("a neighbouring configuration: %+v", s)
+	}
+	if vs := fit.Fits[0].Verdicts; len(vs) != 2 || vs[0].Source != figure.Estimated {
+		t.Fatalf("an estimated configuration's verdict is estimated: %+v", vs)
 	}
 }
 

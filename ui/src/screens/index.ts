@@ -21,8 +21,8 @@ import { Watch } from './Watch'
  * flow in front of it; step 8 fills in Home, Models and Settings (Recommend
  * and Benchmarks were already built, in steps 5 and 6, to give those
  * steps' own gates something to run on a machine without a terminal); step
- * 10 fills in New models. Ollama stays a placeholder — it was never
- * assigned its own screen.
+ * 10 fills in New models. Ollama shows the status Home reads, with Home's
+ * install and start cards (backlog (j) part 1).
  */
 export interface Screen {
   path: string
