@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { HardwareResponse, Health, NotifyMode } from '../api/types'
+import type { HardwareResponse, Health, NotifyMode, UpdateCheckResponse } from '../api/types'
 import { formatBytes } from '../components/Figure'
 import { en } from '../copy/en'
 import { useSettings } from '../state/settings'
@@ -100,7 +100,7 @@ export function Settings() {
 
       <div className="settings-section">
         <h2>{c.updatesTitle}</h2>
-        <p className="screen__note">{en.placeholder.comingIn(c.updatesStep)}</p>
+        <UpdateCheck />
       </div>
 
       <div className="settings-section">
@@ -129,6 +129,69 @@ export function Settings() {
         </dl>
       </div>
     </section>
+  )
+}
+
+/**
+ * "Check for updates" (build-plan step 11): one manual, on-click look at
+ * the release feed — never on a timer (internal/update's own doc comment,
+ * D-62). Three outcomes: up to date, a newer version with a link to it, or
+ * — for a from-source ("dev") build — the latest release shown with no
+ * claim about whether this build is behind it, since there is nothing
+ * honest to compare.
+ */
+function UpdateCheck() {
+  const [state, setState] = useState<'idle' | 'checking' | 'done' | 'failed'>('idle')
+  const [info, setInfo] = useState<UpdateCheckResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const check = () => {
+    setState('checking')
+    setError(null)
+    api
+      .checkUpdate()
+      .then((resp) => {
+        setInfo(resp)
+        if (resp.checked) {
+          setState('done')
+        } else {
+          setState('failed')
+          setError(resp.error ?? '')
+        }
+      })
+      .catch((err: unknown) => {
+        setState('failed')
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }
+
+  return (
+    <div className="setting">
+      <button type="button" className="button button--secondary" disabled={state === 'checking'} onClick={check}>
+        {state === 'checking' ? c.updatesChecking : c.updatesCheck}
+      </button>
+      {state === 'done' && info ? (
+        <p className="screen__note">
+          {info.current === 'dev' && info.latest ? (
+            c.updatesDevBuild(info.latest)
+          ) : info.update_available && info.latest ? (
+            <>
+              {c.updatesAvailable(info.latest)}{' '}
+              <a href={info.url} target="_blank" rel="noreferrer">
+                {c.updatesDownload}
+              </a>
+            </>
+          ) : (
+            c.updatesUpToDate(info.current)
+          )}
+        </p>
+      ) : null}
+      {state === 'failed' ? (
+        <span className="notice notice--warning" role="alert">
+          {c.updatesFailed(error ?? '')}
+        </span>
+      ) : null}
+    </div>
   )
 }
 

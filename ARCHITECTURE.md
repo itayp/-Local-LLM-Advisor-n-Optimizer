@@ -2,7 +2,9 @@
 
 **Status:** accepted, step 1 (2026-09-18); D-23 to D-26 added in step 2,
 D-27 to D-31 in step 3, D-32 to D-37 in step 4, D-38 to D-43 in step 5,
-D-44 to D-49 in step 6.
+D-44 to D-51 in step 6, D-52 in step 7, D-53 to D-56 in step 9b, D-57 in
+step 10, D-58 to D-59 in the recommendation-ranking backlog work that
+followed, D-60 to D-63 in step 11.
 Every later step inherits this shape. A change to a decision here is a new
 numbered entry that supersedes the old one — the old entry stays, marked
 superseded, so the reasoning survives.
@@ -2229,3 +2231,96 @@ failing until the trial.
 `usable` feel worse than the bars say, the fix is to move the bars in
 `speed-needs.yaml`, not to steepen this term again without a test showing
 what it picks.
+
+## D-60. Packaging: GoReleaser OSS for the cross-compiled artifacts, hand-rolled scripts for the rest
+
+**Decision.** `.goreleaser.yaml` builds and archives all four targets,
+merges the two macOS binaries into one universal binary, builds the Linux
+`.deb` via its bundled `nfpm`, writes checksums, and creates the GitHub
+Release — everything GoReleaser OSS can build. The macOS `.app`/`.dmg`
+(with notarization), the Windows Inno Setup installer, and the Linux
+AppImage are each a hand-rolled script under `packaging/<os>/`, run as
+separate steps in three more CI jobs that attach their output to the same
+release with `gh release upload`. GoReleaser's own app-bundle/notarize/
+MSI/AppImage pipes are Pro-only; buying Pro to avoid roughly 250 lines of
+shell was not worth it for three scripts that, once written, need no
+further maintenance most releases.
+
+**Consequences.** Two build paths per macOS/Linux binary: the `release`
+job's own GoReleaser build (for the raw archive) and the packaging jobs'
+downloaded copy of the `build` job's already-smoke-tested binary (for the
+`.dmg`/AppImage) — redundant, but each side stays simple to reason about
+alone, and RELEASING.md names both. `make dmg`, `make installer` and `make
+appimage` wrap the same three scripts locally, each locked to the OS it
+packages — only `appimage` can run inside this repo's own Linux CI runner
+(and did, for real, while building this: a genuine `appimagetool` build
+whose output actually launched under FUSE and answered `/api/health`); the
+other two were reviewed carefully but only CI on a real macOS or Windows
+runner proves them (`claude/step-11-packaging.md` says exactly which
+checks ran where).
+
+## D-61. The tray icon: gogpu/systray, wrapped behind internal/tray's own interface
+
+**Decision.** `internal/tray` wraps `github.com/gogpu/systray` (MIT, pure
+Go — Win32 `Shell_NotifyIconW` via the `golang.org/x/sys` this repo already
+depends on, AppKit via pure-Go FFI on macOS, D-Bus `StatusNotifierItem` via
+`github.com/godbus/dbus/v5` on Linux), rather than break D-26's "nothing
+that needs cgo, ever" for one of the older, cgo-based tray libraries. The
+library is young (first tagged release v0.3.0), so `internal/tray` keeps a
+small, stable interface (`Run`, a menu-item type) between it and the rest
+of the app — swapping the backend later, if it proves flaky, is a
+`internal/tray/runner.go` change, not a `cmd/advisor` one. A tray init
+failure (no D-Bus session, a headless box) is logged and the daemon keeps
+running headless; it must never crash the process — the same standard
+product rule 6 already set for weak hardware, applied here to a weak
+desktop environment instead.
+
+**Consequences.** Menu construction and the "start at login" checkbox's
+manual invert-and-confirm logic (the library does not auto-toggle
+`Checked` on click — confirmed by reading `platform_linux.go`, not
+assumed) are tested through a fake backend (`tray_test.go`); the real
+library cannot run in CI (no display, no D-Bus session) or in the sandbox
+this step was built in, so its actual on-screen behavior is unverified
+until someone runs the packaged app.
+
+## D-62. The update check: one allow-listed host, manual only, no background poller
+
+**Decision.** `internal/update.Check` makes a single unauthenticated GET to
+`api.github.com`'s "latest release" endpoint for this repo, only when the
+customer clicks Settings' "Check for updates" — never on a timer, never at
+startup. `PermittedHost` is its own constant, deliberately not folded into
+`internal/catalog/external.PermittedHosts`: that allow-list audits the
+model/benchmark data path, and this is a different button answering a
+different question. Nothing about the user or the machine rides along in
+the request — the same "no usage data leaves the machine" standard product
+rule 7 already holds the model-data path to.
+
+**Consequences.** No self-update in the MVP (BUILD_PLAN.md's step 11 says
+so explicitly) — a newer version is a link to INSTALL.md's download page,
+not an in-place replace. GitHub's unauthenticated rate limit (60
+requests/hour per IP) is plenty for a button a person clicks by hand; the
+handler surfaces a rate-limit response as a plain "try again later"
+rather than an error banner (seen for real while smoke-testing this step).
+
+## D-63. A real Windows identity: AUMID + toast, resolving backlog (k)
+
+**Decision.** `internal/winapp.RegisterIdentity` sets the process's
+explicit AppUserModelID (`SetCurrentProcessExplicitAppUserModelID`, via
+`syscall.NewLazyDLL` — no new dependency, no cgo) and its display name
+under `HKCU\Software\Classes\AppUserModelId`, unconditionally, on every
+start. `internal/watch/notify_windows.go` posts a real
+`Windows.UI.Notifications` toast under that AUMID (still shelled through
+PowerShell, matching the file's existing approach) instead of the legacy
+tray "balloon tip" (`NotifyIcon.ShowBalloonTip`), falling back to the
+balloon only when the toast call itself fails (no AUMID registered yet, an
+old Windows build). This is what backlog (k) asked for: a real OS
+notification with its own entry in Windows' notification settings and
+history, instead of a balloon that appeared with no permission surface at
+all.
+
+**Consequences.** Both HKCU-only, no installer or admin rights required —
+consistent with `internal/autostart`'s Windows path. Untestable outside a
+real Windows host; `notify_windows_script.go`'s pure string-building (the
+XML escaping, the PowerShell escaping, the two scripts' shape) is unit
+tested, but the toast actually appearing on screen is not — the same
+caveat D-61 makes about the tray.

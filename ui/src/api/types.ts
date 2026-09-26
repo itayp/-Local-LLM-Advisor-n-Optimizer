@@ -1076,6 +1076,24 @@ export interface ModelRemoveRequest {
   name: string
 }
 
+/**
+ * GET /api/update/check (Go: internal/update.Info, build-plan step 11). A
+ * manual check only — nothing here is a Figure, since a version string, a
+ * URL and a bool carry no provenance for product rule 4 to apply to.
+ * `checked` is false when the request itself failed (network, rate limit);
+ * `error` then says why. `update_available` is only ever true when both
+ * `current` and `latest` were plain released versions — never for a
+ * from-source ("dev") build, which has nothing honest to compare against.
+ */
+export interface UpdateCheckResponse {
+  current: string
+  latest?: string
+  url: string
+  update_available: boolean
+  checked: boolean
+  error?: string
+}
+
 // --- Public data (step 9b; Go: figure.Public, catalog.PublicEntry) -----------
 //
 // The third kind of number (research/EXTERNAL_SOURCES.md, the display rule):

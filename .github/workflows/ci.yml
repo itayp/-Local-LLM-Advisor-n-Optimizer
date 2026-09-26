@@ -148,3 +148,202 @@ jobs:
           name: advisor-${{ matrix.os }}
           path: dist/advisor-*
           if-no-files-found: error
+
+  # ---------------------------------------------------------------------
+  # Build-plan step 11: cutting a release. `release` publishes the GitHub
+  # Release itself (binaries, checksums, the .deb — everything
+  # .goreleaser.yaml's own comment says GoReleaser OSS can build). The
+  # three jobs after it each attach one more OS's hand-rolled artifact
+  # (macOS .app/.dmg, Windows installer, Linux AppImage) to that same
+  # release with `gh release upload` — none of the four exists without a
+  # `v*` tag; RELEASING.md is the human-facing walkthrough of this whole
+  # sequence, including the secrets table these jobs are already wired to
+  # look for.
+
+  release:
+    name: release (GoReleaser)
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # tags + full history: GoReleaser's own changelog and version detection need it
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  package-macos:
+    name: package (macOS .app + .dmg)
+    runs-on: macos-latest
+    needs: [build, release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: advisor-macos-latest
+          path: dist
+
+      - run: chmod +x dist/advisor-darwin-arm64 dist/advisor-darwin-amd64
+
+      # Ad-hoc signs unless every one of these five secrets is set, in
+      # which case build_app.sh (see its own header comment) imports the
+      # real Developer ID Application certificate, signs with the
+      # hardened runtime, and notarizes + staples — inert until Itay
+      # actually adds them (RELEASING.md's secrets table), no workflow
+      # change needed on that day.
+      - name: Build Local LLM Advisor.app
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          mkdir -p dist/macos
+          packaging/macos/build_app.sh "${{ steps.version.outputs.version }}" dist/macos dist/advisor-darwin-arm64 dist/advisor-darwin-amd64
+
+      - name: Build the .dmg
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: packaging/macos/build_dmg.sh "dist/macos/Local LLM Advisor.app" "dist/macos/Local LLM Advisor.dmg"
+
+      - name: Upload onto the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "dist/macos/Local LLM Advisor.dmg" --clobber
+
+  package-windows:
+    name: package (Windows installer)
+    runs-on: windows-latest
+    needs: [build, release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    # `if:` conditions can't read the secrets context directly (actionlint
+    # catches this — "context 'secrets' is not allowed here"); a job-level
+    # env var populated from the secret is the documented workaround, and
+    # what the two signed/unsigned steps below branch on instead.
+    env:
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: advisor-windows-latest
+          path: dist
+
+      # windows-latest doesn't reliably ship Inno Setup (open runner-images
+      # issues confirm it isn't guaranteed); installing it here is cheap
+      # and keeps the dependency explicit rather than hoped-for.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Decode the code-signing certificate
+        if: ${{ env.HAS_WINDOWS_CERT == 'true' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\codesign.pfx", $bytes)
+
+      # Signed path: needs signtool.exe (ships with the Windows SDK already
+      # on this image) and the decoded .pfx above. Inert until Itay adds
+      # WINDOWS_CERT_BASE64/WINDOWS_CERT_PASSWORD (RELEASING.md's secrets
+      # table) — no workflow change needed that day, same promise as macOS.
+      - name: Compile the installer (signed)
+        if: ${{ env.HAS_WINDOWS_CERT == 'true' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          iscc /DSIGN "/DMyAppVersion=${{ steps.version.outputs.version }}" "/DSourceExePath=dist\advisor-windows-amd64.exe" `
+            "/Ssigntool=signtool.exe sign /f $env:RUNNER_TEMP\codesign.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `$f" `
+            packaging\windows\setup.iss
+
+      - name: Compile the installer (unsigned)
+        if: ${{ env.HAS_WINDOWS_CERT != 'true' }}
+        shell: pwsh
+        run: iscc "/DMyAppVersion=${{ steps.version.outputs.version }}" "/DSourceExePath=dist\advisor-windows-amd64.exe" packaging\windows\setup.iss
+
+      - name: Upload onto the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "dist/LocalLLMAdvisor-Setup-${{ steps.version.outputs.version }}.exe" --clobber
+
+  package-linux-appimage:
+    name: package (Linux AppImage)
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: advisor-ubuntu-latest
+          path: dist
+
+      - run: chmod +x dist/advisor-linux-amd64
+
+      # The package name changed between Ubuntu releases (libfuse2 ->
+      # libfuse2t64); try both rather than pin the runner to one.
+      - name: Install appimagetool + FUSE
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64
+          curl -sL -o /usr/local/bin/appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Build the AppImage
+        run: packaging/linux/build_appimage.sh dist/advisor-linux-amd64 "dist/LocalLLMAdvisor-${{ steps.version.outputs.version }}-x86_64.AppImage"
+
+      - name: Upload onto the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" "dist/LocalLLMAdvisor-${{ steps.version.outputs.version }}-x86_64.AppImage" --clobber

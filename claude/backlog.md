@@ -478,6 +478,18 @@ left as a footnote. Until then, defaulting the watch's notification mode to
 quiet (see `watch.DefaultSettings`, changed 2026-09-25) is the mitigation:
 no popup, on any OS, until the user turns it on in Settings.
 
+**Resolved in step 11 (2026-09-26).** `internal/winapp.RegisterIdentity`
+registers a real AUMID (`ItayPollak.LocalLLMAdvisor`) and its display name
+unconditionally on every daemon start — no installer-time step needed,
+HKCU-only. `internal/watch/notify_windows.go` now posts a real
+`Windows.UI.Notifications` toast under that AUMID instead of the balloon
+tip, falling back to the balloon only if the toast call itself fails (no
+AUMID registered yet, an old Windows build). ARCHITECTURE.md D-63 has the
+decision; `claude/step-11-packaging.md` has what could and couldn't be
+verified without a real Windows machine — the toast actually prompting
+for permission and appearing on screen is one of the parts that still
+needs one.
+
 ## l. Already downloaded models in benchmark screen should have their sizes as well
 
 **From:** Itay, in-app testing feedback (2026-09-25).

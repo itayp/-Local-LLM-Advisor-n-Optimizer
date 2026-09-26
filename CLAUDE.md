@@ -72,7 +72,11 @@ internal/catalog/external/ public benchmark data (step 9b): the approved sources
 internal/estimate/      Fit (memory terms, split, category + the threshold that decided), the speed range, placement, gpus.yaml loader; Config holds every constant
 internal/recommend/     Recommend: at most three cards with templated reasons, versus-current, confidence; Config holds every weight
 internal/bench/         the benchmark harness (step 6): suite loader, plan + spill refusal, one-at-a-time runner with a cancel that unloads, 1 Hz resource sampler (per-OS probes behind a sysEnv seam), medians + spread, write-back and calibration evidence
-internal/watch/         new-model watch state, notifications, log (step 10)
+internal/watch/         new-model watch state, notifications, log (step 10); notify_windows.go posts a real AUMID-attributed toast (step 11, D-63), falling back to the legacy balloon
+internal/tray/          the tray icon + menu (step 11, D-61): wraps gogpu/systray behind Run(ctx, Options); a fake backend makes menu construction and the autostart toggle testable without a real OS tray
+internal/autostart/     "start at login" (step 11): one file per OS behind a cmdRunner/registry seam — a LaunchAgent plist (macOS), the HKCU Run key (Windows, the same value the installer's own checkbox writes), a systemd user unit (Linux, no sudo)
+internal/update/        Check (step 11, D-62): one GET to GitHub's release feed, only on a manual "Check for updates" click; PermittedHost is its own allow-list, apart from catalog/external's
+internal/winapp/        Windows-only identity (step 11, D-63): registers the AUMID and its display name so toast notifications, the tray and the installer all read as one app; a no-op on macOS/Linux
 internal/figure/        Source, Bytes, Rate, Public, Check and CheckSeparation — product rule 4, and public data kept apart
 internal/version/       Version (set by -ldflags), GoVersion
 ui/                     Vite + React + TypeScript; builds into internal/server/ui/dist
@@ -80,10 +84,14 @@ data/                   data.go embeds the data files (package advisor/data)
 data/catalog/           families.yaml — the curated catalogue (data, never counted in prose); external.yaml — the approved public-data sources and the metric → purpose map; aliases.yaml — each source's names for catalogue sizes
 data/hardware/          runtime-support.yaml — which GPU path Ollama should use per card; gpus.yaml — memory bandwidth per graphics part and processor family; both with sources and dates
 data/bench/             suite.yaml + text.txt — the benchmark suite: the advisor's own prose, three prompts, the options; versioned and pinned by digest (suite_test.go)
+data/icon/              the tray icon PNGs, embedded (step 11); scripts/gen_icon.py is the one source for these and for every per-OS derivative under packaging/
 scripts/probe0/         step 0's estimator experiment, unchanged, with its reports in results/ (internal/estimate's tests replay them)
 scripts/calibrate/      the dev-side speed instrument: llama-bench JSON → the speed model's factors, results/ to commit; README says how
+scripts/gen_icon.py     generates packaging/icon/master.png and every size derived from it (data/icon's PNGs, packaging/windows/icon.ico, packaging/linux/icons/hicolor/*) — rerun and commit the output if the design changes (RELEASING.md)
+packaging/              per-OS packaging scripts (step 11): macos/ (Info.plist template, build_app.sh, build_dmg.sh), windows/ (setup.iss, the Inno Setup installer), linux/ (the .desktop entry, the hicolor icon set, build_appimage.sh, the .deb's pre/post install scripts) — RELEASING.md is the walkthrough, claude/step-11-packaging.md says what was verified where
+.goreleaser.yaml        builds + archives + the .deb + checksums + the GitHub Release; what it does and doesn't cover is in its own header comment and RELEASING.md
 claude/                 step-by-step build history: one doc per BUILD_PLAN.md step (closed once its gate passes), plus backlog.md and ci-failures-to-fix.md; real repo files, not just Project docs
-.github/workflows/      CI: ubuntu, macos, windows
+.github/workflows/      CI: ubuntu, macos, windows; a `v*` tag additionally runs the release job and three packaging jobs (step 11, RELEASING.md)
 ```
 
 Dependency direction is one way (`ARCHITECTURE.md` D-11): `cmd` → `server`
@@ -100,6 +108,9 @@ make test       # UI build, go test ./... (UI embedded), UI tests — what CI ru
 make test-go    # go test -tags noui ./... — no Node needed
 make check      # gofmt, go vet, tsc
 make build      # dist/advisor-{linux-amd64,darwin-arm64,darwin-amd64,windows-amd64[.exe]}
+make dmg        # macOS only: dist/macos/Local LLM Advisor.dmg (needs Xcode's command line tools)
+make installer  # Windows only: the Inno Setup installer (needs iscc on PATH)
+make appimage   # Linux only: a self-contained dist/*.AppImage (needs appimagetool on PATH)
 ```
 
 On a Mac, `scripts/verify.command` (double-clickable) runs `go mod tidy`,
@@ -111,8 +122,12 @@ a session cannot run Go itself.
   because `go:embed` needs the built UI to exist. Until then use `-tags noui`.
 - `make dev` keeps its data in `./.dev-data` (`ADVISOR_DATA_DIR`), never in
   the real data folder.
-- The daemon: `advisor [-port N] [-data-dir DIR] [-no-browser] [-v] [-version]`.
-  The port is the only network setting.
+- The daemon: `advisor [-port N] [-data-dir DIR] [-no-browser] [-v] [-version] [-tray]`.
+  The port is the only network setting. `-tray` (step 11) is what the
+  packaged app's launchers set — a tray icon and menu instead of a plain
+  terminal process, with the first-ever launch opening the browser once
+  and every launch after that not; `make dev` and a bare invocation leave
+  it off, unchanged.
 - The curator's catalogue tools (never the customer's):
   `advisor catalog check [FILE]` validates `families.yaml`, `external.yaml`
   and `aliases.yaml` offline;
@@ -239,9 +254,14 @@ add the name when you add a row. A part that is not in the file gets no
 speed estimate, by design.
 
 **Dependencies.** Go: stdlib + `modernc.org/sqlite`, `github.com/goccy/go-yaml`
-(data files) and `golang.org/x/sys` (CPUID) — ARCHITECTURE.md D-26. UI:
-React, React Router, Vite, Vitest, Testing Library. A new one is a sentence
-in the PR saying what it replaces. Nothing that needs cgo, ever.
+(data files) and `golang.org/x/sys` (CPUID, and the Windows registry calls
+`internal/autostart`/`internal/winapp` make) — ARCHITECTURE.md D-26. Step
+11 (D-61) adds the tray icon's three: `github.com/gogpu/systray` (pure Go,
+wrapped behind `internal/tray`'s own interface since it's a young
+library), its `github.com/go-webgpu/goffi` dependency, and
+`github.com/godbus/dbus/v5` (its Linux D-Bus backend) — still zero cgo.
+UI: React, React Router, Vite, Vitest, Testing Library. A new one is a
+sentence in the PR saying what it replaces. Nothing that needs cgo, ever.
 
 **Network.** Outbound requests go only to the model sources on an allow-list:
 Hugging Face (`huggingface.co` and its CDNs), the Ollama download host (step

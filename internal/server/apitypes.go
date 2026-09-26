@@ -10,6 +10,7 @@ import (
 	"advisor/internal/estimate"
 	"advisor/internal/hardware"
 	"advisor/internal/recommend"
+	"advisor/internal/update"
 	"advisor/internal/watch"
 )
 
@@ -75,5 +76,6 @@ func APITypes() []any {
 		SettingsResponse{},
 		SettingsUpdate{},
 		ModelRemoveRequest{},
+		update.Info{}, // GET /api/update/check (build-plan step 11); no numeric fields
 	}
 }

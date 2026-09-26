@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Local LLM Advisor
+Comment=Find AI models that fit your computer, and see how fast they'll run
+Exec=advisor -tray
+Icon=local-llm-advisor
+Terminal=false
+Categories=Utility;
+NoDisplay=false

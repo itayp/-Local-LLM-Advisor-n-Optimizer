@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
-import type { HardwareResponse, SettingsResponse } from '../api/types'
+import type { HardwareResponse, SettingsResponse, UpdateCheckResponse } from '../api/types'
 import { en } from '../copy/en'
 
 const c = en.screens.settings
@@ -51,7 +51,13 @@ function settings(over: Partial<SettingsResponse> = {}): SettingsResponse {
   }
 }
 
-function serve(opts: { hw?: HardwareResponse | 'unreachable'; settings?: SettingsResponse; openDataFails?: string; openModelsFails?: string }) {
+function serve(opts: {
+  hw?: HardwareResponse | 'unreachable'
+  settings?: SettingsResponse
+  openDataFails?: string
+  openModelsFails?: string
+  update?: UpdateCheckResponse
+}) {
   const calls: { url: string; method: string; body?: string }[] = []
   vi.stubGlobal(
     'fetch',
@@ -71,6 +77,9 @@ function serve(opts: { hw?: HardwareResponse | 'unreachable'; settings?: Setting
       if (url === '/api/settings/open-models-dir' && method === 'POST') {
         if (opts.openModelsFails) return json({ error: { code: 'open_failed', message: opts.openModelsFails } }, 500)
         return json({})
+      }
+      if (url === '/api/update/check' && method === 'GET') {
+        return json(opts.update ?? { current: '1.4.0', latest: '1.4.0', url: 'https://example.com/releases', update_available: false, checked: true })
       }
       return json({ version: '1.4.0', os: 'darwin', arch: 'arm64', go_version: 'go1.27.1' })
     }),
@@ -151,10 +160,49 @@ describe('Settings', () => {
     expect(within(row).queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('writes what updates will be, rather than leaving it blank', async () => {
-    serve({})
-    open()
-    expect(await screen.findByText(en.placeholder.comingIn(c.updatesStep))).toBeInTheDocument()
+  describe('Check for updates', () => {
+    it('does not check until the button is clicked', async () => {
+      const calls = serve({})
+      open()
+      await screen.findByRole('button', { name: c.updatesCheck })
+      expect(calls.some((x) => x.url === '/api/update/check')).toBe(false)
+    })
+
+    it('reports being up to date', async () => {
+      const user = userEvent.setup()
+      serve({ update: { current: '1.4.0', latest: '1.4.0', url: 'https://example.com/releases', update_available: false, checked: true } })
+      open()
+      await user.click(await screen.findByRole('button', { name: c.updatesCheck }))
+      expect(await screen.findByText(c.updatesUpToDate('1.4.0'))).toBeInTheDocument()
+    })
+
+    it('offers a download link when a newer version is out', async () => {
+      const user = userEvent.setup()
+      serve({ update: { current: '1.4.0', latest: '1.5.0', url: 'https://example.com/releases/1.5.0', update_available: true, checked: true } })
+      open()
+      await user.click(await screen.findByRole('button', { name: c.updatesCheck }))
+      expect(await screen.findByText(new RegExp(c.updatesAvailable('1.5.0')))).toBeInTheDocument()
+      const link = screen.getByRole('link', { name: c.updatesDownload }) as HTMLAnchorElement
+      expect(link.href).toBe('https://example.com/releases/1.5.0')
+    })
+
+    it('never claims a from-source build is behind, only shows the latest release', async () => {
+      const user = userEvent.setup()
+      serve({ update: { current: 'dev', latest: '1.5.0', url: 'https://example.com/releases', update_available: false, checked: true } })
+      open()
+      await user.click(await screen.findByRole('button', { name: c.updatesCheck }))
+      expect(await screen.findByText(c.updatesDevBuild('1.5.0'))).toBeInTheDocument()
+    })
+
+    it('reports a failed check in words', async () => {
+      const user = userEvent.setup()
+      serve({
+        update: { current: '1.4.0', url: 'https://example.com/releases', update_available: false, checked: false, error: 'no release has been published yet' },
+      })
+      open()
+      await user.click(await screen.findByRole('button', { name: c.updatesCheck }))
+      expect(await screen.findByText(c.updatesFailed('no release has been published yet'))).toBeInTheDocument()
+    })
   })
 
   it('shows the watch settings and persists a change to each', async () => {

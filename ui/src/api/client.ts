@@ -28,6 +28,7 @@ import type {
   SettingsUpdate,
   SpeedNeedsResponse,
   UnknownInstalledResponse,
+  UpdateCheckResponse,
   WatchLogResponse,
   WatchReport,
 } from './types'
@@ -203,6 +204,8 @@ export const api = {
   watchLog: (signal?: AbortSignal) => get<WatchLogResponse>('/watch/log', signal),
   /** Run a watch check now. 409 while one is already running. */
   watchRun: (signal?: AbortSignal) => send<WatchReport>('POST', '/watch/run', signal),
+  /** Settings' manual "Check for updates" button (build-plan step 11): one live look at the release feed, never on a timer. */
+  checkUpdate: (signal?: AbortSignal) => get<UpdateCheckResponse>('/update/check', signal),
 }
 
 /** How long a silent event stream is waited for before polling instead, and how often a poll asks. */

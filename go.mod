@@ -4,12 +4,15 @@ go 1.27.1
 
 require (
 	github.com/goccy/go-yaml v1.19.2
+	github.com/gogpu/systray v0.3.0
 	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.57.0
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-webgpu/goffi v0.6.3 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect

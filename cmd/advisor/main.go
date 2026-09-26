@@ -20,14 +20,33 @@ import (
 	"syscall"
 	"time"
 
+	"advisor/data/icon"
+	"advisor/internal/autostart"
 	"advisor/internal/backend"
 	"advisor/internal/hardware"
 	"advisor/internal/server"
 	"advisor/internal/store"
+	"advisor/internal/tray"
 	"advisor/internal/version"
+	"advisor/internal/winapp"
 
 	_ "advisor/internal/backend/ollama" // registers itself with internal/backend on import
 )
+
+// appDisplayName is what the tray menu and "start at login" entries call
+// this program — the same name ui/src/copy/en.ts's app.title uses, kept
+// here as a literal rather than shared code because there is nothing to
+// import: this is native OS text, never rendered by the browser UI.
+const appDisplayName = "Local LLM Advisor"
+
+// appLaunchedBeforeKey gates the one-time-only browser open in tray mode
+// (BUILD_PLAN.md step 11: "first launch opens the browser at the app;
+// later launches just start the daemon") — the same generic settings
+// table internal/server/settings.go's own keys use, so no new migration.
+// It is only ever consulted when -tray is set: a plain terminal invocation
+// (make dev, a developer's own build) always opens the browser, exactly as
+// it always has.
+const appLaunchedBeforeKey = "app.launched_before"
 
 func main() {
 	if isCatalogCommand(os.Args) {
@@ -49,6 +68,7 @@ func run() int {
 		flagNoBrowser = flag.Bool("no-browser", false, "do not open the browser on start (make dev sets this; Vite opens its own)")
 		flagVersion   = flag.Bool("version", false, "print the version and exit")
 		flagVerbose   = flag.Bool("v", false, "debug logging")
+		flagTray      = flag.Bool("tray", false, "show a tray icon and menu instead of a plain terminal process (build-plan step 11: the packaged app's launchers set this; make dev and a bare invocation leave it off)")
 	)
 	flag.Parse()
 
@@ -62,6 +82,15 @@ func run() int {
 		level = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
+	// A no-op on macOS and Linux; on Windows, gives this process a real
+	// identity (internal/winapp) so a toast notification can be attributed
+	// to it (claude/backlog.md item (k)) whether it was launched from the
+	// Start Menu, the "start at login" registry entry, or a bare
+	// double-click. HKCU-only: never fatal, never needs admin.
+	if err := winapp.RegisterIdentity(); err != nil {
+		log.Warn("registering this process's Windows identity", "err", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -167,9 +196,36 @@ func run() int {
 	// Settings screen's, read fresh on every tick.
 	go srv.WatchScheduler(ctx)
 
-	// Open the browser exactly once, after the listener is up. If that fails
-	// (no desktop, no browser), the URL is in the log and the daemon runs on.
-	if !*flagNoBrowser {
+	if *flagTray {
+		// First launch ever (in tray mode) opens the browser once; every
+		// launch after that just starts the daemon and waits at the tray
+		// icon — BUILD_PLAN.md step 11. A plain (non-tray) invocation,
+		// below, is unaffected and always opens the browser as it always
+		// has (make dev, a developer's own terminal use).
+		first := true
+		if v, ok, err := st.Setting(ctx, appLaunchedBeforeKey); err != nil {
+			log.Warn("reading whether this is the first tray launch", "err", err)
+		} else {
+			first = !ok || v != "1"
+		}
+		if first && !*flagNoBrowser {
+			if err := openBrowser(url); err != nil {
+				log.Warn("could not open a browser; open the address yourself", "url", url, "err", err)
+			}
+			if err := st.SetSetting(ctx, appLaunchedBeforeKey, "1"); err != nil {
+				log.Warn("recording that the first launch happened", "err", err)
+			}
+		}
+
+		runTray(ctx, log, stop, url)
+		// tray.Run only returns once ctx is cancelled (Quit, or the tray
+		// backend could not start at all and it fell back to headless —
+		// either way the select below is the same shutdown wait as the
+		// non-tray path).
+	} else if !*flagNoBrowser {
+		// Open the browser exactly once, after the listener is up. If that
+		// fails (no desktop, no browser), the URL is in the log and the
+		// daemon runs on.
 		if err := openBrowser(url); err != nil {
 			log.Warn("could not open a browser; open the address yourself", "url", url, "err", err)
 		}
@@ -188,6 +244,58 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+// runTray shows the tray icon and blocks until ctx is cancelled or the
+// user clicks Quit (internal/tray). It must be called from this goroutine
+// — main()'s own, never a spawned one — because the tray backend locks
+// the OS thread it was imported on (internal/tray's own doc comment).
+func runTray(ctx context.Context, log *slog.Logger, stop context.CancelFunc, url string) {
+	target := autostart.Target{Name: appDisplayName, Args: []string{"-tray"}}
+	var autostartEnabled func() bool
+	var autostartSet func(bool) error
+	if execPath, err := os.Executable(); err != nil {
+		// "Start at login" is simply not offered — a tray with two menu
+		// items instead of three is a smaller failure than a crash, and
+		// there is nothing the user could do about this anyway.
+		log.Warn(`could not find this program's own path; "start at login" will not be offered`, "err", err)
+	} else {
+		target.ExecPath = execPath
+		autostartEnabled = func() bool {
+			enabled, err := autostart.Enabled(ctx, target)
+			if err != nil {
+				log.Warn(`checking "start at login"`, "err", err)
+			}
+			return enabled
+		}
+		autostartSet = func(enabled bool) error {
+			if enabled {
+				return autostart.Enable(ctx, target)
+			}
+			return autostart.Disable(ctx, target)
+		}
+	}
+
+	err := tray.Run(ctx, tray.Options{
+		Tooltip:   appDisplayName,
+		AppName:   appDisplayName,
+		Icon:      tray.Icon{PNG: icon.Tray, Template: icon.TrayTemplate},
+		OpenLabel: "Open " + appDisplayName,
+		Open: func() {
+			if err := openBrowser(url); err != nil {
+				log.Warn("could not open a browser; open the address yourself", "url", url, "err", err)
+			}
+		},
+		AutostartLabel:   "Start at login",
+		AutostartEnabled: autostartEnabled,
+		AutostartSet:     autostartSet,
+		QuitLabel:        "Quit",
+		Quit:             stop,
+		Log:              log.Warn,
+	})
+	if err != nil {
+		log.Warn("tray: stopped", "err", err)
+	}
 }
 
 // openBrowser asks the OS to open url in the default browser. It returns

@@ -1,0 +1,132 @@
+# .goreleaser.yaml — build-plan step 11. Builds the four cross-compiled
+# binaries, combines the two macOS slices into one universal binary,
+# archives everything, builds the Linux .deb (via nfpm), writes
+# checksums, and publishes the GitHub Release — the same tagged release
+# the CI "release" job's other three jobs (task 11) then attach the
+# macOS .app/.dmg, the Windows installer, and the Linux AppImage to with
+# `gh release upload`. GoReleaser OSS builds none of those four itself
+# (no app-bundle/dmg/notarize pipe, no MSI/Inno Setup, no AppImage — the
+# Pro edition has some of this, the OSS edition does not), which is why
+# packaging/{macos,windows,linux}/ hold hand-rolled scripts instead.
+#
+# Try it locally without a tag or a token:
+#   goreleaser release --snapshot --clean --skip=publish,announce,sign
+# RELEASING.md walks through cutting a real release.
+version: 2
+
+project_name: local-llm-advisor
+
+before:
+  hooks:
+    # go:embed needs internal/server/ui/dist to exist before `go build`
+    # runs for any target — same requirement `make build` documents.
+    - go mod tidy
+    - make ui
+
+builds:
+  - id: advisor
+    main: ./cmd/advisor
+    binary: advisor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Matches Makefile's TARGETS: linux/amd64, darwin/arm64,
+      # darwin/amd64, windows/amd64 — no *:arm64 Windows build (no CI
+      # runner to test it on) and no linux/arm64 (not a supported target
+      # yet; add it to both places together if that changes).
+      - goos: windows
+        goarch: arm64
+      - goos: linux
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      # Exactly the Makefile's LDFLAGS, so a GoReleaser build and a
+      # `make build` produce byte-identical version stamping.
+      - -s -w -X advisor/internal/version.Version={{ .Version }}
+
+# darwin/arm64 + darwin/amd64 -> one universal binary, replacing the two
+# architecture-specific ones in the archive (Rule: "the customer never
+# needs a terminal" includes never needing to know which Mac chip they
+# have).
+universal_binaries:
+  - id: advisor
+    replace: true
+    # Without this, GoReleaser names the merged binary after
+    # project_name ("local-llm-advisor") instead of keeping "advisor" —
+    # the same executable name linux and windows archives use.
+    name_template: advisor
+
+archives:
+  - id: advisor
+    ids: [advisor]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+# The Linux .deb. Its contents are exactly what packaging/linux/ holds:
+# the desktop entry, the hicolor icon set scripts/gen_icon.py generates,
+# and the two cache-refresh scripts — nothing here duplicates those
+# files, it only tells nfpm where they go.
+nfpms:
+  - id: advisor-deb
+    ids: [advisor]
+    package_name: local-llm-advisor
+    file_name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Arch }}
+    vendor: Itay Pollak
+    homepage: https://github.com/itayp/-Local-LLM-Advisor-n-Optimizer
+    maintainer: "Itay Pollak <pollak.itay@gmail.com>"
+    description: >-
+      Find AI models that fit your computer, and see how fast they'll run.
+    section: utils
+    priority: optional
+    formats:
+      - deb
+    contents:
+      - src: packaging/linux/local-llm-advisor.desktop
+        dst: /usr/share/applications/local-llm-advisor.desktop
+      - src: packaging/linux/icons/hicolor/16x16/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/16x16/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/32x32/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/32x32/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/48x48/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/48x48/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/64x64/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/64x64/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/128x128/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/128x128/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/256x256/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/256x256/apps/local-llm-advisor.png
+      - src: packaging/linux/icons/hicolor/512x512/apps/local-llm-advisor.png
+        dst: /usr/share/icons/hicolor/512x512/apps/local-llm-advisor.png
+    scripts:
+      postinstall: packaging/linux/deb-postinstall.sh
+      postremove: packaging/linux/deb-postremove.sh
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: itayp
+    name: -Local-LLM-Advisor-n-Optimizer
+  # macOS .app/.dmg, the Windows installer, and the Linux AppImage land on
+  # this same release afterward — CI's per-OS jobs (task 11), not this
+  # config.
+
+# No changelog section beyond GoReleaser's own default (commit list since
+# the previous tag) — CLAUDE.md's "counts and model names in prose rot"
+# rule is about the product's own copy, not release notes, but there is
+# nothing curated to say here either; RELEASING.md documents the release
+# process itself.

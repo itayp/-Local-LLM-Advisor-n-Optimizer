@@ -25,6 +25,7 @@ import (
 	"advisor/internal/backend"
 	"advisor/internal/bench"
 	"advisor/internal/store"
+	"advisor/internal/update"
 	"advisor/internal/version"
 )
 
@@ -105,6 +106,12 @@ type Server struct {
 	// two "open" buttons). Defaults to openInFileManager; tests set it to
 	// a fake so they never launch a real file manager.
 	open func(dir string) error
+
+	// checkUpdate answers GET /api/update/check (build-plan step 11,
+	// update.go). Defaults to defaultCheckUpdate (a real, timeout-bounded
+	// HTTP client); tests set it to a fake so they never touch the
+	// network, the same seam style as open and backendList.
+	checkUpdate func(ctx context.Context, current string) update.Info
 }
 
 // New builds a Server. Dependencies are added as parameters by the steps
@@ -114,7 +121,7 @@ func New(log *slog.Logger, st *store.Store) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All, open: openInFileManager}
+	s := &Server{log: log, mux: http.NewServeMux(), started: time.Now(), store: st, backendList: backend.All, open: openInFileManager, checkUpdate: defaultCheckUpdate}
 	s.hw.ready = make(chan struct{})
 	s.cat.init()
 	s.wch.init()
@@ -190,6 +197,10 @@ func (s *Server) routes() {
 	// already uses (watch.go).
 	s.api("GET /api/watch/log", s.handleWatchLog)
 	s.api("POST /api/watch/run", s.handleWatchRun)
+	// The Settings screen's manual "Check for updates" button (build-plan
+	// step 11): GET, not POST — read-only, nothing stored — but still a
+	// live network call, so it never runs on a timer (update.go, D-62).
+	s.api("GET /api/update/check", s.handleUpdateCheck)
 	// Anything else under /api/ is a JSON 404, never the SPA's index.html.
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")

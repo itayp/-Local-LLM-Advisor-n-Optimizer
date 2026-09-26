@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Local LLM Advisor's Info.plist, filled in by build_app.sh (envsubst on the
+  four @VAR@ placeholders below — everything else is fixed).
+
+  CFBundleIdentifier is a "never change once shipped" identifier
+  (RELEASING.md): it is what macOS uses to recognize "the same app" across
+  versions for Gatekeeper, LaunchServices, and (later, if this app is ever
+  signed with a real Developer ID) notarization ticket lookups. It matches
+  internal/autostart's darwin LaunchAgent label on purpose — one identity
+  for the product on this OS, not two.
+
+  LSUIElement=true is the whole point of the tray build: no Dock icon, no
+  menu bar app menu, nothing but the status-item tray. A user who launches
+  it from the .dmg gets exactly what CLAUDE.md's Rule 1 promises — a running
+  daemon and a tray icon, never a terminal, never a window they didn't ask
+  for (the tray's "Open" menu item is what opens the browser).
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>@EXECUTABLE@</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.itayp.localllmadvisor</string>
+	<key>CFBundleName</key>
+	<string>Local LLM Advisor</string>
+	<key>CFBundleDisplayName</key>
+	<string>Local LLM Advisor</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION_SHORT@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION_FULL@</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Itay Pollak</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+</dict>
+</plist>
